@@ -1271,7 +1271,7 @@ export function createWorld(ctx) {
     const _t0 = performance.now();
     // машины
     carsTick(dt);
-    transport.tick(dt, [{ x: P.x, z: P.z }, ...cars.map(c => ({ x: c.m.position.x, z: c.m.position.z })), ...people.filter(p => !p.inBus).map(p => ({ x: p.h.obj.position.x, z: p.h.obj.position.z }))]);
+    transport.tick(dt, [...(transport.riding ? [] : [{ x: P.x, z: P.z }]), ...cars.map(c => ({ x: c.m.position.x, z: c.m.position.z })), ...people.filter(p => !p.inBus).map(p => ({ x: p.h.obj.position.x, z: p.h.obj.position.z }))]);
     { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca;
       if (transport.riding) { busCol.x1 = busCol.x2 = 999; } else { busCol.x1 = o.x - hx; busCol.x2 = o.x + hx; busCol.z1 = o.z - hz; busCol.z2 = o.z + hz; }
       if (!transport.riding && o.v > 1.5 && P.stun <= 0 && Math.abs(P.x - o.x) < hx + .3 && Math.abs(P.z - o.z) < hz + .3) hitByCar({ v: o.v }, Math.cos(-o.heading), Math.sin(-o.heading)); }

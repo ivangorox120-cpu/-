@@ -57,7 +57,7 @@ export function createTransport(env) {
   function tick(dt, obstacles) {
     const [x, z] = routePoint(route, B_.s), [ax, az] = routePoint(route, B_.s + 3), dirx = ax - x, dirz = az - z, dl = Math.hypot(dirx, dirz) || 1;
     // ближайшая остановка впереди
-    let ahead = 1e9, key = null; for (const [k, s0] of Object.entries(stopS)) { const ds = ((s0 - B_.s) % routeLen + routeLen) % routeLen; if (ds < ahead && !(B_.served[k] && ds > routeLen - 30)) { ahead = ds; key = k; } }
+    let ahead = 1e9, key = null; for (const [k, s0] of Object.entries(stopS)) { const ds = ((s0 - B_.s) % routeLen + routeLen) % routeLen; if (ds < ahead && !(B_.served[k] && (ds > routeLen - 30 || ds < 8))) { ahead = ds; key = k; } }
     if (B_.state === 'drive') {
       let target = B_.vmax;
       if (ahead < 40) target = Math.min(target, Math.sqrt(2 * 1.6 * Math.max(0, ahead - .3)));
