@@ -609,7 +609,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- загрузка моделей ----------
   const loader = new GLTFLoader();
   const ASSETS = {};
-  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'phone', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
+  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   function windowShader(m) { // у каждого окна (ячейка мира) своё расписание света и свой оттенок
     m.emissiveIntensity = 1.5;
@@ -687,7 +687,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     fixNodes();
     // --- предметы интерьера из присланных моделей ---
     if (ASSETS.notepad) life.setNotepadModel(ASSETS.notepad.scene.clone(true));
-    if (ASSETS.phone) life.setPhoneModel(ASSETS.phone.scene);
+
     if (ASSETS.cigarette) life.setCigaretteModel(ASSETS.cigarette.scene.clone(true));
     if (ASSETS.vodka) life.setBottleModel(ASSETS.vodka.scene.clone(true));
     if (ASSETS.chair) { const c1 = placeModel(ASSETS.chair, -1.05, -.55, .6); c1.scale.setScalar(.95); addCol(-1.3, -.8, -.8, -.3, 'chair'); placeModel(ASSETS.chair, -2.4, -1.9, 2.2); addCol(-2.65, -2.15, -2.15, -1.65, 'chair'); }

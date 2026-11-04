@@ -1,5 +1,6 @@
 // Быт ларька: физические предметы (коробки), доставка, телефон, блокнот на прилавке, руки, курение, выпивка, опьянение.
 import * as THREE from 'three';
+import { createPhone } from './phone.js';
 
 const R = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -122,63 +123,17 @@ export function createLife(env) {
     it.mass = 1; env.onUnpack && env.onUnpack(it.data); it.data.contents = null; persist(); return true;
   }
 
-  // ================= телефон на стене =================
-  const phone = new THREE.Group(); phone.position.set(-1.05, 1.005, KD - .24); phone.rotation.y = Math.PI * .85; scene.add(phone);
-  const proc = new THREE.Group(); phone.add(proc); proc.rotation.x = -Math.PI / 2; proc.position.y = .06;
-  const pBody = std({ color: 0x8a2a22, roughness: .35 }), pDark = std({ color: 0x1a1a1a, roughness: .5 }), pDial = std({ color: 0xe8e2d0, roughness: .4 });
-  const pbase = new THREE.Mesh(new THREE.BoxGeometry(.2, .24, .12), pBody); pbase.position.z = .06; proc.add(pbase);
-  const dial = new THREE.Mesh(new THREE.CylinderGeometry(.065, .065, .015, 24), pDial); dial.rotation.x = Math.PI / 2; dial.position.set(0, -.02, .125); proc.add(dial);
-  for (let i = 0; i < 10; i++) { const a = -Math.PI * .1 + i * Math.PI * .16; const h = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .02, 8), pDark); h.rotation.x = Math.PI / 2; h.position.set(Math.cos(a) * .045, -.02 + Math.sin(a) * .045, .131); proc.add(h); }
-  let handset = new THREE.Group(); handset.position.set(0, .135, .1); proc.add(handset);
-  const hs = new THREE.Mesh(new THREE.BoxGeometry(.24, .04, .05), pBody); handset.add(hs);
-  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.CylinderGeometry(.035, .03, .04, 14), pBody); e.position.set(s * .11, -.02, 0); handset.add(e); }
-  const cordPts = []; for (let i = 0; i <= 24; i++) cordPts.push(new THREE.Vector3());
-  const cordGeo = new THREE.BufferGeometry().setFromPoints(cordPts), cord = new THREE.Line(cordGeo, new THREE.LineBasicMaterial({ color: 0x3a1410 })); scene.add(cord);
-  let phoneBox = new THREE.Box3().setFromObject(phone).expandByScalar(.05);
-  let call = null; // { t, phase }
-  let handRest = new THREE.Vector3(0, .135, .1), handParent = proc, hasModel = false;
-  // модель пользователя (кнопочный настольный телефон): трубку отделяем от корпуса срезом по высоте
-  function setPhoneModel(gltfScene) {
-    const geos = []; gltfScene.updateMatrixWorld(true); let mat = null;
-    gltfScene.traverse(m => { if (m.isMesh) { const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld); geos.push(g); mat = m.material; } });
-    if (!geos.length) return;
-    const pos = [], nor = [], uv = [], hp = [], hn = [], hu = [];
-    const bb = new THREE.Box3(); geos.forEach(g => { g.computeBoundingBox(); bb.union(g.boundingBox); });
-    const H = bb.max.y - bb.min.y, cut = bb.min.y + H * .6, L = bb.max.z - bb.min.z;
-    for (const g of geos) { const P_ = g.attributes.position, N_ = g.attributes.normal, U_ = g.attributes.uv;
-      for (let t = 0; t < P_.count; t += 3) { let cy = 0, cz = 0, cx = 0; for (let k = 0; k < 3; k++) { cy += P_.getY(t + k); cz += P_.getZ(t + k); cx += P_.getX(t + k); } cy /= 3; cz /= 3; cx /= 3;
-        const isH = cy > cut && Math.abs(cx - (bb.min.x + bb.max.x) / 2) < (bb.max.x - bb.min.x) * .45;
-        const [a, b, c] = isH ? [hp, hn, hu] : [pos, nor, uv];
-        for (let k = 0; k < 3; k++) { a.push(P_.getX(t + k), P_.getY(t + k), P_.getZ(t + k)); if (N_) b.push(N_.getX(t + k), N_.getY(t + k), N_.getZ(t + k)); if (U_) c.push(U_.getX(t + k), U_.getY(t + k)); } } }
-    const mk = (p_, n_, u_) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p_, 3)); if (n_.length) g.setAttribute('normal', new THREE.Float32BufferAttribute(n_, 3)); if (u_.length) g.setAttribute('uv', new THREE.Float32BufferAttribute(u_, 2)); return g; };
-    proc.visible = false;
-    const base = new THREE.Mesh(mk(pos, nor, uv), mat); base.castShadow = base.receiveShadow = true; phone.add(base);
-    const hg = mk(hp, hn, hu); hg.computeBoundingBox(); const hc = hg.boundingBox.getCenter(new THREE.Vector3()); hg.translate(-hc.x, -hc.y, -hc.z);
-    const hm = new THREE.Mesh(hg, mat); hm.castShadow = true;
-    handset = new THREE.Group(); handset.add(hm); handset.position.copy(hc); phone.add(handset); handRest = hc.clone(); handParent = phone; hasModel = true;
-    cord.visible = false; phone.updateMatrixWorld(true); phoneBox = new THREE.Box3().setFromObject(phone).expandByScalar(.05);
-  }
-  function phoneTick(dt) {
-    phone.updateMatrixWorld(true);
-    if (call) {
-      call.t += dt;
-      // трубка подносится к уху (в пространстве камеры)
-      const k = ease(clamp(call.t / .6, 0, 1)) * (call.hang ? 1 - ease(clamp(call.ht / .5, 0, 1)) : 1);
-      handParent.updateMatrixWorld(true); handParent.worldToLocal(tmp.copy(camera.position).add(tmp2.set(.1, -.04, -.16).applyQuaternion(camera.quaternion)));
-      handset.position.lerpVectors(handRest, tmp, k); handset.rotation.set(k * .3, k * 1.2, k * 1.4);
-      if (call.dialing && !hasModel) dial.rotation.z = Math.sin(call.t * 9) * .9 * (Math.sin(call.t * 2) > 0 ? 1 : 0);
-      if (call.hang) { call.ht += dt; if (call.ht > .55) { handset.position.copy(handRest); handset.rotation.set(0, 0, 0); call = null; } }
-    }
-    if (hasModel) return; // у модели свой витой шнур
-    // витой шнур от аппарата к трубке
-    const a = phone.localToWorld(tmp.set(-.09, -.1, .12)), b = handset.localToWorld(tmp2.set(-.11, -.03, 0));
-    const pos = cordGeo.attributes.position;
-    for (let i = 0; i <= 24; i++) { const t = i / 24; const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t - Math.sin(t * Math.PI) * .12, z = a.z + (b.z - a.z) * t; pos.setXYZ(i, x + Math.sin(t * 60) * .006, y + Math.cos(t * 60) * .006, z); }
-    pos.needsUpdate = true;
-  }
-  function startCall() { call = { t: 0, dialing: true }; }
-  function setDialing(v) { if (call) call.dialing = v; }
-  function hangUp() { if (call && !call.hang) { call.hang = true; call.ht = 0; } }
+  // ================= дисковый телефон на прилавке (js/phone.js) =================
+  const ph = createPhone({ scene, camera, std, audio: env.audio });
+  ph.root.position.set(-1.05, 1.005, KD - .22); ph.root.rotation.y = Math.PI * .85;
+  ph.setCounter({ x1: -1.45, x2: 1.45, z1: KD - .45, z2: KD }, 1.005);
+  let phoneBox = ph.box();
+  function setPhoneModel() {} // присланная кнопочная модель больше не используется: аппарат дисковый
+  function phoneTick(dt) { ph.tick(dt); if (!ph.calling) phoneBox = ph.box(); }
+  function startCall() { ph.startCall(); }
+  function setDialing() {}
+  function dialNumber(d, done) { ph.dialNumber(d, done); }
+  function hangUp() { ph.hangUp(); }
 
   // ================= блокнот на прилавке =================
   const NOTE_REST = { x: .05, y: 1.005, z: KD - .31, ry: Math.PI + .2 };
@@ -302,7 +257,7 @@ export function createLife(env) {
     lookingAtPhone: () => { ray.setFromCamera(new THREE.Vector2(0, 0), camera); const h = ray.ray.intersectBox(phoneBox, tmp); return h && h.distanceTo(camera.position) < 1.8; },
     lookingAtNotepad: () => { const b = noteBox(); if (!b) return false; ray.setFromCamera(new THREE.Vector2(0, 0), camera); const h = ray.ray.intersectBox(b, tmp); return h && h.distanceTo(camera.position) < 1.6; },
     lookingAtAshtray: () => { ray.setFromCamera(new THREE.Vector2(0, 0), camera); const h = ray.ray.intersectBox(ashBox, tmp); return h && h.distanceTo(camera.position) < 1.6; },
-    setPhoneModel, startCall, setDialing, hangUp, get calling() { return !!call; },
+    setPhoneModel, startCall, setDialing, dialNumber, hangUp, get calling() { return ph.calling; }, phone: ph,
     setNotepadModel, openNotepad, closeNotepad, get notepadState() { return noteState; },
     setCigaretteModel, setBottleModel, setButts, habit, fx,
     tick(dt) { itemsTick(dt); deliveryTick(dt); phoneTick(dt); noteTick(dt); habitTick(dt); },

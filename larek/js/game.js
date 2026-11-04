@@ -1256,14 +1256,17 @@ function phoneCall() {
     { label: 'Положить трубку', fn() { closeDialog(); } },
   ] });
 }
+const PHONE_NUM = { opt: '31740', vova: '22815', info: '09' };
 function dial(who) {
   callBusy = true; W.P.locked = true; W.life.startCall(); renderControls();
-  audio.tone425(true); // длинный гудок
-  setTimeout(() => { audio.tone425(false); W.life.setDialing(true); audio.dialClicks(7); }, 1300);
-  setTimeout(() => { audio.dialClicks(4); }, 2300);
-  setTimeout(() => { W.life.setDialing(false); audio.tone425(true, 'ring'); }, 3200);
-  const rings = who === 'vova' && (S.phase === 'trade') && Math.random() < .5 ? 99 : RI(1, 2);
-  setTimeout(() => { audio.tone425(false); if (rings > 3) { audio.tone425(true, 'busy'); showDialog({ name: 'Телефон', text: 'Никто не берёт. Вова днём на вокзале, звони вечером.', options: [{ label: 'Положить трубку', fn: hangUp }] }); return; } audio.click(800, .5, 0, .05); talk(who); }, 3200 + rings * 5000 - 3500);
+  setTimeout(() => { if (!callBusy) return; audio.tone425(true); }, 700); // трубка у уха — длинный гудок
+  setTimeout(() => { if (!callBusy) return; audio.tone425(false);
+    W.life.dialNumber(PHONE_NUM[who] || '09', () => { if (!callBusy) return; // диск отщёлкал номер — пошли вызовы
+      audio.tone425(true, 'ring');
+      const rings = who === 'vova' && (S.phase === 'trade') && Math.random() < .5 ? 99 : RI(1, 2);
+      setTimeout(() => { if (!callBusy) return; audio.tone425(false); if (rings > 3) { audio.tone425(true, 'busy'); showDialog({ name: 'Телефон', text: 'Никто не берёт. Вова днём на вокзале, звони вечером.', options: [{ label: 'Положить трубку', fn: hangUp }] }); return; } audio.click(800, .5, 0, .05); talk(who); }, rings > 3 ? 9000 : rings * 4000);
+    });
+  }, 1900);
 }
 function hangUp() { closeDialog(); audio.tone425(false); audio.click(400, .7, 0, .06); audio.tone425(true, 'busy'); setTimeout(() => audio.tone425(false), 1800); W.life.hangUp(); W.P.locked = false; callBusy = false; renderControls(); }
 function talk(who) {
