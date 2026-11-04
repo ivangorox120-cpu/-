@@ -12,6 +12,7 @@ export function createAudio() {
   let ctx = null, master, sfxBus, ambBus;
   const st = { master: .9, radio: .7, ambience: .6, radioOn: true, ready: false, muted: false };
   const buffers = {};
+  let rainSrc, rainFilter, rainGain, roofSrc, roofGain;
   let radioEl, radioSrc, radioGain, radioFilter, radioPanner, cityEl, citySrc, cityGain, cityFilter, windGain, windFilter, windSrc;
   const tmpV = new THREE.Vector3(), tmpF = new THREE.Vector3(), tmpU = new THREE.Vector3();
   const cars = new Map();
@@ -46,6 +47,11 @@ export function createAudio() {
     windFilter = ctx.createBiquadFilter(); windFilter.type = 'bandpass'; windFilter.frequency.value = 500; windFilter.Q.value = .6;
     windGain = ctx.createGain(); windGain.gain.value = 0;
     windSrc.connect(windFilter); windFilter.connect(windGain); windGain.connect(ambBus); windSrc.start();
+    // дождь: шум по асфальту (высокие) + капли по крыше ларька (низкие, слышнее внутри)
+    rainSrc = ctx.createBufferSource(); rainSrc.buffer = nb; rainSrc.loop = true; rainSrc.playbackRate.value = 1.3; rainFilter = ctx.createBiquadFilter(); rainFilter.type = 'highpass'; rainFilter.frequency.value = 1400; rainGain = ctx.createGain(); rainGain.gain.value = 0;
+    rainSrc.connect(rainFilter); rainFilter.connect(rainGain); rainGain.connect(ambBus); rainSrc.start();
+    roofSrc = ctx.createBufferSource(); roofSrc.buffer = nb; roofSrc.loop = true; roofSrc.playbackRate.value = .7; const rf = ctx.createBiquadFilter(); rf.type = 'bandpass'; rf.frequency.value = 900; rf.Q.value = 1.2; roofGain = ctx.createGain(); roofGain.gain.value = 0;
+    roofSrc.connect(rf); rf.connect(roofGain); roofGain.connect(ambBus); roofSrc.start();
     cityEl.play().catch(() => {});
     if (st.radioOn) radioEl.play().catch(() => {});
     st.ready = true;
@@ -77,6 +83,7 @@ export function createAudio() {
       cityFilter.frequency.setTargetAtTime(env.inside ? 900 + 5000 * env.doorOpen : 16000, t, .2);
       const w = env.wind * (env.inside ? .15 + .4 * env.doorOpen : 1);
       windGain.gain.setTargetAtTime(.05 + w * .22, t, .5);
+      const rn = env.rain || 0; if (rainGain) { rainGain.gain.setTargetAtTime(rn * (env.inside ? .05 + .25 * env.doorOpen : .32), t, .8); roofGain.gain.setTargetAtTime(rn * (env.inside ? .5 : .08), t, .8); }
       windFilter.frequency.setTargetAtTime(350 + w * 500 + Math.sin(t * .3) * 120, t, .5);
     }
     for (const [id, c] of cars) if (c.panner) {

@@ -296,7 +296,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const P = g.attributes.position; for (let i = 0; i < P.count; i++) { const u = P.getX(i) / L + .5, v = P.getZ(i) / w * 2; const ends = clamp(Math.min(u, 1 - u) * L / (w * .9), 0, 1); const n = .75 + .25 * Math.sin(u * L * 1.3 + seed) * Math.sin(u * L * .37 + seed * 2.1);
       P.setY(i, Math.max(0, h * Math.pow(Math.max(0, 1 - v * v), .8) * Math.pow(ends, .6) * n)); P.setZ(i, P.getZ(i) * (1 + .15 * Math.sin(u * L * .9 + seed))); }
     g.computeVertexNormals(); g.rotateY(-Math.atan2(z2 - z1, x2 - x1)); g.translate((x1 + x2) / 2, .01, (z1 + z2) / 2); driftGeos.push(g); }
-  function flushDrifts() { if (!driftGeos.length) return; const m = new THREE.Mesh(mergeGeometries(driftGeos.map(g => { g.deleteAttribute('uv'); return g; })), driftMat); m.receiveShadow = true; m.castShadow = true; scene.add(m); winterGround.push(m); driftGeos.length = 0; return m; }
+  function flushDrifts() { if (!driftGeos.length) return; const m = new THREE.Mesh(mergeGeometries(driftGeos.map(g => { g.deleteAttribute('uv'); return g; })), driftMat); m.receiveShadow = true; m.castShadow = true; m.userData.winter = true; m.userData.dyn = true; scene.add(m); winterGround.push(m); driftGeos.length = 0; return m; }
   { const gaps = [[-6, 2], [3, 13.5]]; // «зебра», остановка
     let x = -80; while (x < 86) { const L = R(9, 18); let a = x, b = Math.min(86, x + L); const gp = gaps.find(([g1, g2]) => b > g1 && a < g2); if (gp) { if (a < gp[0]) drift(a, 5.85, gp[0] - .4, 5.85, 1.1, .38, x); x = gp[1] + .4; continue; } drift(a, 5.85 + R(-.1, .1), b, 5.85 + R(-.1, .1), R(.9, 1.2), R(.3, .45), x); x = b + R(.8, 2.5); }
     x = -80; while (x < 86) { const L = R(10, 22); const a = x, b = Math.min(86, x + L); if (!(b > -6 && a < 2)) drift(a, 14.6 + R(-.1, .1), b, 14.6 + R(-.1, .1), R(1, 1.4), R(.35, .55), x + 3); x = b + R(1, 3); }
@@ -684,10 +684,10 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         g.putImageData(d, 0, 0); const nt = new THREE.CanvasTexture(c); nt.colorSpace = THREE.SRGBColorSpace; nt.flipY = t.flipY; nt.magFilter = THREE.NearestFilter; maskCache.set(t, nt); return nt; };
       A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
       for (const [x, z, r] of [[-32, 27, Math.PI / 2], [30, 27, Math.PI / 2], [0, -36, -Math.PI / 2], [-66, -10, 0], [70, -6, Math.PI]]) {
-        const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o);
+        const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o); reflectLayer(o);
         { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
       }
-      flushDrifts();
+      flushDrifts(); season = -1; // пересчитать видимость сезонных объектов
     } else fallbackBuildings();
     // остановка
     if (ASSETS.busstop) { // открытая сторона модели смотрит в +X локально → поворот −90°, к дороге (+Z)
@@ -708,6 +708,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     }
     // деревья и кусты (модели пользователя), четыре сезона: зима — почти голые и в снегу, весна — молодая листва, лето, осень — жёлто-красные
     if (ASSETS.tree || ASSETS.bush) buildVegetation();
+    reflectLayer(sky); reflectLayer(K); scene.traverse(o => { if (o.isLight) o.layers.enable(1); }); // упрощённая сцена для отражений в лужах
     // радио на полке
     if (ASSETS.radio) { const o = placeModel(ASSETS.radio, -KW + .17, -.62, Math.PI / 2, 1.0); o.position.y = 1.315; radioObj = o; radioBox = new THREE.Box3().setFromObject(o).expandByScalar(.03); }
     // модель рабочего — один из вариантов NPC
@@ -1302,7 +1303,37 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // ---------- время суток, погода, сезон ----------
   let hour = 7.5, nightK = 0, season = -1, winter = true, weather = { snow: .6, wind: .3, target: .6, windT: .3, state: 'normal', timer: 60, fog: 0, gust: 0, ang: .3, windOff: new THREE.Vector2(), fallOff: 0 };
-  const WEATHER = { light: { snow: .28, wind: .2, fog: 0 }, normal: { snow: .65, wind: .45, fog: .15 }, blizzard: { snow: 1, wind: 1, fog: .8 } };
+  const WEATHER = { light: { snow: .28, wind: .2, fog: 0 }, normal: { snow: .65, wind: .45, fog: .15 }, blizzard: { snow: 1, wind: 1, fog: .8 },
+    clear: { snow: 0, wind: .2, fog: 0, rain: 0 }, overcast: { snow: 0, wind: .35, fog: .15, rain: 0 }, drizzle: { snow: 0, wind: .3, fog: .3, rain: .35 }, rain: { snow: 0, wind: .55, fog: .45, rain: 1 } };
+  // ---------- дождь (весна/лето/осень, чаще осенью): штрихи-капли, мокрый асфальт, лужи с отражениями ----------
+  let rainLines = null; weather.rain = 0; weather.wet = 0;
+  function buildRain(n) {
+    if (rainLines) { scene.remove(rainLines); rainLines.geometry.dispose(); }
+    const g = new THREE.BufferGeometry(), pos = new Float32Array(n * 6), e = new Float32Array(n * 2), sp = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) { const x = R(-18, 18), y = R(0, 14), z = R(-18, 18), s_ = R(.8, 1.2); for (let k = 0; k < 2; k++) { pos.set([x, y, z], (i * 2 + k) * 3); e[i * 2 + k] = k; sp[i * 2 + k] = s_; } }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('e', new THREE.BufferAttribute(e, 1)); g.setAttribute('spd', new THREE.BufferAttribute(sp, 1));
+    const m = new THREE.ShaderMaterial({ uniforms: { fall: { value: 0 }, wind: { value: new THREE.Vector2() }, origin: { value: new THREE.Vector3() }, amount: { value: 0 }, light: { value: 1 }, kmin: { value: new THREE.Vector3(-KW - .1, 0, -KD - .1) }, kmax: { value: new THREE.Vector3(KW + .1, KH + .3, KD + .5) } },
+      vertexShader: `attribute float e, spd; uniform float fall, amount; uniform vec2 wind; uniform vec3 origin, kmin, kmax; varying float vA;
+        void main(){ vec3 p = position; p.y = mod(p.y - fall * spd, 14.0); p.x = mod(p.x + wind.x * p.y * .12 - origin.x + 18.0, 36.0) - 18.0 + origin.x; p.z = mod(p.z + wind.y * p.y * .12 - origin.z + 18.0, 36.0) - 18.0 + origin.z;
+          vec3 dir = normalize(vec3(wind.x * .12, -1.0, wind.y * .12)); p -= dir * e * .45 * spd;
+          vA = step(fract(spd * 7.31), amount) * (1.0 - e * .7); if (all(greaterThan(p, kmin)) && all(lessThan(p, kmax))) vA = 0.0;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA *= smoothstep(.3, 1.5, -mv.z) * (1.0 - smoothstep(12.0, 17.0, -mv.z)); }`,
+      fragmentShader: 'uniform float light; varying float vA; void main(){ if (vA < .01) discard; gl_FragColor = vec4(vec3(.75, .8, .86) * light, vA * .38); }', transparent: true, depthWrite: false });
+    rainLines = new THREE.LineSegments(g, m); rainLines.frustumCulled = false; rainLines.visible = false; scene.add(rainLines);
+  }
+  // лужи: плоские пятна неровной формы (инстансы) с зеркальным материалом; отражение — кубическая карта, снятая с упрощённой сцены (слой 1) в низком разрешении и обновляемая раз в несколько секунд
+  let puddles = null; const cubeRT = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType }); const cubeCam = new THREE.CubeCamera(.5, 120, cubeRT); cubeCam.layers.set(1); cubeCam.children.forEach(c => c.layers.set(1)); scene.add(cubeCam); let cubeT = 0;
+  function buildPuddles(on) {
+    if (puddles) { scene.remove(puddles); puddles.geometry.dispose(); puddles = null; } if (!on) return;
+    const sh = new THREE.Shape(); for (let k = 0; k <= 24; k++) { const a = k / 24 * Math.PI * 2, r = 1 + .22 * Math.sin(a * 3 + 1.3) + .12 * Math.sin(a * 5 + .4); const x = Math.cos(a) * r, y = Math.sin(a) * r * .55; k ? sh.lineTo(x, y) : sh.moveTo(x, y); }
+    const g = new THREE.ShapeGeometry(sh, 2); g.rotateX(-Math.PI / 2);
+    const m = new THREE.MeshStandardMaterial({ color: 0x5a6068, metalness: 1, roughness: .04, envMap: cubeRT.texture, envMapIntensity: 1.3, transparent: true, opacity: .92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const spots = []; for (let i = 0; i < 70; i++) { const z = pick([R(7, 8.2), R(12.2, 13.6), R(9, 11.5), R(2, 5.8), R(14.6, 18)]), x = R(-60, 66); spots.push([x, z, R(.35, 1.3), R(0, 6.28)]); }
+    puddles = new THREE.InstancedMesh(g, m, spots.length); puddles.userData.spots = spots; puddles.renderOrder = 1; puddles.receiveShadow = false; scene.add(puddles); setPuddles(0);
+  }
+  const _pm = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _ps = new THREE.Vector3(), _pp = new THREE.Vector3();
+  function setPuddles(wet) { if (!puddles) return; puddles.userData.spots.forEach(([x, z, s_, r], i) => { const k = clamp(wet * 1.4 - (s_ - .35) * .5, 0, 1) * s_; _pm.compose(_pp.set(x, .022, z), _pq.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r), _ps.set(k + .001, 1, k + .001)); puddles.setMatrixAt(i, _pm); }); puddles.instanceMatrix.needsUpdate = true; puddles.userData.wet = wet; }
+  function reflectLayer(o) { o.traverse(c => c.layers.enable(1)); }
   const cA = new THREE.Color(), cB = new THREE.Color();
   const PAL = { dayTop: '#73858f', dayBot: '#c6c9c3', duskTop: '#3d485a', duskBot: '#c08058', nightTop: '#060a10', nightBot: '#171d26' };
   function setClock(h) {
@@ -1353,7 +1384,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     bulbLight.castShadow = sh && Q.light >= 1; fillLight.visible = Q.light >= 2;
     camera.far = Q.draw + 60; camera.updateProjectionMatrix(); sky.scale.setScalar(Math.min(1, (Q.draw + 40) / 380));
     allTex.forEach(t => { t.anisotropy = Q.aniso; if (t.image) t.needsUpdate = true; });
-    buildSnow(Q.snow);
+    buildSnow(Q.snow); buildRain(Math.round(Q.snow * .8)); buildPuddles(Q.light >= 1);
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
     resize();
   }
@@ -1421,8 +1452,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // погода
     weather.snow += (weather.target - weather.snow) * dt * .05; weather.wind += (weather.windT - weather.wind) * dt * .1;
     weather.timer -= dt;
-    if (weather.timer <= 0 || (weather.state === 'blizzard' && nightK < .5)) { weather.timer = R(70, 160); weather.state = nightK > .6 ? pick(['normal', 'light', 'blizzard', 'blizzard']) : pick(['normal', 'light', 'normal']); }
-    { const W_ = WEATHER[weather.state]; weather.target = winter ? W_.snow : 0; weather.windT = W_.wind; weather.fog += ((winter ? W_.fog : 0) - weather.fog) * dt * .04; }
+    if (winter !== (weather.state in { light: 1, normal: 1, blizzard: 1 })) weather.timer = 0;
+    if (weather.timer <= 0 || (weather.state === 'blizzard' && nightK < .5)) { weather.timer = R(70, 160);
+      if (winter) weather.state = nightK > .6 ? pick(['normal', 'light', 'blizzard', 'blizzard']) : pick(['normal', 'light', 'normal']);
+      else { const autumn = season >= 8 && season <= 9, spring = season >= 3 && season <= 4; weather.state = autumn ? pick(['rain', 'rain', 'drizzle', 'overcast', 'drizzle']) : spring ? pick(['overcast', 'drizzle', 'clear', 'rain']) : pick(['clear', 'clear', 'overcast', 'drizzle']); } }
+    { const W_ = WEATHER[weather.state]; weather.target = winter ? W_.snow : 0; weather.windT = W_.wind; weather.fog += (W_.fog - weather.fog) * dt * .04; const rt = winter ? 0 : (W_.rain || 0); weather.rain += (rt - weather.rain) * dt * .08;
+      weather.wet = clamp(weather.wet + (weather.rain > .2 ? dt * .02 * weather.rain : -dt * .0025), 0, 1); if (winter) weather.wet = 0; }
     if (Math.random() < dt * .12 * (.3 + weather.wind)) { weather.gust = R(.4, 1.4) * (.4 + weather.wind); weather.ang += R(-.8, .8); }
     weather.gust *= Math.pow(.6, dt); weather.ang += Math.sin(tAll * .05) * dt * .05;
     // буран у границы карты
@@ -1492,12 +1527,15 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     stormMat.uniforms.time.value = tAll; stormMat.uniforms.col.value.copy(scene.fog.color);
     weapon.cam.fov = camera.fov; weapon.cam.updateProjectionMatrix();
     // снег
-    if (snowPts) { const u = snowPts.material.uniforms; u.time.value = tAll; u.origin.value.copy(camera.position); u.windOff.value.copy(weather.windOff); u.fallOff.value = weather.fallOff; u.swirl.value = weather.wind * .6 + weather.gust; u.density.value = Math.max(weather.snow, stormK); snowPts.visible = (winter && weather.snow > .03) || stormK > .05; u.scale.value = window.innerHeight * DPR * .035; }
+    if (rainLines) { const u = rainLines.material.uniforms; u.fall.value = tAll * 9; u.wind.value.set(windVec.x, windVec.y); u.origin.value.copy(camera.position); u.amount.value = weather.rain; u.light.value = .35 + (1 - nightK) * .65; rainLines.visible = weather.rain > .02; }
+    if (puddles) { puddles.visible = weather.wet > .03; if (puddles.visible) { if (Math.abs((puddles.userData.wet || 0) - weather.wet) > .02) setPuddles(weather.wet); cubeT -= dt; if (cubeT <= 0) { cubeT = 4; puddles.visible = false; cubeCam.position.set(camera.position.x, .1, camera.position.z); cubeCam.update(renderer, scene); puddles.visible = true; } } }
+    { const wt = weather.wet; roadS.material.roughness = 1 - wt * .55; walkS.material.roughness = 1 - wt * .5; roadS.material.color.setScalar(1 - wt * .35); walkS.material.color.set(0xb8b4ac).multiplyScalar(1 - wt * .3); }
+    if (snowPts) { const u = snowPts.material.uniforms; u.time.value = tAll; u.origin.value.copy(camera.position); u.windOff.value.copy(weather.windOff); u.fallOff.value = weather.fallOff; u.swirl.value = weather.wind * .6 + weather.gust; u.density.value = Math.max(weather.snow, stormK); snowPts.visible = winter && (weather.snow > .03 || stormK > .05); u.scale.value = window.innerHeight * DPR * .035; }
     sky.position.copy(camera.position); skyMat.uniforms.t.value = tAll;
     bulbLight.intensity *= 1 + Math.sin(tAll * 31) * .01;
     bulbLight.castShadow = renderer.shadowMap.enabled && Q.light >= 2 && inside;
     // звук
-    ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: Math.min(1.5, (winter ? weather.wind : weather.wind * .4) + weather.gust * .5 + stormK), night: nightK > .6 });
+    ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: Math.min(1.5, (winter ? weather.wind : weather.wind * .4) + weather.gust * .5 + stormK), night: nightK > .6, rain: weather.rain });
     // контекстная кнопка
     actT -= dt; if (actT <= 0) { actT = .15; curAct = action(); const l = curAct ? curAct.label : ''; if (l !== lastActLabel) { lastActLabel = l; ctx.onCtl(); } }
     // рендер
@@ -1575,6 +1613,6 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     putGunDown() { if (gunState() !== 'carried') return; const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); },
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
-    debug: { TIM, people, cars, carGroups, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
+    debug: { TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
   };
 }
