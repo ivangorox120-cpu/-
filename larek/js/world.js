@@ -6,6 +6,7 @@ import { Human, makeLook, splitStaticModel, preparePeople } from './npc.js';
 import { createWeapon } from './weapon.js';
 import { createLife } from './life.js';
 import { Rope } from './rope.js';
+import { Ragdoll } from './ragdoll.js';
 import { createTransport, STOPS } from './transport.js';
 
 const R = (a, b) => a + Math.random() * (b - a);
@@ -770,13 +771,14 @@ export function createWorld(ctx) {
   const blobGeo = new THREE.CircleGeometry(.32, 16), blobMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .32, depthWrite: false });
   function removePerson(p) { scene.remove(p.h.obj); const i = people.indexOf(p); if (i >= 0) people.splice(i, 1); }
   function goTo(p, x, z, then) {
+    if (p.dead) return;
     const o = p.h.obj.position, a = nearestNode(o.x, o.z), b = nearestNode(x, z); const pt = path(a, b); pt.push({ x, z });
     // не возвращаться к узлу, который уже позади
     while (pt.length > 1 && Math.hypot(pt[1].x - o.x, pt[1].z - o.z) <= Math.hypot(pt[1].x - pt[0].x, pt[1].z - pt[0].z) + .2) pt.shift();
     if (Math.hypot(x - o.x, z - o.z) < 6) pt.splice(0, pt.length - 1); // рядом — напрямую
     p.path = pt; p.then = then; p.state = 'walk';
   }
-  function leaveWorld(p) { const target = NODES[pickSpawn(p.h.obj.position)]; goTo(p, target.x, target.z, () => removePerson(p)); p.leaving = true; }
+  function leaveWorld(p) { if (p.dead) return; const target = NODES[pickSpawn(p.h.obj.position)]; goTo(p, target.x, target.z, () => removePerson(p)); p.leaving = true; }
   function spawnVendor(i) { const s = vendorSpots[i % vendorSpots.length]; if (!s) return; const p = newPerson(i === 0 ? 'babka' : 'vendor', 'vendor', 'm2'); p.h.obj.position.set(s.x, 0, s.z); p.h.obj.rotation.y = s.rot; p.state = 'stand'; p.anim = 'idle'; }
   const lineFor = {
     babka: ['Ох, сынок, всё дорожает…', 'Пенсию опять задержали.', 'В наше время хлеб по 16 копеек был.', 'Ты бы шапку надел, холодно же.'],
@@ -908,6 +910,7 @@ export function createWorld(ctx) {
     if (marat) { const S3 = ctx.getS(), away = !!(S3 && S3.phase === 'night' && hour > 23); marat.hidden = away; marat.h.obj.visible = !away; const d = Math.hypot(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z);
       if (marat.state !== 'scared') { marat.anim = d < 5 ? (marat.talking ? 'talk' : 'idle') : 'smoke'; if (d < 7) faceTo(marat, Math.atan2(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z), dt); else faceTo(marat, Math.PI * .6, dt); } }
     for (const p of people.slice()) {
+      if (p.dead) { deadTick(p, dt); continue; }
       if (p.role === 'cust') custTick(p, dt);
       let dist = 0;
       if (p.state === 'walk' && p.path.length) {
@@ -970,7 +973,7 @@ export function createWorld(ctx) {
     onDelivered: d => ctx.onDelivered && ctx.onDelivered(d), onUnpack: data => ctx.onUnpack && ctx.onUnpack(data), onDrink: (k, s) => ctx.onDrink && ctx.onDrink(k, s) });
   function aimedPerson(maxD = 30) {
     camera.getWorldDirection(tmpV2); let best = null, bd = .5;
-    for (const p of people) { if (p.hidden) continue; const o = p.h.obj.position; tmpV.set(o.x, 1.3 * p.h.L.height / 1.75, o.z).sub(camera.position); const along = tmpV.dot(tmpV2); if (along < .5 || along > maxD) continue; const perp = tmpV.addScaledVector(tmpV2, -along).length(); if (perp < bd) { bd = perp; best = p; } }
+    for (const p of people) { if (p.hidden || p.dead) continue; const o = p.h.obj.position; tmpV.set(o.x, 1.3 * p.h.L.height / 1.75, o.z).sub(camera.position); const along = tmpV.dot(tmpV2); if (along < .5 || along > maxD) continue; const perp = tmpV.addScaledVector(tmpV2, -along).length(); if (perp < bd) { bd = perp; best = p; } }
     return best;
   }
   function threaten(p) { // ружьё наведено на человека
@@ -992,10 +995,26 @@ export function createWorld(ctx) {
     if (p.role === 'cust' && p.c) { ctx.customerScared(p.c); }
     else setTimeout(() => { if (people.includes(p)) { p.flee = true; leaveWorld(p); p.speed = 3.5; } }, 2200);
   }
+  // ---------- смерть NPC: ragdoll, через 60 с тело плавно исчезает ----------
+  const rdBlocked = (x, z) => (Math.abs(x) < KW && z > -KD && z < KD) || colliders.some(b => b.tag !== 'door' && x > b.x1 && x < b.x2 && z > b.z1 && z < b.z2);
+  function killPerson(p, dir, dist) {
+    p.dead = true; p.state = 'dead'; p.path = []; p.then = null; p.flee = false; p.talking = false;
+    const force = clamp(11 - dist * .35, 3, 10), imp = dir.clone().setY(0).normalize().multiplyScalar(force); imp.y = 1.2;
+    p.rag = new Ragdoll(p.h, imp, camera.position.y - .15, rdBlocked); p.deadT = 0; p.h.setExpr('scared');
+    ctx.audio.click && ctx.audio.click(90, .6, 0, .25);
+    if (p === marat) marat = null;
+    if (p.group) { p.group.members = p.group.members.filter(m => m !== p); if (p.group.state !== 'gone') { gopLeave(p.group, 'flee'); ctx.gopResolved && ctx.gopResolved('shot'); } }
+    ctx.onKill && ctx.onKill(p.role, p.c, p.kind);
+  }
+  function deadTick(p, dt) {
+    p.deadT += dt; p.rag.step(dt);
+    if (p.deadT > 60) { p.rag.startFade(); const a = 1 - (p.deadT - 60) / 3; p.rag.setFade(Math.max(0, a)); if (a <= 0) { p.rag.dispose(); removePerson(p); } }
+  }
   function onShot() {
     P.pitch = Math.min(1.25, P.pitch + .09); P.shake = .4;
+    { const hit = aimedPerson(26); if (hit) { camera.getWorldDirection(tmpV2); killPerson(hit, tmpV2.clone(), Math.hypot(hit.h.obj.position.x - P.x, hit.h.obj.position.z - P.z)); } }
     const S = ctx.getS(); if (S) { ctx.rep('law', -4); ctx.rep('folk', -2); }
-    for (const p of people) { const d = Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z); if (d > 45) continue;
+    for (const p of people) { if (p.dead) continue; const d = Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z); if (d > 45) continue;
       if (p.role === 'gop') { if (p.group && p.group.state !== 'gone') { gopLeave(p.group, 'flee'); ctx.gopResolved && ctx.gopResolved('shot'); } }
       else if (p.role === 'vendor') { p.state = 'scared'; p.anim = 'scared'; p.timer = 5; p.h.setExpr('scared'); }
       else if (p.role === 'cust') { ctx.customerScared(p.c); }

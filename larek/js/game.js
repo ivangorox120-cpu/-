@@ -548,6 +548,18 @@ function customerScared(c) {
   renderTrade();
 }
 function leave() { T.cur = null; renderTrade(); }
+// человек убит из ружья: тяжёлые последствия, но игра продолжается
+function onKill(role, c, kind) {
+  if (!S) return;
+  S.flags.kills = (S.flags.kills || 0) + 1;
+  if (role === 'gop') { rep('street', -6); rep('law', -10); toast('Гопник убит. Свидетели разбежались. Закон −10, Улица −6', 'bad'); }
+  else if (c && c.k === 'police') { rep('law', -60); S.gun = false; if (W) W.weapon.holster(); toast('Убит участковый. Ружьё конфисковано, по району ищут стрелка. Закон −60', 'bad'); }
+  else if (role === 'marat') { rep('street', -25); rep('law', -15); toast('Марат убит. Улица этого не простит. Улица −25, Закон −15', 'bad'); }
+  else { rep('law', -30); rep('folk', -15); toast('Убит человек. Закон −30, Народ −15', 'bad'); }
+  sfx.bad && sfx.bad();
+  if (T && c) { if (T.cur === c) T.cur = null; T.queue = T.queue.filter(q => q !== c); T.walking = (T.walking || []).filter(q => q !== c); T.lost++; renderTrade(); }
+  save();
+}
 function custStatus(c) {
   const id = c.item, q = qOf(id), onVit = displayed(id);
   if (!onVit && q > 0) return { ok:false, msg:'Есть на складе, но нет на витрине! Положите на витрину.' };
@@ -1342,7 +1354,7 @@ function look(dx, dy, kind) { if (controls && kind !== 'mouse') controls.look(dx
 const W = (() => { try { return createWorld({
   getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET,
   toast, openSheet, onCtl, rep, qOf, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
-  arrive, customerScared, gopnikDemand, say, sleep, maratTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
+  arrive, customerScared, onKill, gopnikDemand, say, sleep, maratTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
   onDrink(k, strong) { if (strong > .3 && W && W.life.fx.drunkTarget > 1) toast('Голова поплыла… Хватит, пожалуй.'); },
   dialog: showDialog, closeDialog,
   gopResolved(how) { if (how === 'scared') { rep('street', 3); toast('Гопники отступили. Улица +3'); } },
