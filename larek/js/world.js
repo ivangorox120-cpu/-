@@ -257,14 +257,34 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function textTex(w, h, text, bg, fg, font, extra) { return regTex(ctex(w, h, g => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.fillStyle = fg; g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h / 2 + 2); if (extra) extra(g, w, h); speckle(g, w, h, w * h / 60, ['#0003', '#fff1'], 2); stains(g, w, h, 4); })); }
 
   // ---------- земля ----------
-  const winterGround = [], summerGround = [];
+  const winterGround = [], summerGround = [], drainSpots = [];
   const groundSnow = plane(340, 340, std({ map: repTex(TX.snow, 70, 70), roughness: .95 }), 0, 0, 0); winterGround.push(groundSnow);
   const groundDirt = plane(340, 340, std({ map: repTex(TX.asphalt, 60, 60), color: 0x8a8678 }), 0, -.001, 0); summerGround.push(groundDirt);
   const road = plane(170, 8, std({ map: repTex(TX.road, 34, 1.6), roughness: .9 }), 3, .012, 10.2);
   for (const z of [6.55, 13.85]) { const ds = plane(170, .9, std({ map: repTex(TX.dirtySnow, 40, 1), transparent: true, opacity: .95, roughness: .95 }), 3, .02, z); if (z > 10) ds.rotation.z = Math.PI; winterGround.push(ds); }
   const walk = plane(170, 4.9, std({ map: repTex(TX.snow, 40, 1.2), color: 0xb9bcbe }), 3, .008, 3.75); winterGround.push(walk);
   const walkS = plane(170, 4.9, std({ map: repTex(TX.asphalt, 40, 1.2), color: 0xa09c94 }), 3, .007, 3.75); summerGround.push(walkS);
-  box(170, .15, .25, MAT.concrete, 3, .075, 6.25, scene, false); box(170, .15, .25, MAT.concrete, 3, .075, 14.15, scene, false);
+  winterGround.push(road);
+  // ---------- бесснежные сезоны: PBR-текстуры ambientCG (CC0) — изношенный асфальт, тротуары, двор (земля с травой), бетон ----------
+  const pbrT = (name, rx, ry) => { const ld = (suf, srgb) => { const t = TL.load('assets/tex/pbr/' + name + '_' + suf + '.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = Q.aniso || 4; return regTex(t); };
+    return { map: ld('col', true), normalMap: ld('nrm'), roughnessMap: ld('rgh') }; };
+  Object.assign(groundDirt.material, pbrT('ground', 110, 110), { color: new THREE.Color(0xffffff), roughness: 1 }); groundDirt.material.needsUpdate = true;
+  const roadS = plane(170, 8, std({ ...pbrT('road', 40, 2), roughness: 1 }), 3, .012, 10.2); summerGround.push(roadS);
+  Object.assign(walkS.material, pbrT('walk', 50, 1.5), { color: new THREE.Color(0xb8b4ac), roughness: 1 }); walkS.material.needsUpdate = true;
+  // северный тротуар (вдоль домов за дорогой)
+  const walkN = plane(170, 4.1, walk.material, 3, .008, 16.3); winterGround.push(walkN);
+  const walkNS = plane(170, 4.1, walkS.material, 3, .007, 16.3); summerGround.push(walkNS);
+  const curbMat = std({ ...pbrT('concrete', 60, 1), color: 0xc8c4bc, roughness: 1 });
+  box(170, .15, .25, curbMat, 3, .075, 6.25, scene, false); box(170, .15, .25, curbMat, 3, .075, 14.15, scene, false); box(170, .1, .15, curbMat, 3, .05, 18.4, scene, false);
+  // ливнёвки: чугунные решётки в лотке у бордюра + водоприёмник в бордюре (советский образец), шаг ~16 м
+  { const grTex = regTex(ctex(128, 64, (g, w, h) => { g.fillStyle = '#1a1816'; g.fillRect(0, 0, w, h); g.fillStyle = '#4a4540'; g.fillRect(0, 0, w, 5); g.fillRect(0, h - 5, w, 5); g.fillRect(0, 0, 5, h); g.fillRect(w - 5, 0, 5, h);
+      for (let x = 12; x < w - 6; x += 11) g.fillRect(x, 5, 4, h - 10); g.fillStyle = '#5a5249'; g.font = '700 9px Arial'; for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(${120 + Math.random() * 60},${60 + Math.random() * 30},30,.35)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
+    const grMat = std({ map: grTex, roughness: .6, metalness: .6 }), grGeo = new THREE.PlaneGeometry(.8, .4); grGeo.rotateX(-Math.PI / 2);
+    const inletGeo = new THREE.PlaneGeometry(.8, .1), inletMat = std({ color: 0x0a0a0a, roughness: 1 });
+    const pos = []; for (let x = -76; x < 84; x += 16) { if (Math.abs(x + 2) < 4) continue; pos.push([x, 6.55, 0]); pos.push([x + 8, 13.85, Math.PI]); }
+    const gi = new THREE.InstancedMesh(grGeo, grMat, pos.length), ii = new THREE.InstancedMesh(inletGeo, inletMat, pos.length), M4 = new THREE.Matrix4(), Qn = new THREE.Quaternion();
+    pos.forEach(([x, z, r], i) => { gi.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .018, z), Qn.setFromEuler(new THREE.Euler(0, r, 0)), new THREE.Vector3(1, 1, 1))); ii.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .07, z + (r ? .23 : -.23)), Qn.setFromEuler(new THREE.Euler(0, r, 0)), new THREE.Vector3(1, 1, 1))); });
+    gi.receiveShadow = true; scene.add(gi, ii); drainSpots.push(...pos); }
   const lineMat = std({ color: 0xc9c4b0, roughness: .9 });
   for (let x = -78; x < 84; x += 6) plane(3, .14, lineMat, x, .016, 10.2);
   for (let i = 0; i < 6; i++) plane(.5, 7.6, std({ color: 0xc9c4b0, roughness: .9, transparent: true, opacity: .75 }), -4.5 + i * 1, .017, 10.2); // «зебра»
@@ -632,7 +652,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- загрузка моделей ----------
   const loader = new GLTFLoader();
   const ASSETS = {};
-  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
+  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   function windowShader(m) { // у каждого окна (ячейка мира) своё расписание света и свой оттенок
     m.emissiveIntensity = 1.5;
@@ -686,22 +706,8 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       const mats = []; for (const [x1, z1, x2, z2] of segs) { const L = Math.hypot(x2 - x1, z2 - z1), n = Math.ceil(L / len), ang = Math.atan2(z2 - z1, x2 - x1); for (let i = 0; i < n; i++) { const t = (i + .5) / n; mats.push(new THREE.Matrix4().compose(new THREE.Vector3(lerp(x1, x2, t), 0, lerp(z1, z2, t)), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -ang, 0)), new THREE.Vector3(1, 1, 1))); } addCol(Math.min(x1, x2) - .25, Math.max(x1, x2) + .25, Math.min(z1, z2) - .25, Math.max(z1, z2) + .25); }
       const im = new THREE.InstancedMesh(geo, m0.material, mats.length); mats.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = im.receiveShadow = true; scene.add(im); prepMats(im);
     }
-    // снежные деревья (инстансинг по типам)
-    if (ASSETS.snowtrees) {
-      const byName = {}; meshesOf(ASSETS.snowtrees).forEach(m => byName[m.name] = m);
-      const segD = (px, pz, ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1, t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1); return Math.hypot(px - ax - dx * t, pz - az - dz * t); };
-      const onPath = (x, z) => { if (z > .5 && z < 19) return true; for (const k in NODES) for (const e of NODES[k].e) if (segD(x, z, NODES[k].x, NODES[k].z, NODES[e].x, NODES[e].z) < 1.8) return true; return colliders.some(b => x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1); };
-      const spots = [[-6, -9], [-10, -15], [3, -18], [9, -10], [-14, -21], [16, -21], [22, -6], [-44, -25], [34, -25], [56, -12], [-2, -23], [6, -25], [-36, -16], [-52, -30], [60, -36], [-20, -32], [40, -40], [-60, -8], [64, -24], [-12, -31], [28, -31], [47, -30]].filter(([x, z]) => !onPath(x, z));
-      const kinds = { winter: ['snowtree', 'deadtreehero', 'TreeBareTall', 'snowtree'], summer: ['deadtreewide', 'TreeBareTall', 'deadtreehero', 'deadtreewide'] };
-      for (const season of ['winter', 'summer']) {
-        const per = {}; spots.forEach(([x, z], i) => { const k = kinds[season][i % 4]; (per[k] = per[k] || []).push([x, z, R(.85, 1.2), R(0, 6)]); });
-        for (const [k, arr] of Object.entries(per)) { const src = byName[k]; if (!src) continue; const geo = src.geometry.clone().applyMatrix4(src.matrixWorld); const im = new THREE.InstancedMesh(geo, src.material, arr.length); arr.forEach(([x, z, s, r], i) => im.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, r, 0)), new THREE.Vector3(s, s, s)))); im.castShadow = true; scene.add(im); crowns[season].push(im); }
-      }
-      spots.forEach(([x, z]) => addCol(x - .3, x + .3, z - .3, z + .3));
-      // кусты и лесополоса на горизонте
-      if (byName.snowbush1) { const geo = byName.snowbush1.geometry.clone().applyMatrix4(byName.snowbush1.matrixWorld); const pts = []; for (let i = 0; i < 26; i++) pts.push([R(-60, 60), R(-40, -24)]); for (let i = 0; i < 10; i++) pts.push([R(-60, 60), R(17, 18.5)]); const im = new THREE.InstancedMesh(geo, byName.snowbush1.material, pts.length); pts.forEach(([x, z], i) => im.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion(), new THREE.Vector3(1, R(.7, 1.2), 1)))); scene.add(im); crowns.winter.push(im); }
-      if (byName.treeline) { const geo = byName.treeline.geometry.clone().applyMatrix4(byName.treeline.matrixWorld); geo.computeBoundingBox(); const w = Math.max(geo.boundingBox.max.x - geo.boundingBox.min.x, geo.boundingBox.max.z - geo.boundingBox.min.z); const ring = []; for (let a = 0; a < Math.PI * 2; a += .35) ring.push(a); const im = new THREE.InstancedMesh(geo, byName.treeline.material, ring.length); ring.forEach((a, i) => im.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * 120, -1, Math.sin(a) * 120), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -a + Math.PI / 2 + (Math.abs(geo.boundingBox.max.x - geo.boundingBox.min.x) > 1 ? 0 : Math.PI / 2), 0)), new THREE.Vector3(1, 1.3, 1)))); scene.add(im); }
-    }
+    // деревья и кусты (модели пользователя), четыре сезона: зима — почти голые и в снегу, весна — молодая листва, лето, осень — жёлто-красные
+    if (ASSETS.tree || ASSETS.bush) buildVegetation();
     // радио на полке
     if (ASSETS.radio) { const o = placeModel(ASSETS.radio, -KW + .17, -.62, Math.PI / 2, 1.0); o.position.y = 1.315; radioObj = o; radioBox = new THREE.Box3().setFromObject(o).expandByScalar(.03); }
     // модель рабочего — один из вариантов NPC
@@ -727,6 +733,62 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   });
   let radioObj = null, radioBox = null, busStopObj = null;
   const STOP = { x: 8, z: 5.4 }; const radioPos = new THREE.Vector3(-KW + .17, 1.42, -.62);
+  // ---------- растительность ----------
+  const vegSeason = []; // [{ mesh, seasons: Set }] — видимость по сезону
+  function recolorLeaves(img, mode, size = 512) { // перекраска текстуры листвы под сезон (альфа сохраняется)
+    const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d'); g.drawImage(img, 0, 0, size, size); const d = g.getImageData(0, 0, size, size), D = d.data;
+    const pal = { autumn: [[218, 160, 32], [200, 96, 26], [168, 50, 24], [224, 184, 64], [150, 120, 40]], dry: [[107, 74, 42], [92, 64, 40], [120, 90, 55]], spring: [[150, 205, 90], [170, 215, 100], [130, 190, 80]] }[mode];
+    const blot = (x, y) => { const v = Math.sin(x * .021 + Math.sin(y * .017) * 3) * Math.cos(y * .023 - x * .011) * .5 + .5; return v; };
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { const i = (y * size + x) * 4; if (D[i + 3] < 8) continue; const L = (D[i] * .3 + D[i + 1] * .59 + D[i + 2] * .11) / 160;
+      const p = pal[Math.min(pal.length - 1, Math.floor(blot(x, y) * pal.length))]; D[i] = Math.min(255, p[0] * L); D[i + 1] = Math.min(255, p[1] * L); D[i + 2] = Math.min(255, p[2] * L); }
+    g.putImageData(d, 0, 0); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; return regTex(t);
+  }
+  function cardSubset(geo, keep, seed) { // оставить часть листовых карточек (по 2 треугольника): осенью часть облетела, зимой — единицы
+    const idx = geo.index ? geo.index.array : null, n = idx ? idx.length : geo.attributes.position.count, out = [];
+    for (let t = 0; t < n; t += 6) { const h = Math.abs(Math.sin((t / 6 + 1) * 12.9898 + seed * 78.233) * 43758.5453) % 1; if (h < keep) for (let k = 0; k < 6 && t + k < n; k++) out.push(idx ? idx[t + k] : t + k); }
+    const g = geo.clone(); g.setIndex(out); return g;
+  }
+  function snowShellOf(geo, thick = .05, minNy = .45) { // снег на ветвях: верхние грани коры, приподнятые на толщину снега
+    const g0 = geo.index ? geo.toNonIndexed() : geo, P = g0.attributes.position, pos = [], a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+    for (let i = 0; i < P.count; i += 3) { a.fromBufferAttribute(P, i); b.fromBufferAttribute(P, i + 1); c.fromBufferAttribute(P, i + 2); n.subVectors(b, a).cross(c.clone().sub(a)).normalize(); if (n.y < minNy || Math.min(a.y, b.y, c.y) < 1.2) continue;
+      for (const v of [a, b, c]) pos.push(v.x + n.x * thick * .3, v.y + thick * (.6 + .4 * n.y), v.z + n.z * thick * .3); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+  }
+  function buildVegetation() {
+    const segD = (px, pz, ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1, t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1); return Math.hypot(px - ax - dx * t, pz - az - dz * t); };
+    const onPath = (x, z, m = 1.8) => { if (z > .5 && z < 19) return true; for (const k in NODES) for (const e of NODES[k].e) if (segD(x, z, NODES[k].x, NODES[k].z, NODES[e].x, NODES[e].z) < m) return true; return colliders.some(b => x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1); };
+    const inst = (geo, mat, arr, seasons, shadow = true) => { const im = new THREE.InstancedMesh(geo, mat, arr.length); arr.forEach(([x, z, sc, r], i) => im.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, r, 0)), new THREE.Vector3(sc, sc, sc)))); im.castShadow = shadow; im.receiveShadow = true; scene.add(im); vegSeason.push({ mesh: im, seasons: new Set(seasons) }); return im; };
+    const snowMat = MAT.snow;
+    if (ASSETS.tree) {
+      const meshes = meshesOf(ASSETS.tree), bark = meshes.find(m => m.name === 'bark'), leaves = meshes.find(m => m.name === 'leaves');
+      const spots = [];
+      for (let i = 0; i < 400 && spots.length < 26; i++) { const x = R(-62, 66), z = R(-36, -3); if (onPath(x, z) || Math.abs(x) < 6 && z > -8 || spots.some(([a, b]) => Math.hypot(a - x, b - z) < 7)) continue; spots.push([x, z, R(.55, .75), R(0, 6.28)]); }
+      for (const x of [-60, -42, -24, 24, 44, 62]) spots.push([x + R(-2, 2), R(20.2, 22.4), R(.5, .65), R(0, 6.28)]); // за дорогой, вдоль дальнего тротуара
+      if (bark) { const bg = bark.geometry.clone().applyMatrix4(bark.matrixWorld); inst(bg, bark.material, spots, ['winter', 'spring', 'summer', 'autumn']); inst(snowShellOf(bg), snowMat, spots, ['winter'], false); }
+      if (leaves) { const lg = leaves.geometry.clone().applyMatrix4(leaves.matrixWorld), img = leaves.material.map.image, lm = leaves.material;
+        const mk = (map, extra = {}) => Object.assign(lm.clone(), { map, ...extra });
+        inst(lg, lm, spots, ['summer']);
+        inst(cardSubset(lg, .75, 1), mk(recolorLeaves(img, 'spring')), spots, ['spring']);
+        inst(cardSubset(lg, .65, 2), mk(recolorLeaves(img, 'autumn')), spots, ['autumn']);
+        inst(cardSubset(lg, .1, 3), mk(recolorLeaves(img, 'dry')), spots, ['winter']);
+        // опавшая листва под деревьями осенью
+        const fl = regTex(ctex(256, 256, (g, w, h) => { for (let k = 0; k < 420; k++) { const r = Math.hypot(Math.random() - .5, Math.random() - .5); if (r > .5) continue; const x = w / 2 + (Math.random() - .5) * w * .9 * (1 - r), y = h / 2 + (Math.random() - .5) * h * .9 * (1 - r); g.fillStyle = pick(['#c8901e', '#b05a1c', '#93301a', '#d8b040', '#7a5a2a']); g.save(); g.translate(x, y); g.rotate(Math.random() * 6.3); g.beginPath(); g.ellipse(0, 0, 5 + Math.random() * 4, 2.5 + Math.random() * 2, 0, 0, 7); g.fill(); g.restore(); } }));
+        const lp = new THREE.PlaneGeometry(7, 7); lp.rotateX(-Math.PI / 2); lp.translate(0, .015, 0); inst(lp, new THREE.MeshStandardMaterial({ map: fl, transparent: true, depthWrite: false, roughness: .95 }), spots.map(([x, z, s, r]) => [x, z, 1, r]), ['autumn'], false); }
+      spots.forEach(([x, z]) => addCol(x - .3, x + .3, z - .3, z + .3));
+    }
+    if (ASSETS.bush) {
+      const bm = meshesOf(ASSETS.bush)[0]; const bg = bm.geometry.clone().applyMatrix4(bm.matrixWorld), img = bm.material.map.image;
+      const pts = []; for (let i = 0; i < 300 && pts.length < 34; i++) { const x = R(-62, 66), z = pick([R(-36, -4), R(19.2, 22.8)]); if (onPath(x, z, 1.3)) continue; if (Math.abs(x) < 4 && z > -6 && z < 19) continue; if (pts.some(([a, b]) => Math.hypot(a - x, b - z) < 2.5)) continue; pts.push([x, z, R(.8, 1.25), R(0, 6.28)]); }
+      // живая изгородь у площадки
+      for (let k = 0; k < 6; k++) pts.push([-31.5, -12 + k * 1.6, R(.9, 1.1), R(0, 6.28)]);
+      const mk = (map) => Object.assign(bm.material.clone(), { map });
+      inst(bg, bm.material, pts, ['summer']); inst(cardSubset(bg, .8, 4), mk(recolorLeaves(img, 'spring')), pts, ['spring']); inst(cardSubset(bg, .7, 5), mk(recolorLeaves(img, 'autumn')), pts, ['autumn']);
+      inst(cardSubset(bg, .22, 6), mk(recolorLeaves(img, 'dry')), pts, ['winter']);
+      const cap = new THREE.SphereGeometry(.6, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2); cap.scale(1.15, .55, 1.1); inst(cap, snowMat, pts, ['winter'], false); // куст под снегом
+    }
+    applyVegSeason();
+  }
+  function applyVegSeason() { const m = season < 0 ? 0 : season, sn = (m >= 10 || m <= 2) ? 'winter' : m <= 4 ? 'spring' : m <= 7 ? 'summer' : 'autumn'; vegSeason.forEach(v => v.mesh.visible = v.seasons.has(sn)); }
   function fallbackBuildings() {
     const m = std({ color: 0x8e8a80 });
     for (const [x, z, w, d] of [[-32, 27, 50, 15], [30, 27, 50, 15], [0, -36, 50, 15]]) { const b = box(w, 15, d, m, x, 7.5, z); occ(b); addCol(x - w / 2, x + w / 2, z - d / 2, z + d / 2); }
@@ -1222,7 +1284,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
 
   // ---------- граница карты: стена бурана (визуально) + невидимая коллизия внутри ----------
-  const BOUND = { x1: -63, x2: 69, z1: -37, z2: 18.6 };
+  const BOUND = { x1: -63, x2: 69, z1: -40, z2: 23.5 };
   const stormMat = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, col: { value: new THREE.Color(0xc8ced2) } },
     vertexShader: 'varying vec2 vU; varying vec3 vW; void main(){ vU = uv; vW = (modelMatrix * vec4(position, 1.)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.); }',
@@ -1274,13 +1336,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (snowPts) snowPts.material.uniforms.light.value = .35 + dayAmt * .65;
   }
   function setSeason() {
-    const S = ctx.getS(); if (!S) return; const m = ctx.monthOf(S.day); if (m === season) return; season = m;
+    const S = ctx.getS(); if (!S) return; const m = window.__larekMonth != null ? window.__larekMonth : ctx.monthOf(S.day); if (m === season) return; season = m; // __larekMonth — только для автотестов
     winter = m >= 10 || m <= 2;
     winterGround.forEach(g => g.visible = winter); summerGround.forEach(g => g.visible = !winter);
     scene.traverse(o => { if (o.userData.winter) o.visible = winter; }); awnSnow.visible = roofSnow.visible = winter;
-    crowns.winter.forEach(c => c.visible = winter); crowns.summer.forEach(c => c.visible = !winter);
     weather.target = winter ? pick([0, .3, .6, .6, 1]) : 0; weather.windT = R(.1, .9);
-    seasonHooks.forEach(f => f(winter, m));
+    seasonHooks.forEach(f => f(winter, m)); applyVegSeason();
   }
 
   // ---------- настройки качества ----------
