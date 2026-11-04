@@ -443,13 +443,13 @@ function startTrade() {
   S.phase = 'trade';
   if (W) W.goCounter(true);
   if (W) sheetOpen = false;
-  T = { t:0, len:110, queue:[], walking:[], cur:null, nextSpawn:.5, rev:0, cogs:0, sold:0, lost:0, specials:[], paused:false, startMoney:S.money };
+  T = { t:0, len:450, queue:[], walking:[], cur:null, nextSpawn:.5, rev:0, cogs:0, sold:0, lost:0, specials:[], paused:false, startMoney:S.money };
   // особые посетители
-  if (S.day >= 3 && S.day % 4 === 3) T.specials.push({ at: R(15, 40), k:'racket' });
+  if (S.day >= 3 && S.day % 4 === 3) T.specials.push({ at: R(60, 170), k:'racket' });
   const polChance = (S.permit ? .1 : .22) * (S.outfit === 'business' ? .5 : 1) * (S.rep.law > 30 ? .5 : 1);
-  if (Math.random() < polChance) T.specials.push({ at: R(10, 60), k:'police' });
-  if (Math.random() < .3) T.specials.push({ at: R(10, 60), k:'neighbor' });
-  if (S.rep.folk < -40 && Math.random() < .5) T.specials.push({ at: R(5, 30), k:'boycott' });
+  if (Math.random() < polChance) T.specials.push({ at: R(40, 250), k:'police' });
+  if (Math.random() < .3) T.specials.push({ at: R(40, 250), k:'neighbor' });
+  if (S.rep.folk < -40 && Math.random() < .5) T.specials.push({ at: R(20, 120), k:'boycott' });
   sfx.door(); render();
 }
 function specialVisitor(k) {
@@ -514,7 +514,7 @@ function tradeTick(dt) {
   T.nextSpawn -= dt;
   if (T.nextSpawn <= 0 && T.t < T.len - 4) {
     if (T.queue.length + T.walking.length < 6) { const c = makeCustomer(); if (W) { T.walking.push(c); W.spawnCustomer(c); } else T.queue.push(c); }
-    T.nextSpawn = (W ? R(3.2, 5.5) : R(1.6, 3.2)) / traffic() * (T.boycott ? 1.8 : 1);
+    T.nextSpawn = (W ? R(14, 26) : R(7, 13)) / traffic() * (T.boycott ? 1.8 : 1);
   }
   if (!T.cur && T.queue.length) { T.cur = T.queue.shift(); T.cur.anim = 0; sfx.door(); renderTrade(); }
   // терпение
@@ -548,6 +548,17 @@ function customerScared(c) {
   renderTrade();
 }
 function leave() { T.cur = null; renderTrade(); }
+// субтитры в реальном времени: слова появляются синхронно с записью (тайминги по словам)
+let subsRaf = 0;
+function subtitles(name, words, start) {
+  const el = document.getElementById('subs'); if (!el) return; cancelAnimationFrame(subsRaf);
+  el.innerHTML = `<b>${name}:</b>` + words.map((w, i) => `<span class="w" data-i="${i}">${w[2]} </span>`).join(''); el.classList.add('on');
+  const t0 = start != null ? start : null, p0 = performance.now(), spans = el.querySelectorAll('.w'), end = words[words.length - 1][1];
+  const step = () => { const t = (performance.now() - p0) / 1000; // звук запущен в этот же момент
+    words.forEach((w, i) => { spans[i].classList.toggle('on', t >= w[0] - .05); spans[i].classList.toggle('cur', t >= w[0] - .05 && t < w[1] + .1); });
+    if (t > end + 1.8) { el.classList.remove('on'); return; } subsRaf = requestAnimationFrame(step); };
+  step();
+}
 // человек убит из ружья: тяжёлые последствия, но игра продолжается
 function onKill(role, c, kind) {
   if (!S) return;
@@ -1280,7 +1291,7 @@ function talk(who) {
       S.money -= o.total;
       const src = hidden ? S.order.hidden : S.order.lines, contents = {};
       for (const [k, q] of Object.entries(src)) if (q) contents[k] = [q, lineInfo(hidden ? 'h:' + k : k).unit];
-      S.deliveries = S.deliveries || []; S.deliveries.push({ contents, hidden, label: name, eta: R(35, 60), state: 'way' });
+      S.deliveries = S.deliveries || []; S.deliveries.push({ contents, hidden, label: name, eta: R(9, 15), state: 'way' });
       if (hidden) S.order.hidden = {}; else S.order.lines = {};
       if (hidden) rep('street', 1);
       save(); renderHud(); sfx.coin();
@@ -1357,7 +1368,7 @@ function look(dx, dy, kind) { if (controls && kind !== 'mouse') controls.look(dx
 const W = (() => { try { return createWorld({
   getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET,
   toast, openSheet, onCtl, rep, qOf, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
-  arrive, customerScared, onKill, gopnikDemand, say, sleep, maratTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
+  arrive, customerScared, onKill, subtitles, gopnikDemand, say, sleep, maratTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
   onDrink(k, strong) { if (strong > .3 && W && W.life.fx.drunkTarget > 1) toast('Голова поплыла… Хватит, пожалуй.'); },
   dialog: showDialog, closeDialog,
   gopResolved(how) { if (how === 'scared') { rep('street', 3); toast('Гопники отступили. Улица +3'); } },

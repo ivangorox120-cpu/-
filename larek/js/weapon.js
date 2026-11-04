@@ -66,8 +66,8 @@ export function createWeapon({ audio, onShot }) {
   const HIP = new THREE.Vector3(.2, -.2, -.44), ADS = new THREE.Vector3(0, -.052, -.27), DOWN = new THREE.Vector3(.2, -.55, -.25);
   const tmp = new THREE.Vector3(), wp = new THREE.Vector3();
 
-  function draw() { if (W.state === 'holstered') { W.state = 'drawing'; W.t = 0; audio && audio.reloadClose(); return true; } return false; }
-  function holster() { if (W.state === 'idle' || W.state === 'aiming') { W.state = 'holstering'; W.t = 0; W.wantAim = false; return true; } return false; }
+  function draw() { if (W.state === 'holstered') { W.state = 'drawing'; W.t = 0; audio && (audio.gunMove ? audio.gunMove() : audio.reloadClose()); return true; } return false; }
+  function holster() { if (W.state === 'idle' || W.state === 'aiming') { W.state = 'holstering'; W.t = 0; W.wantAim = false; audio && audio.gunMove && audio.gunMove(); return true; } return false; }
   function toggle() { return W.state === 'holstered' ? draw() : holster(); }
   function aim(on) { W.wantAim = on; if (on && W.state === 'holstered') draw(); }
   function fire() {

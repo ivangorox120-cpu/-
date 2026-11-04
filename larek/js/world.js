@@ -1267,7 +1267,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     sun.castShadow = sh; if (sh) { sun.shadow.mapSize.set(Q.shadows, Q.shadows); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     bulbLight.castShadow = sh && Q.light >= 1; fillLight.visible = Q.light >= 2;
     camera.far = Q.draw + 60; camera.updateProjectionMatrix(); sky.scale.setScalar(Math.min(1, (Q.draw + 40) / 380));
-    allTex.forEach(t => { t.anisotropy = Q.aniso; t.needsUpdate = true; });
+    allTex.forEach(t => { t.anisotropy = Q.aniso; if (t.image) t.needsUpdate = true; });
     buildSnow(Q.snow);
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
     resize();

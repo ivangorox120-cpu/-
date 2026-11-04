@@ -98,7 +98,13 @@ export function createLife(env) {
   // ================= доставка =================
   const DOORSTEP = { x: .8, z: -KD - .75 };
   let knockT = 0;
+  // слова реплики с таймингами (распознано по записи dostavka_pribila.mp3)
+  const DELIVERY_WORDS = [[0, .7, 'Доставка'], [.7, 1.2, 'товара.'], [1.62, 2.12, 'Открывайте.']];
   function deliveryTick(dt) {
+    if (knockT > 0) { const prev = knockT; knockT -= dt; const door = new THREE.Vector3(DOORSTEP.x, 1.3, -KD - .3);
+      if (prev >= 3 && knockT < 3) { const r = env.audio && env.audio.sample && env.audio.sample('stuk', 1.1, door); if (!r) for (const t of [0, .3, .6]) setTimeout(() => env.audio && env.audio.knock(), t * 1000); } // стук
+      if (prev > 1.1 && knockT <= 1.1) { const r = env.audio && env.audio.sample && env.audio.sample('dostavka', 1.3, door); // голос из-за двери + субтитры в реальном времени
+        env.ctx.subtitles && env.ctx.subtitles('Доставщик', DELIVERY_WORDS, r ? r.start : null); } }
     const s = S(); if (!s || !s.deliveries || !s.deliveries.length) return;
     for (const d of s.deliveries) {
       if (d.state === 'way') { d.eta -= dt; if (d.eta <= 0) d.state = 'arrive'; }
@@ -109,12 +115,12 @@ export function createLife(env) {
         if (!seen && !near) {
           const off = (s.items || []).filter(i => Math.hypot(i.x - DOORSTEP.x, i.z - DOORSTEP.z) < 1.2).length;
           addItem({ kind: 'box', x: DOORSTEP.x + (off % 2 ? .3 : -.3) * Math.min(off, 1), y: 0, z: DOORSTEP.z - Math.floor(off / 2) * .5, ry: R(-.3, .3), data: { contents: d.contents, hidden: d.hidden, label: d.label } });
-          d.state = 'done'; knockT = 3; persist(); env.onDelivered && env.onDelivered(d);
+          d.state = 'done'; knockT = 3.01; persist(); env.onDelivered && env.onDelivered(d);
         }
       }
     }
     s.deliveries = s.deliveries.filter(d => d.state !== 'done');
-    if (knockT > 0) { const prev = knockT; knockT -= dt; for (const t of [2.9, 2.6, 2.3]) if (prev > t && knockT <= t) env.audio && env.audio.knock(); }
+
   }
   function unpack(it) {
     if (!it || it.kind !== 'box' || it.data.opened) return false;

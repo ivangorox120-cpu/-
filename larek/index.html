@@ -132,6 +132,8 @@
     display:flex; flex-direction:column; justify-content:center; padding:0 8px; font-size:15px; overflow:hidden; }
   .bill small { font-size:8px; letter-spacing:.3px; }
   .bill .wm { position:absolute; right:8px; top:12px; width:28px; height:28px; border-radius:50%; background:#fff6; box-shadow:0 0 6px #fff8; }
+  #subs { position:absolute; left:50%; bottom:17%; transform:translateX(-50%); z-index:31; max-width:80%; text-align:center; font:600 clamp(14px,2.3vw,20px)/1.35 system-ui,sans-serif; color:#f4f1e8; text-shadow:0 1px 3px #000,0 0 8px #000; pointer-events:none; opacity:0; transition:opacity .25s; }
+  #subs.on { opacity:1; } #subs b { color:#e8c66a; font-weight:700; margin-right:.4em; } #subs .w { opacity:.0; transition:opacity .12s; } #subs .w.on { opacity:1; } #subs .w.cur { color:#fff; }
   #toast { position:absolute; left:50%; top:25%; transform:translateX(-50%); z-index:30; display:flex; flex-direction:column; gap:5px; align-items:center; width:90%; }
   .tst { background:var(--panel); border-left:2px solid var(--acc); color:#fff; padding:7px 12px; font-size:13px; font-weight:700; animation: tin .25s ease-out; text-align:center; letter-spacing:.3px; }
   .tst.good { border-color:var(--green); } .tst.bad { border-color:var(--red); }
@@ -235,6 +237,7 @@
   <div id="fade"></div>
   <div id="modal"><div class="mbox" id="mbox"></div></div>
   <div id="toast"></div>
+  <div id="subs"></div>
 </div>
 <script type="importmap">{ "imports": { "three": "./lib/three.module.min.js", "three/addons/": "./lib/addons/" } }</script>
 <script type="module" src="js/game.js"></script>

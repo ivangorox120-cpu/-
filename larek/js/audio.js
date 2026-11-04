@@ -23,7 +23,7 @@ export function createAudio() {
     sfxBus = ctx.createGain(); sfxBus.connect(master);
     ambBus = ctx.createGain(); ambBus.gain.value = st.ambience; ambBus.connect(master);
     // шаги
-    for (const [k, url] of [['walk', 'assets/audio/walk.mp3'], ['snow', 'assets/audio/walk_snow.mp3']])
+    for (const [k, url] of [['walk', 'assets/audio/walk.mp3'], ['snow', 'assets/audio/walk_snow.mp3'], ...['shot', 'gun_open', 'gun_shell', 'gun_shell2', 'gun_close', 'shell_drop', 'gun_move', 'stuk', 'dostavka'].map(n => [n, 'assets/audio/' + n + '.mp3'])])
       fetch(url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(b => { buffers[k] = b; }).catch(e => console.warn('audio', url, e));
     // радио — потоковый <audio>, подключённый в граф (панорама + фильтр)
     radioEl = new Audio('assets/audio/radio.mp3'); radioEl.loop = true; radioEl.preload = 'auto'; radioEl.crossOrigin = 'anonymous';
@@ -106,8 +106,14 @@ export function createAudio() {
     for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
     return b;
   }
+  // сэмпл из файла; pos — точка в мире (объёмный звук через HRTF), иначе — «в голове» игрока
+  function sample(name, vol = 1, pos = null, rate = 1) {
+    if (!ensure() || !buffers[name]) return null; const s = ctx.createBufferSource(); s.buffer = buffers[name]; s.playbackRate.value = rate; const g = ctx.createGain(); g.gain.value = vol; s.connect(g);
+    if (pos) { const p = ctx.createPanner(); Object.assign(p, { panningModel: 'HRTF', distanceModel: 'inverse', refDistance: 1.2, rolloffFactor: 1.2, maxDistance: 80 }); if (p.positionX) { p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z; } else p.setPosition(pos.x, pos.y, pos.z); g.connect(p); p.connect(sfxBus); } else g.connect(sfxBus);
+    s.start(); return { start: ctx.currentTime, dur: s.buffer.duration / rate };
+  }
   function shot() {
-    if (!ensure()) return; const t = ctx.currentTime;
+    if (!ensure()) return; if (buffers.shot) { sample('shot', 1.25, null, .97 + Math.random() * .06); return; } const t = ctx.currentTime;
     const n = ctx.createBufferSource(); n.buffer = noiseBuf(1.4, 3.5);
     const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(9000, t); f.frequency.exponentialRampToValueAtTime(300, t + .9);
     const g = ctx.createGain(); g.gain.setValueAtTime(1.6, t); g.gain.exponentialRampToValueAtTime(.001, t + 1.4);
@@ -124,10 +130,12 @@ export function createAudio() {
     const n = ctx.createBufferSource(); n.buffer = noiseBuf(dur, 2); const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 3;
     const g = ctx.createGain(); g.gain.value = vol; n.connect(f); f.connect(g); g.connect(sfxBus); n.start(t);
   }
-  const reloadOpen = () => { click(1800, .7); click(900, .5, .05, .06); };
-  const shellOut = () => { click(3200, .35); click(4200, .25, .12); };
-  const shellIn = () => { click(1500, .5, 0, .04); };
-  const reloadClose = () => { click(1200, .9, 0, .05); click(600, .6, .03, .08); };
+  let shellAlt = 0;
+  const reloadOpen = () => { if (!sample('gun_open', 1)) { click(1800, .7); click(900, .5, .05, .06); } };
+  const shellOut = () => { if (!sample('shell_drop', .8, null, .95 + Math.random() * .1)) { click(3200, .35); click(4200, .25, .12); } };
+  const shellIn = () => { if (!sample((shellAlt++ % 2) ? 'gun_shell2' : 'gun_shell', 1)) click(1500, .5, 0, .04); };
+  const reloadClose = () => { if (!sample('gun_close', 1)) { click(1200, .9, 0, .05); click(600, .6, .03, .08); } };
+  const gunMove = () => sample('gun_move', .8, null, .9 + Math.random() * .2);
   function thud(vol = 1) {
     if (!ensure()) return; const t = ctx.currentTime;
     const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(30, t + .3);
@@ -166,7 +174,7 @@ export function createAudio() {
   function carState(id, x, z, speed) { const c = cars.get(id); if (c) { c.pos.x = x; c.pos.z = z; c.speed = speed; } else if (ctx) addCar(id); }
 
   return {
-    ensure, update, step, shot, click, tone425, dialClicks, knock, gulp, reloadOpen, shellOut, shellIn, reloadClose, thud, horn, door, carState,
+    ensure, update, step, shot, click, sample, gunMove, now: () => ctx ? ctx.currentTime : 0, tone425, dialClicks, knock, gulp, reloadOpen, shellOut, shellIn, reloadClose, thud, horn, door, carState,
     get settings() { return st; },
     setVolume(k, v) { st[k] = v; if (k === 'master' && master) master.gain.value = st.muted ? 0 : v; if (k === 'ambience' && ambBus) ambBus.gain.value = v; },
     setMuted(m) { st.muted = m; if (master) master.gain.value = m ? 0 : st.master; },
