@@ -4,7 +4,11 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.hardware.input.InputManager;
 import android.os.Bundle;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -13,6 +17,8 @@ import android.widget.TextView;
 
 import com.wastelanddroid.controls.ControlLayout;
 import com.wastelanddroid.controls.ControlsOverlay;
+import com.wastelanddroid.controls.GamepadInput;
+import com.wastelanddroid.controls.GamepadMapping;
 import com.wastelanddroid.runtime.DisplayServer;
 import com.wastelanddroid.runtime.DxvkConfig;
 import com.wastelanddroid.runtime.GameProcess;
@@ -31,7 +37,12 @@ import java.io.File;
  * Экран игры. Работает в отдельном процессе (:game), чтобы падение рантайма
  * не уносило с собой лаунчер, а память лаунчера не отнимала память у игры.
  */
-public final class GameActivity extends Activity implements SurfaceHolder.Callback, GameProcess.Listener {
+public final class GameActivity extends Activity implements SurfaceHolder.Callback, GameProcess.Listener,
+        InputManager.InputDeviceListener {
+    public static final String EXTRA_GAME = "game";
+    private GameDef def;
+    private GamepadInput gamepad;
+    private String overlayMode;
     private SurfaceView surface;
     private ControlsOverlay overlay;
     private TextView status;
@@ -47,7 +58,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Ui.immersive(this);
         Performance.apply(this);
 
+        def = GameDef.byId(getIntent().getStringExtra(EXTRA_GAME));
         SharedPreferences p = Prefs.get(this);
+        overlayMode = p.getString(Prefs.OVERLAY_MODE, "auto");
         DeviceProfile.Quality q;
         String qs = p.getString(Prefs.QUALITY, "auto");
         q = "auto".equals(qs) ? DeviceProfile.autoQuality(this) : DeviceProfile.Quality.valueOf(qs.toUpperCase());
@@ -66,6 +79,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         overlay.setLayout(ControlLayout.load(this));
         overlay.setInput(input);
         root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+        gamepad = new GamepadInput(input, GamepadMapping.load(this));
+        getSystemService(InputManager.class).registerInputDeviceListener(this, null);
+        updateOverlayVisibility();
 
         status = Ui.label(this, "Подготовка…");
         status.setTextSize(16);
@@ -108,24 +124,24 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private void prepareAndLaunch(SurfaceHolder h) {
         SharedPreferences p = Prefs.get(this);
         RuntimeManager rt = new RuntimeManager(this);
-        String gamePath = p.getString(Prefs.GAME_DIR, null);
+        String gamePath = def.gameDir(this);
         if (gamePath == null) { fail("Не выбрана папка с игрой."); return; }
         File gameDir = new File(gamePath);
         try {
             setStatus("Проверка файлов игры…");
-            GameFiles.Report rep = GameFiles.validate(gameDir);
+            GameFiles.Report rep = GameFiles.validate(def, gameDir);
             if (!rep.ok()) { fail(String.join("\n", rep.errors)); return; }
             if (!rt.isInstalled()) { fail("Рантайм не установлен: нет " + rt.missingComponent() + "\nИмпортируйте пакет рантайма в лаунчере."); return; }
 
-            File exe = Files2.findCaseInsensitive(gameDir, GameFiles.EXE);
+            File exe = Files2.findCaseInsensitive(gameDir, def.exe);
             if (p.getBoolean(Prefs.LAA, true) && gameDir.canWrite()) {
                 setStatus("Патч памяти 4 ГБ…");
                 ExePatcher.applyLargeAddressAware(exe);
             }
             setStatus("Резервная копия сохранений…");
-            SaveBackup.backup(rt.prefix, rt.backups);
+            SaveBackup.backup(def, rt.prefix, rt.backups);
             setStatus("Настройка игры…");
-            IniTweaks.apply(gameDir, rt.prefix, profile, p.getBoolean(Prefs.SKIP_INTRO, true), p.getBoolean(Prefs.AUTOSAVE, true));
+            IniTweaks.apply(def, gameDir, rt.prefix, profile, p.getBoolean(Prefs.SKIP_INTRO, true), p.getBoolean(Prefs.AUTOSAVE, true));
             File conf = DxvkConfig.write(new File(getFilesDir(), "conf"), p.getBoolean(Prefs.SHOW_HUD, false));
             File tmp = new File(getCacheDir(), "tmp");
             tmp.mkdirs();
@@ -139,19 +155,19 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             String disp = display.start(h.getSurface(), profile.renderWidth, profile.renderHeight);
 
             setStatus("Регистрация игры в реестре Wine…");
-            File reg = Registry.writeRegFile(gameDir, new File(getFilesDir(), "conf"));
+            File reg = Registry.writeRegFile(def, gameDir, new File(getFilesDir(), "conf"));
             LaunchConfig regCfg = LaunchConfig.wine(rt, gameDir, conf, tmp, disp, "regedit", "/S", LaunchConfig.toWinPath(reg));
             int regPid = NativeBridge.nativeSpawn(regCfg.argvArray(), regCfg.envArray(), gameDir.getPath(),
                     new File(rt.logs, "regedit.log").getPath(), false);
             if (regPid <= 0 || NativeBridge.nativeWait(regPid) != 0) { fail("Не удалось записать ключи реестра (см. logs/regedit.log)."); return; }
 
             File launchExe = exe;
-            File fose = Files2.findCaseInsensitive(gameDir, "fose_loader.exe");
+            File fose = Files2.findCaseInsensitive(gameDir, def.scriptExtender);
             if (fose != null && p.getBoolean(Prefs.USE_FOSE, true)) launchExe = fose;
 
             setStatus("Запуск…");
             LaunchConfig cfg = LaunchConfig.game(rt, gameDir, launchExe, conf, profile.renderWidth, profile.renderHeight, tmp, disp);
-            int pid = game.start(cfg, new File(rt.logs, "game.log"), p.getBoolean(Prefs.PIN_BIG_CORES, true),
+            int pid = game.start(cfg, new File(rt.logs, def.id + ".log"), p.getBoolean(Prefs.PIN_BIG_CORES, true),
                     p.getBoolean(Prefs.WATCHDOG, true), this);
             if (pid <= 0) { fail("Не удалось запустить процесс рантайма."); return; }
             setStatus(null);
@@ -184,10 +200,33 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 .show();
     }
 
+    private void updateOverlayVisibility() {
+        boolean show = "on".equals(overlayMode) || ("auto".equals(overlayMode) && !GamepadInput.anyConnected());
+        overlay.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) overlay.releaseAll();
+    }
+
+    @Override public void onInputDeviceAdded(int id) { updateOverlayVisibility(); }
+    @Override public void onInputDeviceRemoved(int id) { updateOverlayVisibility(); gamepad.releaseAll(); }
+    @Override public void onInputDeviceChanged(int id) { updateOverlayVisibility(); }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (gamepad.onKey(e)) return true;
+        return super.dispatchKeyEvent(e);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent e) {
+        if (gamepad.onMotion(e)) return true;
+        return super.dispatchGenericMotionEvent(e);
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
         overlay.releaseAll();
+        gamepad.stop();
         game.setPaused(true);
         game.suspend();
     }
@@ -196,12 +235,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     protected void onResume() {
         super.onResume();
         Ui.immersive(this);
+        updateOverlayVisibility();
+        gamepad.start();
         game.resume();
         game.setPaused(false);
     }
 
     @Override
     protected void onDestroy() {
+        getSystemService(InputManager.class).unregisterInputDeviceListener(this);
         game.kill();
         if (display != null) display.stop();
         input.close();

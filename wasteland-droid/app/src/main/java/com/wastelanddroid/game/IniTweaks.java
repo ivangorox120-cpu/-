@@ -15,15 +15,15 @@ public final class IniTweaks {
     private IniTweaks() {}
 
     /** Каталог «Мои документы/My Games/Fallout3» внутри префикса Wine. */
-    public static File myGamesDir(File winePrefix) {
+    public static File myGamesDir(GameDef g, File winePrefix) {
         File users = new File(winePrefix, "drive_c/users");
         File docs = new File(users, "steamuser/Documents"); // имя пользователя задаётся в LaunchConfig (USER=steamuser)
-        return new File(docs, "My Games/Fallout3");
+        return new File(docs, "My Games/" + g.folder);
     }
 
-    public static void apply(File gameDir, File winePrefix, DeviceProfile p, boolean skipIntro, boolean autosave)
+    public static void apply(GameDef g, File gameDir, File winePrefix, DeviceProfile p, boolean skipIntro, boolean autosave)
             throws IOException {
-        File dir = myGamesDir(winePrefix);
+        File dir = myGamesDir(g, winePrefix);
         dir.mkdirs();
         File ini = new File(dir, "Fallout.ini");
         File prefs = new File(dir, "FalloutPrefs.ini");

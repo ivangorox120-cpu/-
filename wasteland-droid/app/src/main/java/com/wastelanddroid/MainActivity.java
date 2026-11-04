@@ -28,10 +28,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.wastelanddroid.controls.ControlsEditorActivity;
+import com.wastelanddroid.controls.GamepadEditor;
 import com.wastelanddroid.game.DeviceProfile;
+import com.wastelanddroid.game.GameDef;
 import com.wastelanddroid.game.GameActivity;
 import com.wastelanddroid.game.GameFiles;
 import com.wastelanddroid.runtime.RuntimeManager;
+import com.wastelanddroid.util.CoverView;
 import com.wastelanddroid.util.Links;
 import com.wastelanddroid.util.Prefs;
 import com.wastelanddroid.util.ScanlineView;
@@ -45,11 +48,50 @@ import java.util.Arrays;
 public final class MainActivity extends Activity {
     private static final int REQ_GAME_DIR = 1;
     private static final int REQ_RUNTIME = 2;
+    private static final int REQ_COVER = 3;
 
     private SharedPreferences prefs;
-    private LinearLayout gameStatus, runtimeStatus;
-    private TextView gamePath;
-    private Button play;
+    private LinearLayout runtimeStatus;
+    private GameDef pendingGame = GameDef.FO3;
+    private final java.util.Map<GameDef, GameCard> cards = new java.util.EnumMap<>(GameDef.class);
+
+    /** Карточка игры: обложка, статус, кнопки. */
+    private final class GameCard {
+        final GameDef def;
+        final CoverView cover = new CoverView(MainActivity.this);
+        final LinearLayout status = Ui.column(MainActivity.this);
+        final TextView path = Ui.hint(MainActivity.this, "");
+        final Button play;
+
+        GameCard(GameDef d) {
+            def = d;
+            play = Ui.button(MainActivity.this, "▶  ИГРАТЬ", v -> launch(def));
+            play.setTextSize(18);
+            play.setLetterSpacing(0.15f);
+        }
+
+        View build() {
+            LinearLayout card = Ui.column(MainActivity.this);
+            card.setBackground(Ui.rounded(Ui.CARD, Ui.LINE, 16, MainActivity.this));
+            int p = Ui.dp(MainActivity.this, 10);
+            card.setPadding(p, p, p, p);
+            card.addView(cover, new LinearLayout.LayoutParams(-1, Ui.dp(MainActivity.this, 190)));
+            path.setSingleLine(true);
+            path.setEllipsize(android.text.TextUtils.TruncateAt.START);
+            card.addView(path, Ui.matchWrap(MainActivity.this, 6));
+            card.addView(status);
+            LinearLayout btns = Ui.row(MainActivity.this);
+            Button folder = Ui.ghostButton(MainActivity.this, "📁 Папка", v -> { pendingGame = def; pickGameDir(); });
+            Button art = Ui.ghostButton(MainActivity.this, "🖼 Обложка", v -> { pendingGame = def; pickCover(); });
+            btns.addView(folder, Ui.weight());
+            btns.addView(art, Ui.weight());
+            card.addView(btns);
+            card.addView(play, Ui.matchWrap(MainActivity.this, 2));
+            play.setMinHeight(Ui.dp(MainActivity.this, 54));
+            cover.setOnLongClickListener(v -> { new File(coverFile(def).getPath()).delete(); refresh(); return true; });
+            return card;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -60,18 +102,22 @@ public final class MainActivity extends Activity {
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(Ui.screenBackground());
 
-        LinearLayout root = Ui.row(this);
-        root.setGravity(Gravity.TOP);
+        LinearLayout page = Ui.column(this);
         int pad = Ui.dp(this, 20);
-        root.setPadding(pad, Ui.dp(this, 14), pad, Ui.dp(this, 14));
-        frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        page.setPadding(pad, Ui.dp(this, 12), pad, Ui.dp(this, 12));
+        page.addView(buildHeader());
+
+        LinearLayout body = Ui.row(this);
+        body.setGravity(Gravity.TOP);
+        body.addView(scroll(buildGames()), new LinearLayout.LayoutParams(0, -1, 1.35f));
+        body.addView(new View(this), new LinearLayout.LayoutParams(Ui.dp(this, 16), 1));
+        body.addView(scroll(buildRight()), new LinearLayout.LayoutParams(0, -1, 1f));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, 0, 1f);
+        blp.topMargin = Ui.dp(this, 10);
+        page.addView(body, blp);
+
+        frame.addView(page, new FrameLayout.LayoutParams(-1, -1));
         frame.addView(new ScanlineView(this), new FrameLayout.LayoutParams(-1, -1));
-
-        root.addView(scroll(buildLeft()), new LinearLayout.LayoutParams(0, -1, 1.15f));
-        View gap = new View(this);
-        root.addView(gap, new LinearLayout.LayoutParams(Ui.dp(this, 16), 1));
-        root.addView(scroll(buildRight()), new LinearLayout.LayoutParams(0, -1, 1f));
-
         setContentView(frame);
         ensureStoragePermission();
     }
@@ -84,88 +130,93 @@ public final class MainActivity extends Activity {
         return s;
     }
 
-    // ───────────────────────── левая колонка ─────────────────────────
+    // ───────────────────────── шапка ─────────────────────────
 
-    private View buildLeft() {
-        LinearLayout col = Ui.column(this);
-
-        // Шапка: логотип + название + версия
+    private View buildHeader() {
         LinearLayout header = Ui.row(this);
         ImageView logo = new ImageView(this);
         logo.setImageResource(R.drawable.ic_launcher);
-        logo.setBackground(Ui.rounded(Color.TRANSPARENT, Ui.FG_DIM, 14, this));
+        logo.setBackground(Ui.rounded(Color.TRANSPARENT, Ui.FG_DIM, 12, this));
         logo.setClipToOutline(true);
-        int ls = Ui.dp(this, 58);
+        int ls = Ui.dp(this, 46);
         header.addView(logo, new LinearLayout.LayoutParams(ls, ls));
+
         LinearLayout titles = Ui.column(this);
-        titles.setPadding(Ui.dp(this, 14), 0, 0, 0);
+        titles.setPadding(Ui.dp(this, 12), 0, 0, 0);
         TextView title = new TextView(this);
         title.setText("WASTELAND DROID");
         title.setTextColor(Ui.FG);
-        title.setTextSize(26);
+        title.setTextSize(22);
         title.setTypeface(Ui.mono(true));
         title.setLetterSpacing(0.06f);
         title.setShadowLayer(Ui.dp(this, 10), 0, 0, Color.argb(160, 138, 255, 128));
         titles.addView(title);
-        TextView sub = Ui.hint(this, "Fallout 3 · ARM64 · стабильные 60 FPS · v" + versionName());
-        titles.addView(sub);
-        header.addView(titles);
-        col.addView(header);
+        titles.addView(Ui.hint(this, "Fallout 3 · New Vegas · ARM64 · 60 FPS · v" + versionName()));
+        header.addView(titles, Ui.weight());
 
-        // Игра
-        LinearLayout game = Ui.card(this, "▌ Файлы игры");
-        gamePath = Ui.label(this, "");
-        gamePath.setTextColor(Ui.AMBER);
-        game.addView(gamePath);
-        gameStatus = Ui.column(this);
-        game.addView(gameStatus);
-        LinearLayout gameBtns = Ui.row(this);
-        gameBtns.addView(Ui.button(this, "📁  Выбрать папку", v -> pickGameDir()));
-        game.addView(gameBtns);
-        col.addView(game, Ui.matchWrap(this, 14));
+        // Telegram-«пилюля»
+        LinearLayout tg = Ui.row(this);
+        tg.setBackground(Ui.rounded(Color.argb(50, 42, 171, 238), Ui.TG, 22, this));
+        int p = Ui.dp(this, 6);
+        tg.setPadding(p, p, Ui.dp(this, 14), p);
+        TextView plane = new TextView(this);
+        plane.setText("✈");
+        plane.setTextSize(16);
+        plane.setTextColor(Color.WHITE);
+        plane.setGravity(Gravity.CENTER);
+        plane.setBackground(Ui.rounded(Ui.TG, 0, 16, this));
+        int s = Ui.dp(this, 32);
+        tg.addView(plane, new LinearLayout.LayoutParams(s, s));
+        LinearLayout tgText = Ui.column(this);
+        tgText.setPadding(Ui.dp(this, 8), 0, 0, 0);
+        TextView t1 = Ui.label(this, "@" + Links.TELEGRAM_CHANNEL);
+        t1.setTextColor(Color.WHITE);
+        t1.setTypeface(Ui.mono(true));
+        t1.setPadding(0, 0, 0, 0);
+        tgText.addView(t1);
+        TextView t2 = Ui.hint(this, "Наш Telegram-канал");
+        t2.setTextColor(Color.rgb(160, 210, 240));
+        t2.setPadding(0, 0, 0, 0);
+        tgText.addView(t2);
+        tg.addView(tgText);
+        tg.setOnClickListener(v -> Links.openTelegram(this));
+        tg.setForeground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Color.argb(80, 255, 255, 255)), null,
+                Ui.rounded(Color.WHITE, 0, 22, this)));
+        header.addView(tg);
+        return header;
+    }
 
-        // Рантайм
+    // ───────────────────────── игры ─────────────────────────
+
+    private View buildGames() {
+        LinearLayout col = Ui.column(this);
+        LinearLayout row = Ui.row(this);
+        row.setGravity(Gravity.TOP);
+        boolean first = true;
+        for (GameDef d : GameDef.values()) {
+            GameCard c = new GameCard(d);
+            cards.put(d, c);
+            if (!first) row.addView(new View(this), new LinearLayout.LayoutParams(Ui.dp(this, 12), 1));
+            row.addView(c.build(), Ui.weight());
+            first = false;
+        }
+        col.addView(row);
+        col.addView(Ui.hint(this, "Совет: удерживайте обложку, чтобы вернуть стандартную."), Ui.matchWrap(this, 4));
+
         LinearLayout rt = Ui.card(this, "▌ Рантайм Box64 · Wine · DXVK · Turnip");
         runtimeStatus = Ui.column(this);
         rt.addView(runtimeStatus);
         rt.addView(Ui.ghostButton(this, "⬇  Импорт rootfs.tar.gz", v -> pickRuntime()));
-        col.addView(rt, Ui.matchWrap(this, 12));
-
-        // Telegram
-        col.addView(buildTelegramCard(), Ui.matchWrap(this, 12));
+        col.addView(rt, Ui.matchWrap(this, 10));
         return col;
     }
 
-    private View buildTelegramCard() {
-        LinearLayout card = Ui.row(this);
-        card.setBackground(Ui.rounded(Color.argb(40, 42, 171, 238), Ui.TG, 14, this));
-        int p = Ui.dp(this, 14);
-        card.setPadding(p, p, p, p);
-
-        TextView plane = new TextView(this);
-        plane.setText("✈");
-        plane.setTextSize(26);
-        plane.setTextColor(Color.WHITE);
-        plane.setGravity(Gravity.CENTER);
-        plane.setBackground(Ui.rounded(Ui.TG, 0, 26, this));
-        int s = Ui.dp(this, 52);
-        card.addView(plane, new LinearLayout.LayoutParams(s, s));
-
-        LinearLayout texts = Ui.column(this);
-        texts.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 8), 0);
-        TextView t1 = Ui.label(this, "Наш Telegram-канал");
-        t1.setTextColor(Color.WHITE);
-        t1.setTypeface(Ui.mono(true));
-        texts.addView(t1);
-        TextView t2 = Ui.hint(this, "@" + Links.TELEGRAM_CHANNEL + " — обновления, новые сборки и помощь");
-        t2.setTextColor(Color.rgb(160, 210, 240));
-        texts.addView(t2);
-        card.addView(texts, Ui.weight());
-
-        card.addView(Ui.styledButton(this, "Открыть", v -> Links.openTelegram(this), Ui.TG, Color.WHITE, 0));
-        card.setOnClickListener(v -> Links.openTelegram(this));
-        return card;
+    private void launch(GameDef d) {
+        startActivity(new Intent(this, GameActivity.class).putExtra(GameActivity.EXTRA_GAME, d.id));
     }
+
+    private File coverFile(GameDef d) { return new File(new File(getFilesDir(), "covers"), d.id); }
 
     // ───────────────────────── правая колонка ─────────────────────────
 
@@ -175,8 +226,37 @@ public final class MainActivity extends Activity {
         LinearLayout gfx = Ui.card(this, "▌ Графика");
         String[] qVals = {"auto", "low", "medium", "high"};
         String[] qNames = {"Авто — " + qualityName(DeviceProfile.autoQuality(this)), "Низкое · 720p", "Среднее · 900p", "Высокое · 1080p"};
-        Spinner quality = new Spinner(this, Spinner.MODE_DROPDOWN);
-        quality.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, qNames) {
+        gfx.addView(spinner(qNames, qVals, Prefs.QUALITY, "auto"), new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
+        gfx.addView(Ui.slider(this, "Масштаб разрешения, %", 50, 100, prefs.getInt(Prefs.RES_SCALE, 100),
+                v -> prefs.edit().putInt(Prefs.RES_SCALE, v).apply()));
+        gfx.addView(Ui.hint(this, "🔒 Лок 60 FPS включён всегда: выше 60 ломается физика движка."));
+        gfx.addView(check("Счётчик FPS (DXVK HUD)", Prefs.SHOW_HUD, false));
+        col.addView(gfx);
+
+        LinearLayout ctl = Ui.card(this, "▌ Управление");
+        ctl.addView(Ui.hint(this, "Экранные кнопки"));
+        ctl.addView(spinner(new String[]{"Авто — скрывать при геймпаде", "Всегда показывать", "Полностью выключены"},
+                new String[]{"auto", "on", "off"}, Prefs.OVERLAY_MODE, "auto"), new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
+        LinearLayout ctlBtns = Ui.row(this);
+        ctlBtns.addView(Ui.ghostButton(this, "✋ Кнопки", v -> startActivity(new Intent(this, ControlsEditorActivity.class))), Ui.weight());
+        ctlBtns.addView(Ui.ghostButton(this, "🎮 Геймпад", v -> GamepadEditor.show(this)), Ui.weight());
+        ctl.addView(ctlBtns, Ui.matchWrap(this, 4));
+        col.addView(ctl, Ui.matchWrap(this, 12));
+
+        LinearLayout stab = Ui.card(this, "▌ Стабильность");
+        stab.addView(check("Патч памяти 4 ГБ (LAA)", Prefs.LAA, true));
+        stab.addView(check("Запуск через FOSE / NVSE, если есть", Prefs.USE_FOSE, true));
+        stab.addView(check("Автосохранения", Prefs.AUTOSAVE, true));
+        stab.addView(check("Пропуск вступительных роликов", Prefs.SKIP_INTRO, true));
+        stab.addView(check("Сторож зависаний", Prefs.WATCHDOG, true));
+        stab.addView(check("Только «большие» ядра CPU", Prefs.PIN_BIG_CORES, true));
+        col.addView(stab, Ui.matchWrap(this, 12));
+        return col;
+    }
+
+    private Spinner spinner(String[] names, String[] vals, String key, String def) {
+        Spinner sp = new Spinner(this, Spinner.MODE_DROPDOWN);
+        sp.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, names) {
             @Override public View getView(int pos, View cv, ViewGroup parent) { return style(super.getView(pos, cv, parent)); }
             @Override public View getDropDownView(int pos, View cv, ViewGroup parent) {
                 View v = style(super.getDropDownView(pos, cv, parent));
@@ -187,45 +267,18 @@ public final class MainActivity extends Activity {
                 TextView t = (TextView) v;
                 t.setTextColor(Ui.FG);
                 t.setTypeface(Ui.mono(true));
-                t.setTextSize(14);
+                t.setTextSize(13);
                 return t;
             }
         });
-        quality.setPopupBackgroundDrawable(Ui.rounded(Ui.BG2, Ui.LINE, 10, this));
-        quality.setBackground(Ui.rounded(Color.argb(30, 138, 255, 128), Ui.FG_DIM, 10, this));
-        quality.setSelection(Math.max(0, Arrays.asList(qVals).indexOf(prefs.getString(Prefs.QUALITY, "auto"))));
-        quality.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> a, View v, int pos, long id) { prefs.edit().putString(Prefs.QUALITY, qVals[pos]).apply(); }
+        sp.setPopupBackgroundDrawable(Ui.rounded(Ui.BG2, Ui.LINE, 10, this));
+        sp.setBackground(Ui.rounded(Color.argb(30, 138, 255, 128), Ui.FG_DIM, 10, this));
+        sp.setSelection(Math.max(0, Arrays.asList(vals).indexOf(prefs.getString(key, def))));
+        sp.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> a, View v, int pos, long id) { prefs.edit().putString(key, vals[pos]).apply(); }
             @Override public void onNothingSelected(AdapterView<?> a) {}
         });
-        gfx.addView(quality, new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
-        gfx.addView(Ui.slider(this, "Масштаб разрешения, %", 50, 100, prefs.getInt(Prefs.RES_SCALE, 100),
-                v -> prefs.edit().putInt(Prefs.RES_SCALE, v).apply()));
-        TextView lock = Ui.hint(this, "🔒 Лок 60 FPS включён всегда: выше 60 ломается физика игры.");
-        gfx.addView(lock);
-        gfx.addView(check("Счётчик FPS (DXVK HUD)", Prefs.SHOW_HUD, false));
-        col.addView(gfx);
-
-        LinearLayout stab = Ui.card(this, "▌ Стабильность");
-        stab.addView(check("Патч памяти 4 ГБ (LAA)", Prefs.LAA, true));
-        stab.addView(check("Запуск через FOSE, если есть", Prefs.USE_FOSE, true));
-        stab.addView(check("Автосохранения", Prefs.AUTOSAVE, true));
-        stab.addView(check("Пропуск вступительных роликов", Prefs.SKIP_INTRO, true));
-        stab.addView(check("Сторож зависаний", Prefs.WATCHDOG, true));
-        stab.addView(check("Только «большие» ядра CPU", Prefs.PIN_BIG_CORES, true));
-        col.addView(stab, Ui.matchWrap(this, 12));
-
-        Button controls = Ui.ghostButton(this, "🎮  Настроить управление", v -> startActivity(new Intent(this, ControlsEditorActivity.class)));
-        col.addView(controls, Ui.matchWrap(this, 12));
-
-        play = Ui.button(this, "▶  ИГРАТЬ", v -> startActivity(new Intent(this, GameActivity.class)));
-        play.setTextSize(22);
-        play.setLetterSpacing(0.2f);
-        play.setMinHeight(Ui.dp(this, 64));
-        LinearLayout.LayoutParams lp = Ui.matchWrap(this, 10);
-        play.setLayoutParams(lp);
-        col.addView(play);
-        return col;
+        return sp;
     }
 
     private CheckBox check(String text, String key, boolean def) {
@@ -280,6 +333,13 @@ public final class MainActivity extends Activity {
         startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_GAME_DIR);
     }
 
+    private void pickCover() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("image/*");
+        startActivityForResult(i, REQ_COVER);
+    }
+
     private void pickRuntime() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -294,7 +354,17 @@ public final class MainActivity extends Activity {
         Uri uri = data.getData();
         if (req == REQ_GAME_DIR) {
             File dir = GameFiles.treeUriToFile(uri);
-            prefs.edit().putString(Prefs.GAME_DIR, dir.getPath()).apply();
+            prefs.edit().putString(pendingGame.dirKey(), dir.getPath()).apply();
+            refresh();
+        } else if (req == REQ_COVER) {
+            File dst = coverFile(pendingGame);
+            dst.getParentFile().mkdirs();
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 java.io.OutputStream out = new java.io.FileOutputStream(dst)) {
+                com.wastelanddroid.util.Files2.copy(in, out);
+            } catch (Exception e) {
+                Toast.makeText(this, "Не удалось загрузить обложку: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
             refresh();
         } else if (req == REQ_RUNTIME) {
             runtimeStatus.removeAllViews();
@@ -327,28 +397,34 @@ public final class MainActivity extends Activity {
     }
 
     private void refresh() {
-        String path = prefs.getString(Prefs.GAME_DIR, null);
-        boolean gameOk = false;
-        gameStatus.removeAllViews();
-        if (path == null) {
-            gamePath.setText("Папка не выбрана");
-            gameStatus.addView(status("›", "Укажите папку, где лежат Fallout3.exe и Data", Ui.FG_DIM));
-        } else {
-            gamePath.setText(path);
-            GameFiles.Report r = GameFiles.validate(new File(path));
-            if (r.ok()) gameStatus.addView(status("✔", "Файлы игры в порядке", Ui.FG));
-            if (!r.dlcs.isEmpty()) gameStatus.addView(status("◆", "DLC: " + String.join(", ", r.dlcs), Ui.FG));
-            for (String e : r.errors) gameStatus.addView(status("✖", e, Ui.RED));
-            for (String w : r.warnings) gameStatus.addView(status("⚠", w, Ui.AMBER));
-            gameOk = r.ok();
-        }
-        runtimeStatus.removeAllViews();
         String miss = new RuntimeManager(this).missingComponent();
+        runtimeStatus.removeAllViews();
         runtimeStatus.addView(miss == null
                 ? status("✔", "Рантайм установлен", Ui.FG)
                 : status("✖", "Не установлен (нет " + miss + ")", Ui.RED));
-        play.setEnabled(gameOk && miss == null);
-        play.setText(play.isEnabled() ? "▶  ИГРАТЬ" : "▶  ИГРАТЬ  ·  не готово");
+
+        for (GameCard c : cards.values()) {
+            GameDef d = c.def;
+            c.cover.set(d.title, d.accent, d.dark, coverFile(d));
+            c.status.removeAllViews();
+            String path = d.gameDir(this);
+            boolean ok = false;
+            if (path == null) {
+                c.path.setText("Папка не выбрана");
+                c.status.addView(status("›", "Укажите папку с " + d.exe + " и Data", Ui.FG_DIM));
+            } else {
+                c.path.setText(path);
+                GameFiles.Report r = GameFiles.validate(d, new File(path));
+                if (r.ok()) c.status.addView(status("✔", "Файлы в порядке", Ui.FG));
+                if (!r.dlcs.isEmpty()) c.status.addView(status("◆", "DLC: " + r.dlcs.size(), Ui.FG));
+                for (String e : r.errors) c.status.addView(status("✖", e, Ui.RED));
+                for (String w : r.warnings) c.status.addView(status("⚠", w, Ui.AMBER));
+                ok = r.ok();
+            }
+            c.cover.setSelectedCard(ok && miss == null);
+            c.play.setEnabled(ok && miss == null);
+            c.play.setText(c.play.isEnabled() ? "▶  ИГРАТЬ" : "не готово");
+        }
     }
 
     @Override

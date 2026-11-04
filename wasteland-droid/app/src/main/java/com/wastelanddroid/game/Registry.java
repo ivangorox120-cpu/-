@@ -19,12 +19,12 @@ import java.nio.file.Files;
 public final class Registry {
     private Registry() {}
 
-    public static File writeRegFile(File gameDir, File outDir) throws IOException {
+    public static File writeRegFile(GameDef g, File gameDir, File outDir) throws IOException {
         String path = escape(LaunchConfig.toWinPath(gameDir) + "\\");
         StringBuilder sb = new StringBuilder("Windows Registry Editor Version 5.00\r\n\r\n");
         // 32-битный exe в 64-битном префиксе читает ветку Wow6432Node; пишем в обе.
         for (String root : new String[]{"HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node", "HKEY_LOCAL_MACHINE\\SOFTWARE"}) {
-            sb.append('[').append(root).append("\\Bethesda Softworks\\Fallout3]\r\n")
+            sb.append('[').append(root).append("\\Bethesda Softworks\\").append(g.folder).append("]\r\n")
               .append("\"Installed Path\"=\"").append(path).append("\"\r\n")
               .append("\"Installed\"=dword:00000001\r\n\r\n");
         }
@@ -32,7 +32,7 @@ public final class Registry {
         sb.append("[HKEY_CURRENT_USER\\Software\\Wine\\DirectSound]\r\n")
           .append("\"DefaultSampleRate\"=\"44100\"\r\n\r\n");
         outDir.mkdirs();
-        File f = new File(outDir, "fallout3.reg");
+        File f = new File(outDir, g.id + ".reg");
         // regedit принимает UTF-16LE с BOM
         byte[] body = sb.toString().getBytes(StandardCharsets.UTF_16LE);
         byte[] out = new byte[body.length + 2];

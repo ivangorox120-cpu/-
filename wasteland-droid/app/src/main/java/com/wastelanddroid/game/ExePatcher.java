@@ -32,9 +32,9 @@ public final class ExePatcher {
     public static Info inspect(File exe) {
         Info info = new Info();
         try (RandomAccessFile f = new RandomAccessFile(exe, "r")) {
-            if (f.length() < 1024) { info.error = "Fallout3.exe повреждён (слишком мал)."; return info; }
+            if (f.length() < 1024) { info.error = exe.getName() + " повреждён (слишком мал)."; return info; }
             if (f.readUnsignedByte() != 'M' || f.readUnsignedByte() != 'Z') {
-                info.error = "Fallout3.exe не является PE-файлом."; return info;
+                info.error = exe.getName() + " не является PE-файлом."; return info;
             }
             f.seek(0x3C);
             long pe = Integer.toUnsignedLong(Integer.reverseBytes(f.readInt()));
@@ -59,7 +59,7 @@ public final class ExePatcher {
             }
             info.usesGfwl = containsAscii(f, "xlive.dll");
         } catch (IOException e) {
-            info.error = "Не удалось прочитать Fallout3.exe: " + e.getMessage();
+            info.error = "Не удалось прочитать " + exe.getName() + ": " + e.getMessage();
         }
         return info;
     }

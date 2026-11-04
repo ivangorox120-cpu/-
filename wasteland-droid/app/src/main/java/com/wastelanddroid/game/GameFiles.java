@@ -12,21 +12,6 @@ import java.util.List;
 
 /** Проверка выбранной папки с игрой. Файлы игры пользователь предоставляет сам (своя копия). */
 public final class GameFiles {
-    public static final String EXE = "Fallout3.exe";
-
-    private static final String[] REQUIRED = {
-            EXE,
-            "Data/Fallout3.esm",
-            "Data/Fallout - Meshes.bsa",
-            "Data/Fallout - Textures.bsa",
-            "Data/Fallout - Sound.bsa",
-            "Data/Fallout - Voices.bsa",
-            "Data/Fallout - MenuVoices.bsa",
-            "Data/Fallout - Misc.bsa",
-    };
-
-    /** Официальные DLC: если есть .esm, должны быть и его архивы. */
-    private static final String[] DLC = {"Anchorage", "ThePitt", "BrokenSteel", "PointLookout", "Zeta"};
 
     public static final class Report {
         public final List<String> errors = new ArrayList<>();
@@ -49,16 +34,17 @@ public final class GameFiles {
         return rel.isEmpty() ? root : new File(root, rel);
     }
 
-    public static Report validate(File dir) {
+    public static Report validate(GameDef g, File dir) {
         Report r = new Report();
         if (dir == null || !dir.isDirectory() || !dir.canRead()) {
             r.errors.add("Папка недоступна. Выдайте разрешение «Доступ ко всем файлам».");
             return r;
         }
-        for (String f : REQUIRED) {
+        if (Files2.findCaseInsensitive(dir, g.exe) == null) r.errors.add("Не найден: " + g.exe);
+        for (String f : g.requiredFiles) {
             if (Files2.findCaseInsensitive(dir, f) == null) r.errors.add("Не найден: " + f);
         }
-        for (String dlc : DLC) {
+        for (String dlc : g.dlcs) {
             File esm = Files2.findCaseInsensitive(dir, "Data/" + dlc + ".esm");
             if (esm == null) continue;
             if (Files2.findCaseInsensitive(dir, "Data/" + dlc + " - Main.bsa") == null) {
@@ -66,7 +52,7 @@ public final class GameFiles {
             }
             r.dlcs.add(dlc);
         }
-        File exe = Files2.findCaseInsensitive(dir, EXE);
+        File exe = Files2.findCaseInsensitive(dir, g.exe);
         if (exe != null) {
             ExePatcher.Info info = ExePatcher.inspect(exe);
             if (info.error != null) r.errors.add(info.error);
@@ -79,8 +65,8 @@ public final class GameFiles {
                         + "Игра будет ограничена 2 ГБ ОЗУ — выше риск вылетов в долгих сессиях.");
             }
         }
-        if (Files2.findCaseInsensitive(dir, "fose_loader.exe") != null) {
-            r.warnings.add("Найден FOSE: игра будет запускаться через fose_loader.exe (можно отключить в настройках).");
+        if (Files2.findCaseInsensitive(dir, g.scriptExtender) != null) {
+            r.warnings.add("Найден " + g.scriptExtenderName + ": запуск через " + g.scriptExtender + " (можно отключить в настройках).");
         }
         if (Files2.findCaseInsensitive(dir, "d3d9.dll") != null) {
             r.warnings.add("В папке игры есть свой d3d9.dll (ENB/ReShade/DXVK) — он заменит DXVK лаунчера. "

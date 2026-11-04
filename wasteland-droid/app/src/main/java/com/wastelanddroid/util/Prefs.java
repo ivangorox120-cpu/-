@@ -16,6 +16,8 @@ public final class Prefs {
     public static final String WATCHDOG = "watchdog";
     public static final String PIN_BIG_CORES = "pin_big_cores";
     public static final String USE_FOSE = "use_fose";
+    /** Экранные кнопки: on — всегда, auto — скрывать при подключённом геймпаде, off — полностью выключены. */
+    public static final String OVERLAY_MODE = "overlay_mode";
 
     private Prefs() {}
 

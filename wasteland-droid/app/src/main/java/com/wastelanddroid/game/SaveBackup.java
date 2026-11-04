@@ -15,11 +15,12 @@ public final class SaveBackup {
 
     private SaveBackup() {}
 
-    public static void backup(File winePrefix, File backupRoot) throws IOException {
-        File saves = new File(IniTweaks.myGamesDir(winePrefix), "Saves");
+    public static void backup(GameDef g, File winePrefix, File backupRoot) throws IOException {
+        File saves = new File(IniTweaks.myGamesDir(g, winePrefix), "Saves");
         String[] list = saves.list();
         if (list == null || list.length == 0) return;
         String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
+        backupRoot = new File(backupRoot, g.id);
         Files2.copyTree(saves, new File(backupRoot, stamp));
         File[] all = backupRoot.listFiles(File::isDirectory);
         if (all == null || all.length <= KEEP) return;
