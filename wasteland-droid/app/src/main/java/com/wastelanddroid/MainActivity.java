@@ -58,6 +58,7 @@ public final class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private TextView headerTitle;
+    private WastelandBackdrop backdrop;
     /** Бесконечные анимации работают только пока экран виден — иначе тратили бы батарею во время игры. */
     private final java.util.List<android.animation.Animator> loops = new java.util.ArrayList<>();
     private LinearLayout runtimeStatus;
@@ -121,6 +122,14 @@ public final class MainActivity extends Activity {
 
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(Ui.screenBackground());
+        // Фон главного меню — та же картинка, что на заставке, притемнённая под интерфейс.
+        backdrop = new WastelandBackdrop(this);
+        frame.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+        View shade = new View(this);
+        shade.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{Color.argb(215, 8, 10, 9), Color.argb(150, 8, 10, 9), Color.argb(215, 8, 10, 9)}));
+        frame.addView(shade, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout page = Ui.column(this);
         int pad = Ui.dp(this, 20);
@@ -355,6 +364,16 @@ public final class MainActivity extends Activity {
         super.onResume();
         refresh();
         if (headerTitle != null) loops.add(Anim.flicker(headerTitle));
+        if (backdrop != null) {
+            // медленное «дыхание» фона: приближение и обратно за 40 секунд
+            android.animation.ObjectAnimator z = android.animation.ObjectAnimator.ofFloat(backdrop, "zoom", 1.0f, 1.08f);
+            z.setDuration(20000);
+            z.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            z.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            z.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+            z.start();
+            loops.add(z);
+        }
     }
 
     @Override
