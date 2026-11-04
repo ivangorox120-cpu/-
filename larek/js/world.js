@@ -174,6 +174,19 @@ export function createWorld(ctx) {
     snow: std({ map: TX.snow, roughness: .95 }),
     woodFence: std({ map: TX.woodFence, roughness: .9 }),
   };
+  TL.load('assets/tex/snow_ground.jpg', t => { // фотоснег пользователя: земля, тротуары, обочины; дорога — укатанная, с колеями, наледью и выбоинами
+    const img = t.image; t.dispose();
+    const mk = (w, h, draw, rx, ry) => { const tx = regTex(ctex(w, h, g => draw(g, w, h))); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(rx, ry); return tx; };
+    groundSnow.material.map = mk(1024, 512, (g, w, h) => g.drawImage(img, 0, 0, w, h), 45, 90); groundSnow.material.needsUpdate = true;
+    walk.material.map = mk(1024, 512, (g, w, h) => { g.drawImage(img, 0, 0, w, h); g.fillStyle = 'rgba(70,65,60,.18)'; for (let i = 0; i < 40; i++) { g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 6, 12, Math.random(), 0, 7); g.fill(); } }, 22, 2.4); walk.material.color.set(0xd0d3d6); walk.material.needsUpdate = true;
+    road.material.map = mk(1024, 512, (g, w, h) => {
+      g.drawImage(img, 0, 0, w, h); g.fillStyle = 'rgba(40,40,42,.62)'; g.fillRect(0, 0, w, h);
+      for (const ly of [.22, .38, .62, .78]) { const gr = g.createLinearGradient(0, h * (ly - .06), 0, h * (ly + .06)); gr.addColorStop(0, 'rgba(25,25,27,0)'); gr.addColorStop(.5, 'rgba(25,25,27,.75)'); gr.addColorStop(1, 'rgba(25,25,27,0)'); g.fillStyle = gr; g.fillRect(0, h * (ly - .06), w, h * .12); }
+      g.strokeStyle = 'rgba(10,10,10,.6)'; for (let i = 0; i < 25; i++) { let x = Math.random() * w, y = Math.random() * h; g.lineWidth = Math.random() * 2; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += (Math.random() - .5) * 60; y += (Math.random() - .5) * 20; g.lineTo(x, y); } g.stroke(); }
+      for (let i = 0; i < 9; i++) { const x = Math.random() * w, y = h * (.15 + Math.random() * .7); g.fillStyle = 'rgba(15,15,15,.75)'; g.beginPath(); g.ellipse(x, y, 14 + Math.random() * 20, 7 + Math.random() * 8, Math.random(), 0, 7); g.fill(); g.strokeStyle = 'rgba(200,200,200,.25)'; g.stroke(); }
+      for (let i = 0; i < 6; i++) { const x = Math.random() * w, y = h * (.1 + Math.random() * .8); g.fillStyle = 'rgba(200,215,230,.35)'; g.beginPath(); g.ellipse(x, y, 40 + Math.random() * 60, 10 + Math.random() * 15, 0, 0, 7); g.fill(); }
+    }, 14, 1); road.material.roughness = .7; road.material.needsUpdate = true;
+  }, undefined, () => {});
   TL.load('assets/tex/paper.jpg', img => { MAT.wallpaper.map = makeWallpaper(img.image); MAT.wallpaper.needsUpdate = true; }, undefined, () => {});
 
   // ---------- свет ----------
@@ -432,27 +445,68 @@ export function createWorld(ctx) {
   function drawRateBoard() { const S = ctx.getS(), g = rateTex.userData.canvas.getContext('2d'); g.fillStyle = '#111'; g.fillRect(0, 0, 256, 128); g.fillStyle = '#ff4a2a'; g.font = '700 30px "Courier New", monospace'; g.textAlign = 'left'; g.fillText('USD ' + ctx.fmt(S.rate * 1.04), 14, 50); g.fillStyle = '#ffb43a'; g.fillText('    ' + ctx.fmt(S.rate * .96), 14, 100); rateTex.needsUpdate = true; }
   addCol(BOOTH.x - 1.05, BOOTH.x + 1.05, BOOTH.z - 1.05, BOOTH.z + 1.05);
 
-  // ---------- рынок ----------
-  const MARKET = { x: -23, z: -8 };
-  const tarps = [stripes('#a8352a', '#d8d0bc'), stripes('#2d4f86', '#d8d0bc'), stripes('#3f6a4c', '#d8c070'), stripes('#c8902a', '#4a3a2a')];
-  const vendorSpots = [];
-  for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) {
-    const sx = MARKET.x - 9 + c * 6, sz = MARKET.z - 4 + r * 8;
-    const st = new THREE.Group(); st.position.set(sx, 0, sz); st.rotation.y = r ? Math.PI : 0; scene.add(st);
-    for (const [px, pz] of [[-1.6, -1], [1.6, -1], [-1.6, 1], [1.6, 1]]) cyl(.035, .035, 2.3, MAT.steel, px, 1.15, pz, 6, st);
-    const tp = new THREE.Mesh(new THREE.BoxGeometry(3.6, .04, 2.6), std({ map: tarps[(r * 4 + c) % 4] })); tp.position.y = 2.3; tp.rotation.x = .08; tp.castShadow = true; st.add(tp);
-    box(3.6, .05, 2.6, MAT.snow, 0, 2.34, 0, st, false).rotation.x = .08;
-    box(3.0, .8, .9, MAT.wood, 0, .4, .5, st);
-    for (let k = 0; k < 5; k++) box(R(.3, .5), R(.2, .35), R(.3, .45), std({ color: pick([0xb5452f, 0x8a6a45, 0x2d4f86, 0xd4a72c, 0x5a7a3a, 0xd8d0bc]) }), -1.1 + k * .55, .9, .5 + R(-.2, .2), st);
-    const wz = r ? sz - .5 : sz + .5; addCol(sx - 1.5, sx + 1.5, wz - .45, wz + .45);
-    if ((r * 4 + c) % 2 === 0) vendorSpots.push({ x: sx, z: r ? sz + 1.1 - 2.2 : sz - 1.1 + 2.2 - 2.2, rot: r ? Math.PI : 0 });
+  // ---------- детская площадка (на месте бывшего рынка) ----------
+  const MARKET = { x: -23, z: -8 }; // точка площадки (имя оставлено для совместимости графа путей)
+  const PG = { x: -23, z: -8 }; let env2Extra = null;
+  const pipeM = std({ color: 0x3a6a8a, roughness: .55, metalness: .5 }), pipeR = std({ color: 0xa83a2a, roughness: .55, metalness: .5 }), pipeY = std({ color: 0xc9a227, roughness: .55, metalness: .5 });
+  const plank = std({ color: 0x6a4a2e, roughness: .85 });
+  const pg = new THREE.Group(); pg.position.set(PG.x, 0, PG.z); scene.add(pg);
+  const pipe = (x1, y1, z1, x2, y2, z2, r, m, parent = pg) => { const a = new THREE.Vector3(x1, y1, z1), b = new THREE.Vector3(x2, y2, z2), d = b.clone().sub(a), L = d.length(); const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 8), m); c.position.copy(a).add(b).multiplyScalar(.5); c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); c.castShadow = true; parent.add(c); return c; };
+  // ограждение с проходом к ларьку
+  const fence = [[-8, -7, 8, -7], [8, -7, 8, 7], [8, 7, -8, 7], [-8, 7, -8, -7]];
+  for (const [x1, z1, x2, z2] of fence) { const L = Math.hypot(x2 - x1, z2 - z1), n = Math.round(L / 1.6);
+    for (let k = 0; k <= n; k++) { const t = k / n, x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t; if (x1 === 8 && x2 === 8 && Math.abs(z) < 1.4) continue; pipe(x, 0, z, x, .9, z, .03, pipeM); }
+    if (x1 === 8 && x2 === 8) { pipe(8, .85, -7, 8, .85, -1.4, .025, pipeM); pipe(8, .85, 1.4, 8, .85, 7, .025, pipeM); addCol(PG.x + 7.9, PG.x + 8.1, PG.z - 7, PG.z - 1.4); addCol(PG.x + 7.9, PG.x + 8.1, PG.z + 1.4, PG.z + 7); }
+    else { pipe(x1, .85, z1, x2, .85, z2, .025, pipeM); addCol(PG.x + Math.min(x1, x2) - .1, PG.x + Math.max(x1, x2) + .1, PG.z + Math.min(z1, z2) - .1, PG.z + Math.max(z1, z2) + .1); } }
+  // качели: А-образные стойки, перекладина, два сиденья на цепях
+  const swingSeats = [];
+  for (const sx of [-1.6, 1.6]) { pipe(sx, 0, -3.8, sx, 2.4, -3, .05, pipeR); pipe(sx, 0, -2.2, sx, 2.4, -3, .05, pipeR); }
+  pipe(-1.7, 2.4, -3, 1.7, 2.4, -3, .05, pipeR); addCol(PG.x - 1.8, PG.x + 1.8, PG.z - 3.9, PG.z - 2.1);
+  for (const sx of [-.7, .7]) { const piv = new THREE.Group(); piv.position.set(sx, 2.38, -3); pg.add(piv); for (const dx of [-.2, .2]) pipe(dx, 0, 0, dx, -1.85, 0, .008, std({ color: 0x777777, metalness: .9, roughness: .3 }), piv); const seat = new THREE.Mesh(new THREE.BoxGeometry(.5, .04, .22), plank); seat.position.y = -1.87; seat.castShadow = true; piv.add(seat); swingSeats.push({ piv, ph: Math.random() * 6, amp: .05, x: PG.x + sx, z: PG.z - 3 }); }
+  // горка: лестница, площадка, металлический скат
+  const sl = new THREE.Group(); sl.position.set(4, 0, -1.5); pg.add(sl);
+  for (const sx of [-.3, .3]) pipe(sx, 0, 0, sx, 1.6, .3, .04, pipeY, sl);
+  for (let k = 1; k < 6; k++) pipe(-.3, k * .28, k * .05, .3, k * .28, k * .05, .02, pipeY, sl);
+  const plat = new THREE.Mesh(new THREE.BoxGeometry(.8, .06, .8), plank); plat.position.set(0, 1.6, .7); sl.add(plat); for (const [px, pz] of [[-.38, 1.08], [.38, 1.08]]) pipe(px, 0, pz, px, 1.6, pz, .04, pipeY, sl);
+  const chute = new THREE.Mesh(new THREE.BoxGeometry(.6, .03, 2.6), std({ color: 0xb8bcc0, metalness: .85, roughness: .25 })); chute.position.set(0, .85, 2.15); chute.rotation.x = .62; chute.castShadow = true; sl.add(chute);
+  for (const sx of [-.3, .3]) { const sd = new THREE.Mesh(new THREE.BoxGeometry(.03, .18, 2.6), pipeY); sd.position.set(sx, .95, 2.15); sd.rotation.x = .62; sl.add(sd); }
+  const slSnow = new THREE.Mesh(new THREE.BoxGeometry(.8, .05, .8), MAT.snow); slSnow.position.set(0, 1.66, .7); slSnow.userData.winter = true; sl.add(slSnow);
+  addCol(PG.x + 3.5, PG.x + 4.5, PG.z - 1.6, PG.z + 2.2);
+  // песочница
+  for (const [x, z, w, d] of [[-4, 2.2, 3, .12], [-4, 4.8, 3, .12], [-5.5, 3.5, .12, 2.7], [-2.5, 3.5, .12, 2.7]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, .3, d), plank); b.position.set(x, .15, z); b.castShadow = true; pg.add(b); }
+  const sand = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 2.5), std({ color: 0xb8a070, roughness: 1 })); sand.rotation.x = -Math.PI / 2; sand.position.set(-4, .12, 3.5); pg.add(sand);
+  const sandSnow = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 2.5), MAT.snow); sandSnow.rotation.x = -Math.PI / 2; sandSnow.position.set(-4, .14, 3.5); sandSnow.userData.winter = true; pg.add(sandSnow);
+  addCol(PG.x - 5.6, PG.x - 2.4, PG.z + 2.1, PG.z + 4.9);
+  // карусель
+  const car_ = new THREE.Group(); car_.position.set(-4, 0, -2); pg.add(car_); pipe(0, 0, 0, 0, .9, 0, .06, pipeM, car_);
+  const disc = new THREE.Group(); disc.position.y = .35; car_.add(disc); const dm = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, .06, 20), pipeR); dm.castShadow = true; disc.add(dm);
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; pipe(Math.cos(a) * 1.0, 0, Math.sin(a) * 1.0, Math.cos(a) * .2, .65, Math.sin(a) * .2, .025, pipeY, disc); }
+  const discSnow = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, .02, 20), MAT.snow); discSnow.position.y = .04; discSnow.userData.winter = true; disc.add(discSnow);
+  addCol(PG.x - 5.3, PG.x - 2.7, PG.z - 3.3, PG.z - .7);
+  let discSpin = 0;
+  // лавочки
+  const benches = [];
+  for (const [bx, bz, ry] of [[1, 5.8, Math.PI], [-6.6, -1, Math.PI / 2]]) { const b = new THREE.Group(); b.position.set(bx, 0, bz); b.rotation.y = ry; pg.add(b);
+    for (const dx of [-.7, .7]) { const l = new THREE.Mesh(new THREE.BoxGeometry(.06, .45, .4), MAT.dark); l.position.set(dx, .22, 0); b.add(l); }
+    const st = new THREE.Mesh(new THREE.BoxGeometry(1.6, .05, .4), plank); st.position.y = .45; st.castShadow = true; b.add(st); const bk = new THREE.Mesh(new THREE.BoxGeometry(1.6, .3, .04), plank); bk.position.set(0, .7, -.2); b.add(bk);
+    const bs = new THREE.Mesh(new THREE.BoxGeometry(1.6, .04, .4), MAT.snow); bs.position.y = .49; bs.userData.winter = true; b.add(bs);
+    benches.push({ x: PG.x + bx, z: PG.z + bz, ry }); addCol(PG.x + bx - .8, PG.x + bx + .8, PG.z + bz - .3, PG.z + bz + .3); }
+  const vendorSpots = [{ x: 4.6, z: 4.0, rot: 0 }, { x: 13.4, z: -.05, rot: Math.PI / 2 }]; // уличные продавцы: семечки у остановки, у обменника
+  { const crate = box(.5, .45, .4, std({ color: 0x7a5a3a, roughness: .9 }), 4.6, .22, 4.55); addCol(4.3, 4.9, 4.3, 4.8); }
+  let swingRide = null, benchSit = null;
+  env2Extra = () => {
+    if (swingRide || benchSit) return { label: 'Встать', icon: 'sit', fn: () => { swingRide = null; benchSit = null; P.locked = false; ctx.onCtl(); } };
+    for (const sw of swingSeats) if (Math.hypot(P.x - sw.x, P.z - sw.z - .4) < 1.1) return { label: 'Покачаться на качелях', icon: 'sit', fn: () => { swingRide = { sw, t: 0 }; P.locked = true; P.x = sw.x; P.z = sw.z; P.yaw = Math.PI; ctx.audio.click(400, .3, 0, .1); ctx.onCtl(); } };
+    if (Math.hypot(P.x - (PG.x - 4), P.z - (PG.z - 2)) < 2.2) return { label: 'Раскрутить карусель', icon: 'rotate', fn: () => { discSpin = Math.min(4, discSpin + 2.2); ctx.audio.click(300, .5, 0, .15); } };
+    for (const b of benches) if (Math.hypot(P.x - b.x, P.z - b.z) < 1.3) return { label: 'Посидеть на лавке', icon: 'sit', fn: () => { benchSit = b; P.locked = true; P.x = b.x + Math.sin(b.ry) * .25; P.z = b.z + Math.cos(b.ry) * .25; P.yaw = b.ry + Math.PI; ctx.onCtl(); } };
+    return null;
+  };
+  function playgroundTick(dt) {
+    swingSeats.forEach(sw => { sw.ph += dt * 2.1; const a = swingRide && swingRide.sw === sw ? .55 : .04 + windVec.length() * .03; sw.amp += (a - sw.amp) * dt * .6; sw.piv.rotation.x = Math.sin(sw.ph) * sw.amp; });
+    discSpin *= Math.pow(.85, dt); disc.rotation.y += discSpin * dt;
+    if (swingRide) { const sw = swingRide.sw, ang = sw.piv.rotation.x; P.h = 2.38 - Math.cos(ang) * 1.65 + .02; P.z = sw.z - Math.sin(ang) * 1.65; P.x = sw.x; }
+    if (benchSit) P.h = 1.15;
   }
-  const mSign = textTex(512, 110, 'РЫНОК', '#b03a2e', '#f2e6c9', '900 76px Arial');
-  const arch = new THREE.Group(); arch.position.set(MARKET.x + 12, 0, MARKET.z); arch.rotation.y = Math.PI / 2; scene.add(arch);
-  cyl(.08, .08, 4, MAT.steel, -2.5, 2, 0, 8, arch); cyl(.08, .08, 4, MAT.steel, 2.5, 2, 0, 8, arch);
-  const ms = new THREE.Mesh(new THREE.PlaneGeometry(4, .9), std({ map: mSign, side: THREE.DoubleSide })); ms.position.y = 3.6; arch.add(ms);
-  addCol(MARKET.x + 11.9, MARKET.x + 12.1, MARKET.z - 2.6, MARKET.z - 2.4); addCol(MARKET.x + 11.9, MARKET.x + 12.1, MARKET.z + 2.4, MARKET.z + 2.6);
-
   // ---------- гаражи, деревянный забор, баки, вывески ----------
   for (let i = 0; i < 8; i++) {
     const gx = 26 + i * 4.2, gz = -16;
@@ -511,7 +565,17 @@ export function createWorld(ctx) {
   const loader = new GLTFLoader();
   const ASSETS = {};
   let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'phone'];
-  const winMats = [];
+  const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
+  function windowShader(m) { // у каждого окна (ячейка мира) своё расписание света и свой оттенок
+    m.emissiveIntensity = 1.5;
+    m.onBeforeCompile = sh => {
+      sh.uniforms.winTime = winU.time; sh.uniforms.winNight = winU.night;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos; uniform float winTime, winNight;\nfloat wh(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 cell = floor(vWPos / vec3(3.2, 2.9, 3.2)); float h1 = wh(cell), h2 = wh(cell + 7.1); float per = 25.0 + 80.0 * h2; float slot = floor(winTime / per + h1 * 13.0); float on = step(1.0 - (0.12 + 0.38 * winNight), wh(cell + slot * 3.7)); totalEmissiveRadiance *= on * smoothstep(0.15, 0.6, winNight) * mix(vec3(1.0, .72, .45), vec3(1.0, .93, .8), h2); }');
+    };
+    m.needsUpdate = true;
+  }
   const crowns = { winter: [], summer: [] };
   const loading = Promise.all(toLoad.map(n => loader.loadAsync('assets/models/' + n + '.glb').then(g => { g.__name = n; ASSETS[n] = g; loadedN++; ctx.onLoadProgress && ctx.onLoadProgress(loadedN / toLoad.length); }).catch(e => { console.warn('Не загрузилась модель', n, e); loadedN++; })));
   function meshesOf(g) { const out = []; g.scene.updateMatrixWorld(true); g.scene.traverse(o => { if (o.isMesh) out.push(o); }); return out; }
@@ -528,7 +592,7 @@ export function createWorld(ctx) {
       const maskOf = t => { if (maskCache.has(t)) return maskCache.get(t); const img = t.image, w = img.width, h = img.height, c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(img, 0, 0); const d = g.getImageData(0, 0, w, h);
         for (let i = 0; i < d.data.length; i += 4) { const r = d.data[i], gg = d.data[i + 1], b = d.data[i + 2]; const lit = r > 180 && gg > 120 && b < 140 && r - b > 70; if (!lit) { d.data[i] = d.data[i + 1] = d.data[i + 2] = 0; } }
         g.putImageData(d, 0, 0); const nt = new THREE.CanvasTexture(c); nt.colorSpace = THREE.SRGBColorSpace; nt.flipY = t.flipY; nt.magFilter = THREE.NearestFilter; maskCache.set(t, nt); return nt; };
-      A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffc070); m.emissiveIntensity = 0; m.needsUpdate = true; winMats.push(m); } }); } });
+      A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
       for (const [x, z, r] of [[-32, 27, Math.PI / 2], [30, 27, Math.PI / 2], [0, -36, -Math.PI / 2], [-66, -10, 0], [70, -6, Math.PI]]) {
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o);
       }
@@ -553,7 +617,9 @@ export function createWorld(ctx) {
     // снежные деревья (инстансинг по типам)
     if (ASSETS.snowtrees) {
       const byName = {}; meshesOf(ASSETS.snowtrees).forEach(m => byName[m.name] = m);
-      const spots = [[-6, -9], [-10, -15], [3, -18], [9, -10], [-14, -21], [16, -21], [22, -6], [-40, 3.0], [-44, -25], [34, -25], [56, -12], [-2, -23], [-12, 17.5], [-46, 17.5], [44, 17.5], [6, -25], [-36, -16], [-52, -30], [60, -36], [-20, -32], [40, -40], [-60, 8], [64, 10]];
+      const segD = (px, pz, ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1, t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1); return Math.hypot(px - ax - dx * t, pz - az - dz * t); };
+      const onPath = (x, z) => { if (z > .5 && z < 19) return true; for (const k in NODES) for (const e of NODES[k].e) if (segD(x, z, NODES[k].x, NODES[k].z, NODES[e].x, NODES[e].z) < 1.8) return true; return colliders.some(b => x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1); };
+      const spots = [[-6, -9], [-10, -15], [3, -18], [9, -10], [-14, -21], [16, -21], [22, -6], [-44, -25], [34, -25], [56, -12], [-2, -23], [6, -25], [-36, -16], [-52, -30], [60, -36], [-20, -32], [40, -40], [-60, -8], [64, -24], [-12, -31], [28, -31], [47, -30]].filter(([x, z]) => !onPath(x, z));
       const kinds = { winter: ['snowtree', 'deadtreehero', 'TreeBareTall', 'snowtree'], summer: ['deadtreewide', 'TreeBareTall', 'deadtreehero', 'deadtreewide'] };
       for (const season of ['winter', 'summer']) {
         const per = {}; spots.forEach(([x, z], i) => { const k = kinds[season][i % 4]; (per[k] = per[k] || []).push([x, z, R(.85, 1.2), R(0, 6)]); });
@@ -583,7 +649,7 @@ export function createWorld(ctx) {
     if (ASSETS.stew) { const sm = meshesOf(ASSETS.stew)[0]; if (sm) { const f = FOOD.find(q => q.id === 'tushonka'); const g = sm.geometry.clone().applyMatrix4(sm.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox; g.translate(0, -(bb.min.y + bb.max.y) / 2, 0); f.geo = g; f.model = sm.material; buildFood(); } }
     if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = gm.geometry.clone().applyMatrix4(gm.matrixWorld); gunMat = gm.material; weapon.setModel(gunWorldMesh(), life.makeHand); buildWallGun(); }
     spawnMarat();
-    for (let i = 0; i < 3; i++) spawnVendor(i);
+    for (let i = 0; i < vendorSpots.length; i++) spawnVendor(i);
     season = -1;
     ctx.onLoaded && ctx.onLoaded();
   });
@@ -711,7 +777,7 @@ export function createWorld(ctx) {
     p.path = pt; p.then = then; p.state = 'walk';
   }
   function leaveWorld(p) { const target = NODES[pickSpawn(p.h.obj.position)]; goTo(p, target.x, target.z, () => removePerson(p)); p.leaving = true; }
-  function spawnVendor(i) { const s = vendorSpots[i % vendorSpots.length]; if (!s) return; const p = newPerson('vendor', 'vendor', 'm2'); p.h.obj.position.set(s.x, 0, s.z); p.h.obj.rotation.y = s.rot; p.state = 'stand'; p.anim = 'idle'; }
+  function spawnVendor(i) { const s = vendorSpots[i % vendorSpots.length]; if (!s) return; const p = newPerson(i === 0 ? 'babka' : 'vendor', 'vendor', 'm2'); p.h.obj.position.set(s.x, 0, s.z); p.h.obj.rotation.y = s.rot; p.state = 'stand'; p.anim = 'idle'; }
   const lineFor = {
     babka: ['Ох, сынок, всё дорожает…', 'Пенсию опять задержали.', 'В наше время хлеб по 16 копеек был.', 'Ты бы шапку надел, холодно же.'],
     worker: ['Здорово.', 'Смена тяжёлая была…', 'Завод опять стоит.', 'Не подскажешь, автобус давно был?'],
@@ -941,29 +1007,54 @@ export function createWorld(ctx) {
   let snowPts = null, snowN = 0;
   function buildSnow(n) {
     if (snowPts) { scene.remove(snowPts); snowPts.geometry.dispose(); }
-    snowN = n; const g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), sz = new Float32Array(n), sp = new Float32Array(n);
-    for (let i = 0; i < n; i++) { pos[i * 3] = R(-22, 22); pos[i * 3 + 1] = R(0, 16); pos[i * 3 + 2] = R(-22, 22); sz[i] = R(.6, 1.6); sp[i] = R(.6, 1.4); }
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('size', new THREE.BufferAttribute(sz, 1)); g.setAttribute('spd', new THREE.BufferAttribute(sp, 1));
+    snowN = n; const g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), sz = new Float32Array(n), sp = new Float32Array(n), ph = new Float32Array(n);
+    for (let i = 0; i < n; i++) { pos[i * 3] = R(-22, 22); pos[i * 3 + 1] = R(0, 16); pos[i * 3 + 2] = R(-22, 22); sz[i] = Math.pow(Math.random(), 2) * 1.6 + .45; sp[i] = R(.55, 1.45); ph[i] = Math.random(); }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('size', new THREE.BufferAttribute(sz, 1)); g.setAttribute('spd', new THREE.BufferAttribute(sp, 1)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1));
     const m = new THREE.ShaderMaterial({
-      uniforms: { time: { value: 0 }, wind: { value: new THREE.Vector2() }, origin: { value: new THREE.Vector3() }, light: { value: 1 }, kmin: { value: new THREE.Vector3(-KW, 0, -KD) }, kmax: { value: new THREE.Vector3(KW, KH + .2, KD) }, scale: { value: 300 } },
-      vertexShader: `attribute float size; attribute float spd; uniform float time, scale; uniform vec2 wind; uniform vec3 origin, kmin, kmax; varying float vA;
+      uniforms: { time: { value: 0 }, windOff: { value: new THREE.Vector2() }, fallOff: { value: 0 }, swirl: { value: .3 }, density: { value: 1 }, origin: { value: new THREE.Vector3() }, light: { value: 1 }, kmin: { value: new THREE.Vector3(-KW, 0, -KD) }, kmax: { value: new THREE.Vector3(KW, KH + .2, KD) }, scale: { value: 300 } },
+      vertexShader: `attribute float size, spd, ph; uniform float time, scale, fallOff, swirl, density; uniform vec2 windOff; uniform vec3 origin, kmin, kmax; varying float vA, vRot;
         void main(){
-          vec3 p = position; float fall = time * spd * 1.1;
-          p.y = mod(p.y - fall, 16.0);
-          p.x = mod(p.x + wind.x * time * spd + sin(time * 1.3 + position.z) * .4 - origin.x + 22.0, 44.0) - 22.0 + origin.x;
-          p.z = mod(p.z + wind.y * time * spd + cos(time * 1.1 + position.x) * .4 - origin.z + 22.0, 44.0) - 22.0 + origin.z;
-          vA = 1.0; if (all(greaterThan(p, kmin)) && all(lessThan(p, kmax))) vA = 0.0; // не идёт внутри ларька
+          vec3 p = position;
+          p.y = mod(p.y - fallOff * spd, 16.0);
+          // вихри: разная траектория у каждой снежинки, усиливаются с ветром
+          vec2 sw = vec2(sin(time * (.6 + spd * .5) + ph * 40.0 + p.y * .45), cos(time * (.5 + spd * .4) + ph * 23.0 + p.y * .3)) * (.25 + swirl * 1.4);
+          p.x = mod(p.x + windOff.x * (.6 + .7 * spd) + sw.x - origin.x + 22.0, 44.0) - 22.0 + origin.x;
+          p.z = mod(p.z + windOff.y * (.6 + .7 * spd) + sw.y - origin.z + 22.0, 44.0) - 22.0 + origin.z;
+          vA = step(ph, density); if (all(greaterThan(p, kmin)) && all(lessThan(p, kmax))) vA = 0.0; // внутри ларька снега нет
+          vRot = time * (spd - 1.0) * 4.0 + ph * 6.283;
           vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
           gl_PointSize = size * scale / -mv.z; vA *= smoothstep(0.3, 1.5, -mv.z) * (1.0 - smoothstep(18.0, 22.0, -mv.z));
         }`,
-      fragmentShader: `uniform float light; varying float vA; void main(){ vec2 c = gl_PointCoord - .5; float a = smoothstep(.5, .15, length(c)) * vA; if (a < .02) discard; gl_FragColor = vec4(vec3(light), a * .9); }`,
+      fragmentShader: `uniform float light; varying float vA, vRot; void main(){
+          vec2 c = gl_PointCoord - .5; float cs = cos(vRot), sn = sin(vRot); c = mat2(cs, -sn, sn, cs) * c;
+          float r = length(c), a = atan(c.y, c.x);
+          float star = r * (1.0 - .32 * abs(cos(3.0 * a))); // шестилучевая снежинка, вращается
+          float al = smoothstep(.5, .12, star) * vA; if (al < .02) discard; gl_FragColor = vec4(vec3(light), al * .9); }`,
       transparent: true, depthWrite: false,
     });
     snowPts = new THREE.Points(g, m); snowPts.frustumCulled = false; scene.add(snowPts);
   }
 
+  // ---------- граница карты: стена бурана (визуально) + невидимая коллизия внутри ----------
+  const BOUND = { x1: -63, x2: 69, z1: -37, z2: 18.6 };
+  const stormMat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, col: { value: new THREE.Color(0xc8ced2) } },
+    vertexShader: 'varying vec2 vU; varying vec3 vW; void main(){ vU = uv; vW = (modelMatrix * vec4(position, 1.)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.); }',
+    fragmentShader: `uniform float time; uniform vec3 col; varying vec2 vU; varying vec3 vW;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 9871.3); }
+      float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
+      void main(){ vec2 q = vec2(vW.x + vW.z, vW.y) * .08; float f = n(q + vec2(time * .9, -time * .3)) * .5 + n(q * 2.3 + vec2(time * 1.7, time * .2)) * .3 + n(q * 5.0 + vec2(time * 3.1, 0.)) * .2;
+        float a = (.55 + f * .45) * smoothstep(0., .15, vU.y) * (1. - smoothstep(.85, 1., vU.y)); gl_FragColor = vec4(col * (.85 + f * .25), a); }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+  });
+  for (const [x, z, w, ry] of [[BOUND.x1 - 4, (BOUND.z1 + 30) / 2, 90, Math.PI / 2], [BOUND.x2 + 4, (BOUND.z1 + 30) / 2, 90, Math.PI / 2], [(BOUND.x1 + BOUND.x2) / 2, BOUND.z1 - 4, 150, 0], [(BOUND.x1 + BOUND.x2) / 2, 38, 150, 0]]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 45), stormMat); m.position.set(x, 18, z); m.rotation.y = ry; m.renderOrder = 5; scene.add(m);
+  }
+  let stormK = 0;
+
   // ---------- время суток, погода, сезон ----------
-  let hour = 7.5, nightK = 0, season = -1, winter = true, weather = { snow: .6, wind: .3, target: .6, windT: .3 };
+  let hour = 7.5, nightK = 0, season = -1, winter = true, weather = { snow: .6, wind: .3, target: .6, windT: .3, state: 'normal', timer: 60, fog: 0, gust: 0, ang: .3, windOff: new THREE.Vector2(), fallOff: 0 };
+  const WEATHER = { light: { snow: .28, wind: .2, fog: 0 }, normal: { snow: .65, wind: .45, fog: .15 }, blizzard: { snow: 1, wind: 1, fog: .8 } };
   const cA = new THREE.Color(), cB = new THREE.Color();
   const PAL = { dayTop: '#73858f', dayBot: '#c6c9c3', duskTop: '#3d485a', duskBot: '#c08058', nightTop: '#060a10', nightBot: '#171d26' };
   function setClock(h) {
@@ -982,12 +1073,12 @@ export function createWorld(ctx) {
     const over = weather.snow * .35; topC.lerp(cB.set('#8a9096'), over * dayAmt); bot.lerp(cB.set('#a8acae'), over * dayAmt);
     skyMat.uniforms.top.value.copy(topC); skyMat.uniforms.bot.value.copy(bot); skyMat.uniforms.cloud.value = .5 + weather.snow * .5;
     skyMat.uniforms.sunDir.value.copy(sun.position).sub(sun.target.position).normalize(); skyMat.uniforms.sunCol.value.set(el > -2 ? (dusk > .3 ? '#ff9a55' : '#fff1dc') : '#000000').multiplyScalar(1 - over);
-    scene.fog.color.copy(bot); scene.fog.near = 8 + (1 - weather.snow) * 25; scene.fog.far = Q.draw * (1 - weather.snow * .45);
+    scene.fog.color.copy(bot); scene.fog.near = lerp(8 + (1 - weather.snow) * 25, 1, Math.max(stormK, weather.fog * .7)); scene.fog.far = lerp(Q.draw * (1 - weather.snow * .45) * (1 - weather.fog * .65), 9, stormK);
     sun.color.set(dusk > .3 ? '#ffa565' : '#fff1dc'); sun.intensity = el > 0 ? (2.6 * clamp(el / 15, 0, 1)) * (1 - over * .8) : 0;
     hemi.intensity = .14 + dayAmt * (1.05 - over * .2); hemi.color.copy(topC).lerp(cA.set('#ffffff'), .5); hemi.groundColor.set(winter ? '#9aa0a6' : '#4a4636').multiplyScalar(.5 + dayAmt * .5);
     if (dayAmt < .2) { hemi.color.lerp(cA.set('#5a6a8a'), .6); }
     post.uniforms.exposure.value = 1.05 + nightK * .45;
-    winMats.forEach(m => m.emissiveIntensity = nightK * 1.4);
+    winU.night.value = nightK; winU.time.value = tAll;
     MAT.lampHead.emissiveIntensity = nightK > .35 ? 4 : 0;
     streetLights.forEach(l => l.intensity = nightK > .35 ? 70 * nightK : 0);
     sign.material.emissiveIntensity = nightK * .9; exS.material.emissiveIntensity = nightK * 1.2;
@@ -1023,7 +1114,7 @@ export function createWorld(ctx) {
   // ---------- взаимодействия ----------
   function lookingAtBox(b, maxD) { if (!b) return false; ray.setFromCamera(new THREE.Vector2(0, 0), camera); const hp = ray.ray.intersectBox(b, hitP); return !!hp && hp.distanceTo(camera.position) < maxD; }
   function lookingAt(objs, maxD) { ray.setFromCamera(new THREE.Vector2(0, 0), camera); ray.far = maxD; const h = ray.intersectObjects(objs, true)[0]; return h ? h : null; }
-  const nearMarket = () => !inKiosk() && Math.hypot(P.x - MARKET.x, P.z - MARKET.z) < 15;
+  const nearMarket = () => false; // рынка больше нет: товар — заказом по телефону
   const nearBooth = () => !inKiosk() && Math.hypot(P.x - BOOTH.x, P.z - BOOTH.z - 1.6) < 2.6;
   function action() {
     const S = ctx.getS(); if (!S || fadeBusy || ctx.cardOpen() || P.stun > 0 || life.notepadState !== 'rest' || life.calling) return null;
@@ -1056,7 +1147,7 @@ export function createWorld(ctx) {
     const ext = env2.extraAction && env2.extraAction(); if (ext) return ext;
     return null;
   }
-  const env2 = {};
+  const env2 = { extraAction: () => env2Extra && env2Extra() };
   function talkTo(p) {
     p.state = 'talking'; p.timer = 6; p.h.setExpr('talk'); p.path = [];
     const lines = lineFor[p.kind] || lineFor.worker; const L = p.h.L;
@@ -1080,7 +1171,13 @@ export function createWorld(ctx) {
     setSeason();
     // погода
     weather.snow += (weather.target - weather.snow) * dt * .05; weather.wind += (weather.windT - weather.wind) * dt * .1;
-    if (Math.random() < dt * .01) { weather.target = winter ? pick([0, .3, .6, 1]) : 0; weather.windT = R(.1, 1); }
+    weather.timer -= dt;
+    if (weather.timer <= 0 || (weather.state === 'blizzard' && nightK < .5)) { weather.timer = R(70, 160); weather.state = nightK > .6 ? pick(['normal', 'light', 'blizzard', 'blizzard']) : pick(['normal', 'light', 'normal']); }
+    { const W_ = WEATHER[weather.state]; weather.target = winter ? W_.snow : 0; weather.windT = W_.wind; weather.fog += ((winter ? W_.fog : 0) - weather.fog) * dt * .04; }
+    if (Math.random() < dt * .12 * (.3 + weather.wind)) { weather.gust = R(.4, 1.4) * (.4 + weather.wind); weather.ang += R(-.8, .8); }
+    weather.gust *= Math.pow(.6, dt); weather.ang += Math.sin(tAll * .05) * dt * .05;
+    // буран у границы карты
+    { const ed = Math.min(P.x - BOUND.x1, BOUND.x2 - P.x, P.z - BOUND.z1); stormK = clamp(1 - ed / 14, 0, 1); }
     // игрок
     P.stun = Math.max(0, P.stun - dt);
     const moveOK = canMove();
@@ -1103,7 +1200,7 @@ export function createWorld(ctx) {
       const ox = P.x, oz = P.z;
       const nx = P.x + P.vx * dt; if (!hitAny(nx, P.z)) P.x = nx; else P.vx = 0;
       const nz = P.z + P.vz * dt; if (!hitAny(P.x, nz)) P.z = nz; else P.vz = 0;
-      P.x = clamp(P.x, -72, 75); P.z = clamp(P.z, -44.5, 18.6);
+      P.x = clamp(P.x, BOUND.x1, BOUND.x2); P.z = clamp(P.z, BOUND.z1, BOUND.z2); // невидимая граница внутри бурана
       moved = Math.hypot(P.x - ox, P.z - oz);
     } else { P.vx = P.vz = 0; P.x += (STOOL.x - P.x) * Math.min(1, dt * 6); P.z += (STOOL.z - P.z) * Math.min(1, dt * 6); }
     // шаги — по фазе шага
@@ -1141,16 +1238,17 @@ export function createWorld(ctx) {
     // наведение ружья
     if (weapon.drawn) { const p = aimedPerson(weapon.aiming ? 35 : 12); if (p && (weapon.aiming || Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z) < 6)) threaten(p); }
     weapon.update(dt, { moving: Math.min(1, spd / 2), sprint: run, aspect: camera.aspect });
-    life.tick(dt); wallGunTick(dt);
-    windVec.set(Math.cos(tAll * .05) * weather.wind * 2, Math.sin(tAll * .05) * weather.wind * 2);
+    life.tick(dt); wallGunTick(dt); playgroundTick(dt);
+    { const wsp = weather.wind * 1.6 + weather.gust * 2.2 + stormK * 3; windVec.set(Math.cos(weather.ang) * wsp, Math.sin(weather.ang) * wsp); weather.windOff.addScaledVector(windVec, dt); weather.fallOff += dt * (1.1 + weather.gust * .4 + stormK); }
+    stormMat.uniforms.time.value = tAll; stormMat.uniforms.col.value.copy(scene.fog.color);
     weapon.cam.fov = camera.fov; weapon.cam.updateProjectionMatrix();
     // снег
-    if (snowPts) { const u = snowPts.material.uniforms; u.time.value = tAll; u.origin.value.copy(camera.position); u.wind.value.set(weather.wind * 2.2, weather.wind * .6); snowPts.visible = winter && weather.snow > .05; u.scale.value = window.innerHeight * DPR * .035; snowPts.material.opacity = weather.snow; }
+    if (snowPts) { const u = snowPts.material.uniforms; u.time.value = tAll; u.origin.value.copy(camera.position); u.windOff.value.copy(weather.windOff); u.fallOff.value = weather.fallOff; u.swirl.value = weather.wind * .6 + weather.gust; u.density.value = Math.max(weather.snow, stormK); snowPts.visible = (winter && weather.snow > .03) || stormK > .05; u.scale.value = window.innerHeight * DPR * .035; }
     sky.position.copy(camera.position); skyMat.uniforms.t.value = tAll;
     bulbLight.intensity *= 1 + Math.sin(tAll * 31) * .01;
     bulbLight.castShadow = renderer.shadowMap.enabled && Q.light >= 2 && inside;
     // звук
-    ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: winter ? weather.wind : weather.wind * .4, night: nightK > .6 });
+    ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: Math.min(1.5, (winter ? weather.wind : weather.wind * .4) + weather.gust * .5 + stormK), night: nightK > .6 });
     // контекстная кнопка
     actT -= dt; if (actT <= 0) { actT = .15; curAct = action(); const l = curAct ? curAct.label : ''; if (l !== lastActLabel) { lastActLabel = l; ctx.onCtl(); } }
     // рендер
