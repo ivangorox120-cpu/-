@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fd_bg">#FF0B0E0C</color>
+    <color name="fd_bg2">#FF141A16</color>
+    <color name="fd_fg">#FF8AFF80</color>
+
+    <style name="FdTheme" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/fd_bg</item>
+        <item name="android:colorPrimary">@color/fd_fg</item>
+        <item name="android:colorAccent">@color/fd_fg</item>
+        <item name="android:colorBackground">@color/fd_bg</item>
+        <item name="android:alertDialogTheme">@style/FdDialog</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <style name="FdSplashTheme" parent="FdTheme">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/fd_logo</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+
+    <style name="FdDialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">@color/fd_fg</item>
+        <item name="android:colorBackground">@color/fd_bg2</item>
+        <item name="android:textColorPrimary">@color/fd_fg</item>
+        <item name="android:textColor">@color/fd_fg</item>
+        <item name="android:fontFamily">@font/fallout</item>
+    </style>
+</resources>
