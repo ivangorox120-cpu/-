@@ -249,18 +249,28 @@ export function splitStaticModel(geo) { return splitParts([{ geo, legsOK: true }
 
 // набор «Зимние люди»: 10 персонажей из отдельных частей; цвет материала запекаем в вершины
 export const PEOPLE_FEMALE = ['Anna', 'Galina', 'Elena', 'Irina'];
-export function preparePeople(sceneRoot) {
+// сезонная одежда из слоёв модели: 0 брюки, 1 обувь, 2 свитер/рубашка, 3–4 пальто и отделка, 5 пояс, 6 кожа, 7 лицо, 8 волосы, 9 шапка, 10 помпон, 11–12 шарф
+const OUTFIT = {
+  summer: { skip: [9, 10, 11, 12], shirt: ['#e8e4dc', '#9fc0d8', '#d8c8a0', '#c8d8c0', '#e0b8b0', '#f0f0ea', '#7a96b0'], pants: ['#4a5260', '#8a7a62', '#3a3f48', '#6a6f78', '#2e3440'], shoes: ['#3a2a1e', '#1e1a18', '#5a4632'] },
+  mid: { skip: [10], coat: ['#6b5a44', '#4a4f55', '#7a3b2e', '#3c4a3a', '#8a7a5e', '#2f3640', '#5a4a3a'] },
+};
+const hstr = s => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+export function preparePeople(sceneRoot, outfit = 'winter') {
   const out = [];
   for (const person of sceneRoot.children) {
     const prims = [];
     person.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(person.matrixWorld).invert();
+    const H = hstr(person.name), O = OUTFIT[outfit]; let k = -1;
+    const skip = new Set(O ? O.skip : []); if (outfit === 'mid') { if (H % 2) skip.add(9); if (H % 3 === 0) { skip.add(11); skip.add(12); } }
     person.traverse(m => {
-      if (!m.isMesh) return;
+      if (!m.isMesh) return; k++; if (skip.has(k)) return;
       let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
       g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
       if (!g.attributes.normal) g.computeVertexNormals();
-      const c = m.material.color || new THREE.Color(1, 1, 1), n = g.attributes.position.count, C = new Float32Array(n * 3);
+      let c = (m.material.color || new THREE.Color(1, 1, 1)).clone(); const n = g.attributes.position.count, C = new Float32Array(n * 3);
+      if (outfit === 'summer') { if (k === 2 || k === 3) c.set(O.shirt[H % O.shirt.length]); else if (k === 4) c.set(O.shirt[H % O.shirt.length]).multiplyScalar(.85); else if (k === 0) c.set(O.pants[(H >> 3) % O.pants.length]); else if (k === 1) c.set(O.shoes[(H >> 5) % O.shoes.length]); }
+      else if (outfit === 'mid' && (k === 3 || k === 4)) { c.set(O.coat[H % O.coat.length]); if (k === 4) c.multiplyScalar(.8); }
       for (let i = 0; i < n; i++) { C[i * 3] = c.r; C[i * 3 + 1] = c.g; C[i * 3 + 2] = c.b; }
       g.setAttribute('color', new THREE.BufferAttribute(C, 3));
       g.computeBoundingBox();
@@ -268,7 +278,7 @@ export function preparePeople(sceneRoot) {
     });
     if (!prims.length) continue;
     const parts = splitParts(prims, PEOPLE_CFG);
-    out.push({ name: person.name, female: PEOPLE_FEMALE.includes(person.name), parts });
+    out.push({ name: person.name, female: PEOPLE_FEMALE.includes(person.name), parts, outfit });
   }
   return out;
 }
@@ -322,6 +332,7 @@ export class Human {
       if (a === 'scared') { lean -= .15; T.shL.x = -1.4; T.shR.x = -1.4; T.elL.x = -1.6; T.elR.x = -1.6; T.shL.z = -.25; T.shR.z = .25; T.head.x = .25; T.thL.x = .15; T.knL.x = .3; }
       if (a === 'pocket') { T.shL.x = .15; T.shR.x = .15; T.elL.x = -.6; T.elR.x = -.6; T.shL.z = .25; T.shR.z = -.25; }
     }
+    if (this.umbrella && a !== 'handsUp' && a !== 'scared') { T.shR.x = -.42; T.shR.z = -.12; T.elR.x = -1.45; }
     if (a !== 'handsUp' && a !== 'scared') { T.neck.y = this.lookYaw * .4; T.head.y = this.lookYaw * .6; T.head.x += this.lookPitch; }
     T.spine.x += lean;
     // смешивание

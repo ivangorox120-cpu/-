@@ -702,7 +702,8 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function prepMats(root) { root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) if (m[k]) m[k].anisotropy = Q.aniso; }); } }); }
   function placeModel(g, x, z, rotY, scale = 1) { const o = g.scene.clone(true); o.userData.tag = g.__name || "model"; o.position.set(x, 0, z); o.rotation.y = rotY; o.scale.setScalar(scale); scene.add(o); prepMats(o); o.updateMatrixWorld(true); return o; }
   function colFromBox(o, shrink = 0) { const b = new THREE.Box3().setFromObject(o); return addCol(b.min.x + shrink, b.max.x - shrink, b.min.z + shrink, b.max.z - shrink); }
-  let staticWorker = null, peopleModels = [];
+  let staticWorker = null, peopleModels = []; const peopleByOutfit = {};
+  const outfitNow = () => { const m = season < 0 ? 0 : season; return (m >= 10 || m <= 2) ? 'winter' : (m >= 5 && m <= 7) ? 'summer' : 'mid'; };
   loading.then(() => {
     // машины: заменить процедурные на модели
     if (ASSETS.vaz2101 || ASSETS.vaz2107) for (const g of carGroups) { const keep = { ...g.userData }; for (const ch of g.children.slice()) g.remove(ch); g.userData = { color: keep.color, parked: keep.parked, dyn: true }; realCar(g); }
@@ -745,7 +746,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // радио на полке
     if (ASSETS.radio) { const o = placeModel(ASSETS.radio, -KW + .17, -.62, Math.PI / 2, 1.0); o.position.y = 1.315; radioObj = o; radioBox = new THREE.Box3().setFromObject(o).expandByScalar(.03); }
     // модель рабочего — один из вариантов NPC
-    if (ASSETS.people) { try { peopleModels = preparePeople(ASSETS.people.scene); } catch (e) { console.warn('Модели людей', e); } }
+    if (ASSETS.people) { try { for (const o of ['winter', 'mid', 'summer']) peopleByOutfit[o] = preparePeople(ASSETS.people.scene, o); peopleModels = peopleByOutfit.winter; } catch (e) { console.warn('Модели людей', e); } }
     if (ASSETS.steelworker) { const m = meshesOf(ASSETS.steelworker)[0]; if (m) staticWorker = splitStaticModel(m.geometry.clone().applyMatrix4(m.matrixWorld)); }
     fixNodes();
     // --- предметы интерьера из присланных моделей ---
@@ -1018,6 +1019,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (kind !== 'police') {
       if (staticWorker && kind === 'worker' && Math.random() < .2) model = staticWorker;
       else if (peopleModels.length) {
+        const peopleModels = peopleByOutfit[outfitNow()] || peopleByOutfit.winter; // одежда по сезону
         const pool = peopleModels.filter(m => m.female === !look.male);
         const used = new Set(people.map(q => q.modelName));
         const fresh = (pool.length ? pool : peopleModels).filter(m => !used.has(m.name));
@@ -1168,12 +1170,20 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (const k in NODES) { const n = NODES[k]; if (!npcBlocked(n.x, n.z)) continue;
       for (let r = .3; r < 4; r += .3) { let done = false; for (let a = 0; a < 6.28; a += .5) { const x = n.x + Math.cos(a) * r, z = n.z + Math.sin(a) * r; if (!npcBlocked(x, z)) { n.x = x; n.z = z; done = true; break; } } if (done) break; } }
   }
+  const umbrellaGeo = (() => { const g = new THREE.ConeGeometry(.52, .26, 8, 1, true); g.translate(0, .9, 0); return g; })(), umbrellaStick = new THREE.CylinderGeometry(.008, .008, .9, 5); umbrellaStick.translate(0, .45, 0);
+  const umbrellaMats = ['#1a1a1e', '#5a1e22', '#2a3a5a', '#3a4a32', '#6a5a3a'].map(c => std({ color: c, roughness: .6, side: THREE.DoubleSide }));
+  function umbrellaTick(p) { // прохожие раскрывают зонт в дождь (не зимой)
+    const want = !winter && weather.rain > .3 && p.role !== 'vendor' && p.role !== 'marat' && !p.dead && (p.umbSeed ??= Math.random()) < .75;
+    if (want && !p.umb && p.h.R.elR) { const g = new THREE.Group(); g.add(new THREE.Mesh(umbrellaGeo, umbrellaMats[Math.floor(p.umbSeed * 7) % umbrellaMats.length]), new THREE.Mesh(umbrellaStick, MAT.dark)); g.position.set(0, -.26, .02); g.rotation.x = 1.45; g.children[0].castShadow = true; p.h.R.elR.add(g); p.umb = g; p.h.umbrella = true; }
+    else if (!want && p.umb) { p.umb.parent.remove(p.umb); p.umb = null; p.h.umbrella = false; }
+  }
   function peopleTick(dt) {
     const camPos = camera.position;
     if (marat) { const S3 = ctx.getS(), away = !!(S3 && S3.phase === 'night' && hour > 23); marat.hidden = away; marat.h.obj.visible = !away; const d = Math.hypot(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z);
       if (marat.state !== 'scared') { marat.anim = d < 5 ? (marat.talking ? 'talk' : 'idle') : 'smoke'; if (d < 7) faceTo(marat, Math.atan2(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z), dt); else faceTo(marat, Math.PI * .6, dt); } }
     for (const p of people.slice()) {
       if (p.dead) { deadTick(p, dt); continue; }
+      umbrellaTick(p);
       if (p.role === 'cust') custTick(p, dt);
       let dist = 0;
       if (p.state === 'walk' && p.path.length) {
@@ -1647,6 +1657,6 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
     setRetro(v) { post.uniforms.retro.value = v ? 1 : 0; },
-    debug: { TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
+    debug: { spawnPed: () => { const p = newPerson(pick(["worker", "youth", "neighbor", "babka"]), "ped", "s5"); return p; }, TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
   };
 }
