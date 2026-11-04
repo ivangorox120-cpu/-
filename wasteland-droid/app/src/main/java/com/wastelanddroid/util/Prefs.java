@@ -18,6 +18,9 @@ public final class Prefs {
     public static final String USE_FOSE = "use_fose";
     /** Экранные кнопки: on — всегда, auto — скрывать при подключённом геймпаде, off — полностью выключены. */
     public static final String OVERLAY_MODE = "overlay_mode";
+    /** Сразу запускать последнюю игру после заставки. */
+    public static final String AUTOSTART = "autostart";
+    public static final String LAST_GAME = "last_game";
 
     private Prefs() {}
 

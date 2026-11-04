@@ -25,6 +25,8 @@ public final class GamepadInput implements Choreographer.FrameCallback {
     private float lx, ly, rx, ry;
     private boolean w, a, s, d;
     private boolean running;
+    /** Цикл кадров крутится только пока отклонён правый стик — в остальное время ноль нагрузки. */
+    private boolean looping;
 
     public GamepadInput(InputBridge input, GamepadMapping map) {
         this.input = input;
@@ -44,15 +46,21 @@ public final class GamepadInput implements Choreographer.FrameCallback {
     }
 
     public void start() {
-        if (running) return;
         running = true;
-        Choreographer.getInstance().postFrameCallback(this);
     }
 
     public void stop() {
         running = false;
-        Choreographer.getInstance().removeFrameCallback(this);
+        if (looping) Choreographer.getInstance().removeFrameCallback(this);
+        looping = false;
         releaseAll();
+    }
+
+    private void ensureLooping() {
+        if (running && !looping && (rx != 0 || ry != 0)) {
+            looping = true;
+            Choreographer.getInstance().postFrameCallback(this);
+        }
     }
 
     /** @return true, если событие обработано. */
@@ -91,6 +99,7 @@ public final class GamepadInput implements Choreographer.FrameCallback {
         hat(GamepadMapping.PAD_UP, hy < -0.5f);
         hat(GamepadMapping.PAD_DOWN, hy > 0.5f);
         updateMove();
+        ensureLooping();
         return true;
     }
 
@@ -143,8 +152,8 @@ public final class GamepadInput implements Choreographer.FrameCallback {
 
     @Override
     public void doFrame(long frameTimeNanos) {
-        if (!running) return;
-        if ((rx != 0 || ry != 0) && input != null) {
+        if (!running || (rx == 0 && ry == 0)) { looping = false; return; }
+        if (input != null) {
             // Кубическая кривая: точность при малом отклонении, быстрый разворот при полном.
             float k = LOOK_PX_PER_FRAME * map.lookSpeed;
             float cx = rx * rx * rx * 0.6f + rx * 0.4f;

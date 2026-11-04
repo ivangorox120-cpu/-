@@ -47,17 +47,36 @@ public final class Ui {
         return Typeface.create(Typeface.MONOSPACE, bold ? Typeface.BOLD : Typeface.NORMAL);
     }
 
-    /** Полноэкранный режим, вырез камеры используется (игра растягивается на весь экран). */
+    /**
+     * Полноэкранный режим, вырез камеры используется (игра растягивается на весь экран).
+     *
+     * Важно: на Android 11 Window.getInsetsController() падает с NPE, если окно ещё не создано
+     * (вызов из onCreate до setContentView). Поэтому сначала принудительно создаём DecorView
+     * и берём контроллер у него; любые сбои здесь не должны ронять приложение.
+     */
+    @SuppressWarnings("deprecation")
     public static void immersive(Activity a) {
-        a.getWindow().getAttributes().layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-        a.getWindow().setDecorFitsSystemWindows(false);
-        a.getWindow().setStatusBarColor(Color.TRANSPARENT);
-        a.getWindow().setNavigationBarColor(Color.TRANSPARENT);
-        WindowInsetsController c = a.getWindow().getInsetsController();
-        if (c != null) {
-            c.hide(WindowInsets.Type.systemBars());
-            c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        try {
+            android.view.Window w = a.getWindow();
+            View decor = w.getDecorView(); // создаёт окно, если его ещё нет
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(lp);
+            w.setStatusBarColor(Color.TRANSPARENT);
+            w.setNavigationBarColor(Color.TRANSPARENT);
+            // Совместимый способ — работает на всех версиях, включая прошивки с нестандартным окном.
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+            w.setDecorFitsSystemWindows(false);
+            WindowInsetsController c = decor.getWindowInsetsController();
+            if (c != null) {
+                c.hide(WindowInsets.Type.systemBars());
+                c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } catch (RuntimeException e) {
+            android.util.Log.w("Ui", "immersive mode failed", e);
         }
     }
 
@@ -167,6 +186,7 @@ public final class Ui {
         b.setMinHeight(dp(c, 44));
         b.setPadding(dp(c, 16), dp(c, 8), dp(c, 16), dp(c, 8));
         if (l != null) b.setOnClickListener(l);
+        Anim.pressable(b);
         return b;
     }
 

@@ -32,6 +32,7 @@ public final class InputBridge {
     public InputBridge() {
         thread = new Thread(this::loop, "input-bridge");
         thread.setPriority(Thread.MAX_PRIORITY);
+        thread.setDaemon(true);
         thread.start();
     }
 

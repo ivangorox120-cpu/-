@@ -21,6 +21,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+      - name: Tests (launcher screens must open without crashing)
+        run: gradle -p wasteland-droid testReleaseUnitTest --no-daemon --stacktrace
+        timeout-minutes: 15
       - name: Build APK
         run: gradle -p wasteland-droid assembleRelease --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
@@ -32,15 +35,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="wasteland-droid-${{ github.run_number }}"
-          cp wasteland-droid/app/build/outputs/apk/release/app-release.apk wasteland-droid.apk
-          gh release create "$TAG" wasteland-droid.apk \
+          cp wasteland-droid/app/build/outputs/apk/release/app-release.apk fallout-droid.apk
+          gh release create "$TAG" fallout-droid.apk \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
-            --title "Wasteland Droid — сборка #${{ github.run_number }}" \
+            --title "Fallout Droid — сборка #${{ github.run_number }}" \
             --prerelease \
-            --notes "Скачайте \`wasteland-droid.apk\` и установите (разрешите установку из неизвестных источников). Android 11+, arm64.
+            --notes "Скачайте \`fallout-droid.apk\` и установите (разрешите установку из неизвестных источников). Android 11+, arm64.
 
-          Предварительная сборка: лаунчер, менеджер модов, настройки графики, управление и геймпады работают; вывод изображения игры (дисплейный сервер) ещё в разработке.
+          Предварительная сборка: заставка, лаунчер, сохранения, менеджер модов, настройки графики, управление и геймпады работают; вывод изображения игры (дисплейный сервер) и рантайм ещё в разработке — игра пока не запускается.
 
           Telegram: https://t.me/rommy_apps
 

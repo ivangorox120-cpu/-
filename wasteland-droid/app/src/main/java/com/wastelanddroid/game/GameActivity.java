@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.content.Intent;
 import android.hardware.input.InputManager;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -117,8 +118,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 .setTitle("Не удалось запустить")
                 .setMessage(msg)
                 .setCancelable(false)
-                .setPositiveButton("Назад", (d, w) -> finish())
-                .setNeutralButton("Помощь в Telegram", (d, w) -> { Links.openTelegram(this); finish(); })
+                .setPositiveButton("В меню", (d, w) -> backToLauncher())
+                .setNeutralButton("Помощь в Telegram", (d, w) -> { Links.openTelegram(this); backToLauncher(); })
                 .show());
     }
 
@@ -181,13 +182,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override
     public void onExited(int code) {
-        if (code == 0) { finish(); return; }
+        if (code == 0) { backToLauncher(); return; }
         new AlertDialog.Builder(this)
                 .setTitle("Игра завершилась с ошибкой (" + code + ")")
                 .setMessage("Сохранения скопированы перед запуском. Журналы: Android/data/com.wastelanddroid/files/logs")
                 .setPositiveButton("Перезапустить", (d, w) -> recreate())
-                .setNegativeButton("Выход", (d, w) -> finish())
-                .setNeutralButton("Сообщить в Telegram", (d, w) -> { Links.openTelegram(this); finish(); })
+                .setNegativeButton("В меню", (d, w) -> backToLauncher())
+                .setNeutralButton("Сообщить в Telegram", (d, w) -> { Links.openTelegram(this); backToLauncher(); })
                 .setCancelable(false)
                 .show();
     }
@@ -201,6 +202,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 .setPositiveButton("Ждать", null)
                 .setNegativeButton("Завершить", (d, w) -> game.kill())
                 .show();
+    }
+
+    /** Возврат в лаунчер: при автозапуске из заставки лаунчера в стеке нет — открываем его. */
+    private void backToLauncher() {
+        if (isTaskRoot()) {
+            startActivity(new Intent(this, com.wastelanddroid.MainActivity.class));
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        }
+        finish();
     }
 
     private void updateOverlayVisibility() {

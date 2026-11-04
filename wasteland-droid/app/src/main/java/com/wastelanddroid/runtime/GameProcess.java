@@ -37,6 +37,7 @@ public final class GameProcess {
             pid = -1;
             main.post(() -> l.onExited(code));
         }, "game-wait");
+        waiter.setDaemon(true);
         waiter.start();
         if (watchdogEnabled) {
             watchdog = new Thread(() -> watch(p, l), "game-watchdog");

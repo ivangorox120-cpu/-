@@ -21,7 +21,12 @@ public final class Performance {
 
     public static void apply(Activity a) {
         WindowManager.LayoutParams lp = a.getWindow().getAttributes();
-        Display d = a.getDisplay();
+        Display d;
+        try {
+            d = a.getDisplay();
+        } catch (RuntimeException e) {
+            d = a.getWindowManager().getDefaultDisplay(); // старые/нестандартные прошивки
+        }
         if (d != null) {
             Display.Mode cur = d.getMode();
             Display.Mode best = null;
@@ -37,9 +42,11 @@ public final class Performance {
         lp.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
         a.getWindow().setAttributes(lp);
 
-        PowerManager pm = (PowerManager) a.getSystemService(Activity.POWER_SERVICE);
-        // Устойчивый режим: чуть ниже пик, но без троттлинга через 10 минут игры.
-        if (pm != null && pm.isSustainedPerformanceModeSupported()) a.getWindow().setSustainedPerformanceMode(true);
+        try {
+            PowerManager pm = (PowerManager) a.getSystemService(Activity.POWER_SERVICE);
+            // Устойчивый режим: чуть ниже пик, но без троттлинга через 10 минут игры.
+            if (pm != null && pm.isSustainedPerformanceModeSupported()) a.getWindow().setSustainedPerformanceMode(true);
+        } catch (RuntimeException ignored) { }
         Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY);
     }
 
