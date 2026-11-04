@@ -61,7 +61,7 @@ def copySnake = tasks.register('copySnake', Copy) {
     into "$buildDir/snakeAssets"
 }
 def copyLarek = tasks.register('copyLarek', Copy) {
-    from(rootProject.file('../larek')) { include 'index.html', 'three.min.js' }
+    from(rootProject.file('../larek')) { include 'index.html', 'three.min.js', 'models.js' }
     into "$buildDir/larekAssets"
 }
 preBuild.dependsOn copySnake, copyLarek

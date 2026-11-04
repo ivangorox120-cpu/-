@@ -166,6 +166,7 @@
   <div id="toast"></div>
 </div>
 <script src="three.min.js"></script>
+<script src="models.js"></script>
 <script>
 (() => {
 'use strict';
@@ -1763,7 +1764,46 @@ const W = (() => {
   };
   const skinM = std({ color: 0xd2a07e, roughness: .7 }), eyeM = std({ color: 0x111111 });
   const limbGeo = new THREE.CapsuleGeometry(.07, .62, 4, 8), armGeo = new THREE.CapsuleGeometry(.055, .5, 4, 8), torsoGeo = new THREE.CapsuleGeometry(.19, .42, 4, 10), headGeo = new THREE.SphereGeometry(.115, 16, 12);
+  // ---- модель персонажа из GLB (статичный меш с цветами в вершинах) ----
+  function parseGLB(b64) {
+    const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), dv = new DataView(bin.buffer);
+    if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('not glb');
+    const jl = dv.getUint32(12, true), json = JSON.parse(new TextDecoder().decode(bin.subarray(20, 20 + jl)));
+    const binStart = 20 + jl + 8;
+    const N = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }, CT = { 5126: [Float32Array, 4], 5125: [Uint32Array, 4], 5123: [Uint16Array, 2], 5121: [Uint8Array, 1] };
+    const acc = i => {
+      const a = json.accessors[i], bv = json.bufferViews[a.bufferView], n = N[a.type], [Arr, sz] = CT[a.componentType];
+      if (bv.byteStride && bv.byteStride !== n * sz) throw new Error('interleaved glb');
+      const st = binStart + (bv.byteOffset || 0) + (a.byteOffset || 0);
+      return new THREE.BufferAttribute(new Arr(bin.buffer.slice(st, st + a.count * n * sz)), n, !!a.normalized || (Arr !== Float32Array && a.type !== 'SCALAR'));
+    };
+    const geos = [];
+    for (const m of json.meshes) for (const pr of m.primitives) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', acc(pr.attributes.POSITION));
+      if (pr.attributes.NORMAL != null) g.setAttribute('normal', acc(pr.attributes.NORMAL)); else g.computeVertexNormals();
+      if (pr.attributes.COLOR_0 != null) g.setAttribute('color', acc(pr.attributes.COLOR_0));
+      if (pr.indices != null) g.setIndex(acc(pr.indices));
+      geos.push(g);
+    }
+    return geos;
+  }
+  let WORKER = null;
+  try {
+    if (window.LAREK_MODELS && LAREK_MODELS.worker) {
+      const geos = parseGLB(LAREK_MODELS.worker);
+      WORKER = { geos, mat: new THREE.MeshStandardMaterial({ vertexColors: geos.some(g => g.getAttribute('color')), roughness: .9, metalness: 0 }) };
+    }
+  } catch (e) { console.warn('Модель персонажа не загрузилась, рисую простых человечков', e); }
+  function npcModel(kind) {
+    const g = new THREE.Group(), inner = new THREE.Group(); g.add(inner);
+    for (const geo of WORKER.geos) { const m = new THREE.Mesh(geo, WORKER.mat); m.castShadow = true; m.receiveShadow = true; inner.add(m); }
+    if (kind === 'school') g.scale.setScalar(.84);
+    g.userData = { model: true, inner, ph: R(0, 6), kind };
+    scene.add(g); return g;
+  }
   function npc(kind) {
+    if (WORKER) return npcModel(kind);
     const L = LOOK3[kind] || LOOK3.worker;
     const g = new THREE.Group(), inner = new THREE.Group(); g.add(inner);
     const bodyM = std({ color: L.body, roughness: kind === 'racket' || kind === 'student' ? .45 : .85 }), pantsM = std({ color: L.pants });
@@ -1794,6 +1834,12 @@ const W = (() => {
   }
   function animNPC(n, dt, moving, speed = 1) {
     const u = n.userData;
+    if (u.model) { // у модели нет скелета — шаг изображаем покачиванием
+      const inn = u.inner;
+      if (moving) { u.ph += dt * 7.5 * speed; inn.position.y = Math.abs(Math.sin(u.ph)) * .045; inn.rotation.z = Math.sin(u.ph) * .05; inn.rotation.x = .05; }
+      else { u.ph += dt; inn.position.y *= .8; inn.rotation.z *= .85; inn.rotation.x *= .85; inn.scale.y = 1 + Math.sin(u.ph * 2) * .006; }
+      return;
+    }
     if (moving) { u.ph += dt * 7.5 * speed; const s = Math.sin(u.ph); u.legs[0].rotation.x = s * .55; u.legs[1].rotation.x = -s * .55; u.arms[0].rotation.x = -s * .45; u.arms[1].rotation.x = s * .45; n.children[0].position.y = Math.abs(Math.cos(u.ph)) * .03; }
     else { u.ph += dt; u.legs.forEach(l => l.rotation.x *= .85); u.arms[0].rotation.x = Math.sin(u.ph * 1.5) * .04; u.arms[1].rotation.x = -Math.sin(u.ph * 1.5) * .04; n.children[0].position.y = Math.sin(u.ph * 2) * .006; }
   }
