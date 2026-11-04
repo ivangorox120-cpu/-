@@ -33,7 +33,15 @@ jobs:
         run: |
           mkdir -p dist/snake-boom dist/larek
           cp index.html README.md dist/snake-boom/
-          cp larek/index.html dist/larek/
+          cp larek/index.html larek/three.min.js larek/THREE-LICENSE.txt dist/larek/
+          # однофайловая версия для браузера: three.min.js встраивается прямо в страницу
+          python3 - <<'PY'
+          html = open('larek/index.html', encoding='utf-8').read()
+          lib = open('larek/three.min.js', encoding='utf-8').read()
+          tag = '<script src="three.min.js"></script>'
+          assert tag in html
+          open('dist/larek.html', 'w', encoding='utf-8').write(html.replace(tag, '<script>' + lib + '</script>'))
+          PY
           cp android/app/build/outputs/apk/snake/release/app-snake-release.apk dist/snake-boom.apk
           cp android/app/build/outputs/apk/larek/release/app-larek-release.apk dist/larek.apk
           cd dist && zip -r snake-boom.zip snake-boom && zip -r larek.zip larek
@@ -67,7 +75,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${{ github.run_number }}"
-          cp dist/larek/index.html dist/larek.html
           gh release create "$TAG" dist/snake-boom.apk dist/snake-boom.zip dist/snake-boom/index.html dist/larek.apk dist/larek.zip dist/larek.html \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \

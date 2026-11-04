@@ -27,7 +27,7 @@ android {
             dimension 'game'
             applicationId 'com.larek.game'
             resValue 'string', 'app_name', 'Ларёк'
-            manifestPlaceholders = [orientation: 'portrait'] // бизнес-экраны вертикальные
+            manifestPlaceholders = [orientation: 'unspecified'] // 3D-город удобнее держать горизонтально
         }
     }
 
@@ -61,7 +61,7 @@ def copySnake = tasks.register('copySnake', Copy) {
     into "$buildDir/snakeAssets"
 }
 def copyLarek = tasks.register('copyLarek', Copy) {
-    from rootProject.file('../larek/index.html')
+    from(rootProject.file('../larek')) { include 'index.html', 'three.min.js' }
     into "$buildDir/larekAssets"
 }
 preBuild.dependsOn copySnake, copyLarek
