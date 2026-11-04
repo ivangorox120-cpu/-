@@ -666,6 +666,26 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const ASSETS = {};
   let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
+  // детализация фасадов панелек: фактура бетона в мировых координатах (без растяжения по UV), потёки от швов и подоконников, сырость и грязь у цоколя
+  const facadeTex = (() => { const t = TL.load('assets/tex/pbr/concrete_col.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return regTex(t); })();
+  function facadeDetail(m) {
+    const prev = m.onBeforeCompile;
+    m.onBeforeCompile = (sh, r) => { prev && prev.call(m, sh, r);
+      sh.uniforms.tFacade = { value: facadeTex };
+      if (!sh.vertexShader.includes('varying vec3 vFD;')) sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vFD; varying vec3 vFN;').replace('#include <project_vertex>', '#include <project_vertex>\nvFD = (modelMatrix * vec4(transformed, 1.0)).xyz; vFN = normalize(mat3(modelMatrix) * objectNormal);');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vFD; varying vec3 vFN; uniform sampler2D tFacade;
+float fdh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(fdh(i), fdh(i+vec2(1,0)), f.x), mix(fdh(i+vec2(0,1)), fdh(i+vec2(1,1)), f.x), f.y); }`)
+        .replace('#include <map_fragment>', `#include <map_fragment>
+{ vec3 an = abs(vFN); vec2 tuv = an.y > .7 ? vFD.xz : (an.x > an.z ? vFD.zy : vFD.xy); float c = dot(texture2D(tFacade, tuv * .35).rgb, vec3(.33));
+  float h = (an.x > an.z ? vFD.z : vFD.x);
+  float streak = fdn(vec2(h * 3.1, vFD.y * .22)) * fdn(vec2(h * 11.0, vFD.y * .5)); // вертикальные потёки
+  float base = 1.0 - smoothstep(.0, 1.6, vFD.y); float patchy = fdn(vFD.xz * .15 + vFD.y * .05);
+  diffuseColor.rgb *= mix(.8, 1.12, c) * (1.0 - streak * .32 * smoothstep(1.0, 5.0, vFD.y)) * (1.0 - base * .32) * mix(.92, 1.05, patchy); }`);
+    };
+    const key = m.customProgramCacheKey ? m.customProgramCacheKey.call(m) : ''; m.customProgramCacheKey = () => key + '|facade'; m.needsUpdate = true;
+  }
   function windowShader(m) { // у каждого окна (ячейка мира) своё расписание света и свой оттенок
     m.emissiveIntensity = 1.5;
     m.onBeforeCompile = sh => {
@@ -695,6 +715,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         for (let i = 0; i < d.data.length; i += 4) { const r = d.data[i], gg = d.data[i + 1], b = d.data[i + 2]; const lit = r > 180 && gg > 120 && b < 140 && r - b > 70; if (!lit) { d.data[i] = d.data[i + 1] = d.data[i + 2] = 0; } }
         g.putImageData(d, 0, 0); const nt = new THREE.CanvasTexture(c); nt.colorSpace = THREE.SRGBColorSpace; nt.flipY = t.flipY; nt.magFilter = THREE.NearestFilter; maskCache.set(t, nt); return nt; };
       A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
+      { const done = new Set(); A.scene.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (!done.has(m)) { done.add(m); facadeDetail(m); } }); }); }
       for (const [x, z, r] of [[-32, 27, Math.PI / 2], [30, 27, Math.PI / 2], [0, -36, -Math.PI / 2], [-66, -10, 0], [70, -6, Math.PI]]) {
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o); reflectLayer(o);
         { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
