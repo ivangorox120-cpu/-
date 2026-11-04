@@ -6,6 +6,10 @@ android {
     namespace 'com.snakeboom.game'
     compileSdk 34
 
+    androidResources {
+        noCompress 'glb', 'mp3', 'jpg', 'png'   // большие ассеты читаются потоком
+    }
+
     defaultConfig {
         applicationId 'com.snakeboom.game'
         minSdk 21
@@ -61,7 +65,7 @@ def copySnake = tasks.register('copySnake', Copy) {
     into "$buildDir/snakeAssets"
 }
 def copyLarek = tasks.register('copyLarek', Copy) {
-    from(rootProject.file('../larek')) { include 'index.html', 'three.min.js', 'models.js' }
+    from(rootProject.file('../larek')) { include 'index.html', 'js/**', 'lib/**', 'assets/**', 'THREE-LICENSE.txt' }
     into "$buildDir/larekAssets"
 }
 preBuild.dependsOn copySnake, copyLarek

@@ -1,0 +1,132 @@
+<!doctype html><script type="importmap">{"imports":{"three":"./three/package/build/three.module.js","three/addons/":"./three/package/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+const tl = new THREE.TextureLoader();
+const tex = async (url, srgb, mime = 'image/jpeg') => { const t = await tl.loadAsync(encodeURI(url)); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.flipY = true; t.userData.mimeType = mime; return t; };
+const blank = new THREE.LoadingManager(); blank.setURLModifier(u => /\.(png|jpe?g|tga|tif|bmp)$/i.test(u) ? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' : u);
+const fbx = url => new FBXLoader(blank).loadAsync(encodeURI(url));
+function normalize(obj, { height, width, center = true, ground = true }) {
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj), size = box.getSize(new THREE.Vector3());
+  const s = height ? height / size.y : width / Math.max(size.x, size.z);
+  const root = new THREE.Group(); root.add(obj); obj.scale.multiplyScalar(s);
+  obj.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(root), c = b2.getCenter(new THREE.Vector3());
+  obj.position.x -= c.x; obj.position.z -= c.z; if (ground) obj.position.y -= b2.min.y;
+  return root;
+}
+const exp = (obj, maxTextureSize = 1024) => new Promise((res, rej) => new GLTFExporter().parse(obj, r => res(r), rej, { binary: true, maxTextureSize }));
+const results = {};
+async function save(name, obj, mts) { if (ONLY && ONLY !== name) return; const buf = new Uint8Array(await exp(obj, mts)); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); window.OUT[name] = btoa(s); }
+const ONLY = new URLSearchParams(location.search).get('only'); window.OUT = {};
+const want = n => !ONLY || ONLY === n;
+const R = 'raw/';
+// ---------- радио ----------
+if (want('radio')) {
+  const o = await fbx(R + 'truetone-am-fm-8-track-player-mae-8600a-77/Truetone AM-FM 8 Track Player MAE-8600A-77.fbx');
+  const d = R + 'truetone-am-fm-8-track-player-mae-8600a-77/Truetone_AM-FM_8_Track_Player_MAE-8600A-77';
+  const mat = new THREE.MeshStandardMaterial({ name: 'Truetone', map: await tex(d + '__3.png', true, 'image/png'), normalMap: await tex(d + '.png', false),
+    metalnessMap: await tex(d + '__2.png', false), roughnessMap: await tex(d + '__5.png', false), aoMap: await tex(d + '__4.png', false), metalness: 1, roughness: 1 });
+  const glass = new THREE.MeshStandardMaterial({ name: 'TruetoneGlass', color: 0xffffff, transparent: true, opacity: .25, roughness: .05, metalness: 0 });
+  o.traverse(m => { if (m.isMesh) m.material = m.name === 'Glass' ? glass : mat; });
+  await save('radio', normalize(o, { height: .26 }), 1024);
+}
+// ---------- остановка ----------
+if (want('busstop')) {
+  const o = await fbx(R + 'old-soviet-bus-stop/BusStop_low.fbx');
+  const d = R + 'old-soviet-bus-stop/BusStop_low_';
+  const mats = {};
+  for (const n of ['base', 'glass', 'metal', 'roof', 'seat']) mats[n] = new THREE.MeshStandardMaterial({ name: 'BusStop_' + n, map: await tex(d + n + '_BaseColor.png', true), normalMap: await tex(d + n + '_Normal.png', false),
+    roughnessMap: await tex(d + n + '_Roughness.png', false), metalnessMap: await tex(d + n + '_Metallic.png', false), metalness: 1, roughness: 1, side: THREE.DoubleSide });
+  o.traverse(m => { if (m.isMesh) { const arr = Array.isArray(m.material) ? m.material : [m.material]; const nm = arr.map(x => mats[x.name] || mats.base); m.material = Array.isArray(m.material) ? nm : nm[0]; } });
+  await save('busstop', normalize(o, { height: 2.6 }), 1024);
+}
+// ---------- бетонный блок ----------
+if (want('beton')) {
+  const o = await fbx(R + 'beton_src/beton_wall_block/beton_wall_block.fbx');
+  const d = R + 'beton-wall-block/beton_wall_block_WALL_TEX_';
+  const mat = new THREE.MeshStandardMaterial({ name: 'Beton', map: await tex(d + 'BaseColor.png', true), normalMap: await tex(d + 'Normal.png', false), roughnessMap: await tex(d + 'Roughness.png', false), aoMap: await tex(d + 'ao.png', false), metalness: 0, roughness: 1 });
+  o.traverse(m => { if (m.isMesh) m.material = mat; });
+  await save('beton', normalize(o, { height: 2.4 }), 1024);
+}
+// ---------- снежные деревья: каждая карточка отдельно ----------
+if (want('snowtrees')) {
+  const o = await fbx(R + 'snow_trees/SnowTrees.fbx');
+  const d = R + 'snow_trees/';
+  const map = { deadtreewide: 'deadtreewide', TreeBareTall: 'treebaretall', deadtreehero: 'deadtreehero', treeline001: 'treeline', snowbush2: 'snowbush', snowtree: 'tree1', snowbush1: 'snowbush', treeline: 'treeline' };
+  const H = { deadtreewide: 7, TreeBareTall: 9, deadtreehero: 8, snowtree: 6, snowbush1: 1.2, treeline: 12 };
+  const scene = new THREE.Group();
+  o.updateMatrixWorld(true);
+  const meshes = []; o.traverse(m => { if (m.isMesh) meshes.push(m); });
+  for (const m of meshes) {
+    if (!H[m.name]) continue;
+    const t = await tex(d + map[m.name] + '.png', true, 'image/png');
+    const mat = new THREE.MeshStandardMaterial({ name: 'Snow_' + m.name, map: t, alphaTest: .45, transparent: false, side: THREE.DoubleSide, roughness: 1, metalness: 0 });
+    const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld);
+    const mm = new THREE.Mesh(g, mat); mm.name = m.name;
+    const n = normalize(mm, { height: H[m.name] }); n.name = m.name;
+    scene.add(n);
+  }
+  await save('snowtrees', scene, 1024);
+}
+// ---------- панельный дом: материалы по именам, без кондиционеров, группы склеены ----------
+if (want('apartment')) {
+  const o = await fbx(R + 'apartment/Apartment/Apartment.fbx');
+  const T = 'raw/apartment/Apartment/Textures/';
+  const FILE = { 'Just_White': 'Etc/White (Back).png', 'Red_Concern': 'Etc/Red (Concern).png', 'Roof': 'Etc/Roof.png', 'Main_Back_Texture': 'Etc/Main Wall V1.png',
+    'Main_Forward_Texture': 'Etc/Main Wall V1.png', 'Exit': 'Etc/Door.png', 'Entrance': 'Etc/Enterance.png', 'Stairs': 'Enterance Windows/E_0_1.png', 'Antenna_P1': 'Etc/Antenna_P1.png', 'Antenna_P2': 'Etc/Antenna_P2.png' };
+  const NIGHT = { 'Stairs': 'Enterance Windows/E_1_1.png' };
+  const fileOf = n => { if (FILE[n]) return FILE[n]; const m = n.match(/^(\d)(\d)(\d)L?$/); return m ? `${m[1]} Windows/${m[1]}_0_${m[3]}.png` : null; };
+  const nightOf = n => { if (NIGHT[n]) return NIGHT[n]; const m = n.match(/^(\d)(\d)(\d)L$/); return m ? `${m[1]} Windows/${m[1]}_1_${m[3]}.png` : null; };
+  let day = null; o.traverse(m => { if (m.isMesh && m.name === 'Apartment') day = m; });
+  o.updateMatrixWorld(true);
+  const g = day.geometry, names = day.material.map(x => x.name);
+  const attrs = ['position', 'normal', 'uv'].filter(a => g.attributes[a]);
+  const buckets = new Map();
+  for (const gr of g.groups) { const n = names[gr.materialIndex]; const f = fileOf(n); if (!f) continue; const key = f + '|' + (nightOf(n) || ''); if (!buckets.has(key)) buckets.set(key, []); buckets.get(key).push(gr); }
+  const out = new THREE.BufferGeometry(); const arrays = {}; attrs.forEach(a => arrays[a] = []);
+  const mats = []; let start = 0;
+  for (const [key, grs] of buckets) {
+    let cnt = 0;
+    for (const gr of grs) for (const a of attrs) { const at = g.attributes[a], sz = at.itemSize; for (let v = gr.start; v < gr.start + gr.count; v++) for (let k = 0; k < sz; k++) arrays[a].push(at.array[v * sz + k]); }
+    grs.forEach(gr => cnt += gr.count);
+    out.addGroup(start, cnt, mats.length); start += cnt;
+    const [f, nf] = key.split('|');
+    const map = await tex(T + f, true, 'image/png'); map.magFilter = THREE.NearestFilter;
+    const m = new THREE.MeshStandardMaterial({ name: f.split('/').pop().replace('.png', '') + (nf ? '_lit' : ''), map, roughness: .93, metalness: 0 });
+    if (nf) { m.emissiveMap = await tex(T + nf, true, 'image/png'); m.emissive = new THREE.Color(0xffffff); m.emissiveIntensity = 1; }
+    mats.push(m);
+  }
+  for (const a of attrs) out.setAttribute(a, new THREE.Float32BufferAttribute(arrays[a], g.attributes[a].itemSize));
+  { const n = out.attributes.position.count, idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[i] = i; out.setIndex(new THREE.BufferAttribute(idx, 1)); }
+  out.applyMatrix4(day.matrixWorld);
+  if (day.matrixWorld.determinant() < 0) for (const a of attrs) { const at = out.attributes[a], sz = at.itemSize, arr = at.array; for (let t = 0; t < at.count; t += 3) for (let k = 0; k < sz; k++) { const i1 = (t + 1) * sz + k, i2 = (t + 2) * sz + k, tmp = arr[i1]; arr[i1] = arr[i2]; arr[i2] = tmp; } }
+  window.APT_DET = day.matrixWorld.determinant();
+  const mesh = new THREE.Mesh(out, mats); mesh.name = 'Apartment';
+  window.APT_INFO = { groups: out.groups.length, verts: out.attributes.position.count };
+  await save('apartment', normalize(mesh, { height: 16 }), 256);
+}
+// ---------- снежные деревья: отдельные узлы ----------
+if (want('snowtrees2')) {
+  const o = await fbx(R + 'snow_trees/SnowTrees.fbx');
+  const d = R + 'snow_trees/';
+  const map = { deadtreewide: 'deadtreewide', TreeBareTall: 'treebaretall', deadtreehero: 'deadtreehero', snowbush1: 'snowbush', snowtree: 'tree1', treeline: 'treeline' };
+  const H = { deadtreewide: 7, TreeBareTall: 9, deadtreehero: 8, snowtree: 6, snowbush1: 1.2, treeline: 10 };
+  const scene = new THREE.Group(); o.updateMatrixWorld(true);
+  const meshes = []; o.traverse(m => { if (m.isMesh) meshes.push(m); });
+  let x = 0;
+  for (const m of meshes) {
+    if (!H[m.name]) continue;
+    const t = await tex(d + map[m.name] + '.png', true, 'image/png');
+    const mat = new THREE.MeshStandardMaterial({ name: 'Snow_' + m.name, map: t, alphaTest: .45, side: THREE.DoubleSide, roughness: 1, metalness: 0 });
+    const geo = m.geometry.clone(); geo.applyMatrix4(m.matrixWorld);
+    geo.computeBoundingBox(); const bb = geo.boundingBox, sz = bb.getSize(new THREE.Vector3()), c = bb.getCenter(new THREE.Vector3());
+    geo.translate(-c.x, -bb.min.y, -c.z); const s = H[m.name] / sz.y; geo.scale(s, s, s);
+    const mm = new THREE.Mesh(geo, mat); mm.name = m.name; mm.position.x = x; x += 15; scene.add(mm);
+  }
+  await save('snowtrees2', scene, 1024);
+}
+window.DONE = true;
+</script>

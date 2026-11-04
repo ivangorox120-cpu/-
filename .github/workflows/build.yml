@@ -33,16 +33,9 @@ jobs:
         run: |
           mkdir -p dist/snake-boom dist/larek
           cp index.html README.md dist/snake-boom/
-          cp larek/index.html larek/three.min.js larek/models.js larek/THREE-LICENSE.txt dist/larek/
-          # однофайловая версия для браузера: three.min.js встраивается прямо в страницу
-          python3 - <<'PY'
-          html = open('larek/index.html', encoding='utf-8').read()
-          for src in ['three.min.js', 'models.js']:
-              tag = '<script src="%s"></script>' % src
-              assert tag in html
-              html = html.replace(tag, '<script>' + open('larek/' + src, encoding='utf-8').read() + '</script>')
-          open('dist/larek.html', 'w', encoding='utf-8').write(html)
-          PY
+          cp -r larek/index.html larek/js larek/lib larek/assets larek/THREE-LICENSE.txt dist/larek/
+          printf '@echo off\r\ncd /d %%~dp0\r\nstart http://localhost:8000/\r\npython -m http.server 8000\r\n' > dist/larek/start-windows.bat
+          printf '#!/bin/sh\ncd "$(dirname "$0")"\n(sleep 1; xdg-open http://localhost:8000/ 2>/dev/null || open http://localhost:8000/) &\npython3 -m http.server 8000\n' > dist/larek/start.sh && chmod +x dist/larek/start.sh
           cp android/app/build/outputs/apk/snake/release/app-snake-release.apk dist/snake-boom.apk
           cp android/app/build/outputs/apk/larek/release/app-larek-release.apk dist/larek.apk
           cd dist && zip -r snake-boom.zip snake-boom && zip -r larek.zip larek
@@ -76,12 +69,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${{ github.run_number }}"
-          gh release create "$TAG" dist/snake-boom.apk dist/snake-boom.zip dist/snake-boom/index.html dist/larek.apk dist/larek.zip dist/larek.html \
+          gh release create "$TAG" dist/snake-boom.apk dist/snake-boom.zip dist/snake-boom/index.html dist/larek.apk dist/larek.zip \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "Змейка: Бабах + Ларёк — сборка #${{ github.run_number }}" \
             --notes "**Android:** \`snake-boom.apk\` — змейка, \`larek.apk\` — «Ларёк» (разреши установку из неизвестных источников).
-          **Браузер:** \`index.html\` — змейка, \`larek.html\` — «Ларёк». Скачай и открой.
+          **Браузер:** \`index.html\` — змейка. «Ларёк» — \`larek.zip\`: распакуй и запусти \`start-windows.bat\` или \`start.sh\` (нужен Python), игра откроется на http://localhost:8000.
 
           Ветка: \`${{ github.ref_name }}\`, коммит ${{ github.sha }}." \
             --latest
