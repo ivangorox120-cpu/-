@@ -1,0 +1,134 @@
+<!doctype html><script type="importmap">{"imports":{"three":"./three/package/build/three.module.js","three/addons/":"./three/package/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MeshoptSimplifier } from './mo/package/meshopt_simplifier.module.js';
+await MeshoptSimplifier.ready;
+const ONLY = new URLSearchParams(location.search).get('only'); window.OUT = {}; window.INFO = {};
+const want = n => !ONLY || ONLY === n;
+const tl = new THREE.TextureLoader();
+const tex = async (url, srgb, mime = 'image/jpeg') => { const t = await tl.loadAsync(encodeURI(url)); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.userData.mimeType = mime; return t; };
+const blank = new THREE.LoadingManager(); blank.setURLModifier(u => /\.(png|jpe?g|tga|tif|bmp)$/i.test(u) ? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' : u);
+function normalize(obj, { height, longest }) {
+  obj.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(obj), size = box.getSize(new THREE.Vector3());
+  const s = height ? height / size.y : longest / Math.max(size.x, size.y, size.z);
+  const root = new THREE.Group(); root.add(obj); obj.scale.multiplyScalar(s); obj.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(root), c = b2.getCenter(new THREE.Vector3()); obj.position.x -= c.x; obj.position.z -= c.z; obj.position.y -= b2.min.y; return root;
+}
+// упрощение с сохранением UV (meshoptimizer переиспользует существующие вершины)
+function simplify(root, ratio, err = .01) {
+  let before = 0, after = 0;
+  root.traverse(m => {
+    if (!m.isMesh) return; let g = m.geometry;
+    const groups = g.groups.slice();
+    for (const k of Object.keys(g.attributes)) if (!['position', 'uv'].includes(k)) g.deleteAttribute(k); // нормали пересчитаем после сварки
+    g = mergeVertices(g, 1e-4);
+    const idx = new Uint32Array(g.index.array); before += idx.length / 3;
+    let res;
+    if (groups.length > 1) { const parts = []; const newGroups = []; let st = 0; for (const gr of groups) { const sub = idx.slice(gr.start, gr.start + gr.count); const [r] = MeshoptSimplifier.simplify(sub, g.attributes.position.array, 3, Math.max(3, Math.floor(sub.length * ratio / 3) * 3), err); parts.push(r); newGroups.push([st, r.length, gr.materialIndex]); st += r.length; } res = new Uint32Array(st); let o = 0; for (const p of parts) { res.set(p, o); o += p.length; } g.clearGroups(); newGroups.forEach(([a, b, c]) => g.addGroup(a, b, c)); }
+    else { [res] = MeshoptSimplifier.simplify(idx, g.attributes.position.array, 3, Math.max(3, Math.floor(idx.length * ratio / 3) * 3), err); }
+    // уплотнить вершины
+    const map = new Map(), keep = []; const ni = new Uint32Array(res.length);
+    for (let i = 0; i < res.length; i++) { let v = map.get(res[i]); if (v === undefined) { v = keep.length; map.set(res[i], v); keep.push(res[i]); } ni[i] = v; }
+    const out = new THREE.BufferGeometry();
+    for (const [k, a] of Object.entries(g.attributes)) { const arr = new Float32Array(keep.length * a.itemSize); keep.forEach((src, j) => { for (let c = 0; c < a.itemSize; c++) arr[j * a.itemSize + c] = a.array[src * a.itemSize + c]; }); out.setAttribute(k, new THREE.BufferAttribute(arr, a.itemSize)); }
+    out.setIndex(new THREE.BufferAttribute(ni, 1)); g.groups.forEach(gr => out.addGroup(gr.start, gr.count, gr.materialIndex));
+    out.computeVertexNormals();
+    m.geometry = out; after += ni.length / 3;
+  });
+  return [Math.round(before), Math.round(after)];
+}
+function fixGroups(root) { root.traverse(m => { if (!m.isMesh) return; const g = m.geometry; if (g.groups.length && !g.index) { const n = g.attributes.position.count, idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[i] = i; g.setIndex(new THREE.BufferAttribute(idx, 1)); } }); }
+const exp = (obj, mts) => new Promise((res, rej) => new GLTFExporter().parse(obj, r => res(r), rej, { binary: true, maxTextureSize: mts }));
+async function save(name, obj, mts = 1024) { fixGroups(obj); const buf = new Uint8Array(await exp(obj, mts)); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); window.OUT[name] = btoa(s); }
+const R = 'raw2/';
+const fbx = u => new FBXLoader(blank).loadAsync(encodeURI(u));
+if (want('notepad')) {
+  const o = await fbx(R + 'notepad/source/Notepad.fbx'); const T = R + 'notepad/textures/';
+  const paper = await tex(T + 'notebook-paper-1806473_1920.jpg', true), side = await tex(T + 'books-2767490_1920.jpeg', true);
+  const M = { Cardboard: new THREE.MeshStandardMaterial({ name: 'NpCover', color: 0x6a4a2e, roughness: .85 }), Plastic: new THREE.MeshStandardMaterial({ name: 'NpSpring', color: 0x2a2a2a, roughness: .4, metalness: .6 }), Paper: new THREE.MeshStandardMaterial({ name: 'NpPaper', map: paper, roughness: .95 }), PaperSide: new THREE.MeshStandardMaterial({ name: 'NpSide', map: side, roughness: .95 }) };
+  o.traverse(m => { if (m.isMesh) { const a = Array.isArray(m.material) ? m.material : [m.material]; const n = a.map(x => M[x.name] || M.Paper); m.material = Array.isArray(m.material) ? n : n[0]; } });
+  window.INFO.notepad = simplify(o, .12, .02);
+  await save('notepad', normalize(o, { longest: .21 }), 1024);
+}
+if (want('chair')) {
+  const o = await fbx(R + 'chair/source/Chair.fbx'); const T = R + 'chair/textures/DefaultMaterial_';
+  const m = new THREE.MeshStandardMaterial({ name: 'Chair', map: await tex(T + 'albedo.jpg', true), normalMap: await tex(T + 'normal.png', false), roughnessMap: await tex(T + 'roughness.jpg', false), metalnessMap: await tex(T + 'metallic.jpg', false), aoMap: await tex(T + 'AO.jpg', false), metalness: 1, roughness: 1 });
+  o.traverse(x => { if (x.isMesh) x.material = m; });
+  window.INFO.chair = simplify(o, .3, .01);
+  await save('chair', normalize(o, { height: .88 }), 1024);
+}
+if (want('poster')) {
+  const o = await fbx(R + 'soviet-poster/source/post.fbx'); const t = await tex(R + 'soviet-poster/poster.jpeg', true);
+  const pm = new THREE.MeshStandardMaterial({ name: 'Poster', map: t, roughness: .9 }); o.traverse(x => { if (x.isMesh) { window.INFO.posterGroups = x.geometry.groups.length; x.material = pm; x.geometry.clearGroups(); } });
+  await save('poster', normalize(o, { height: .7 }), 1024);
+}
+if (want('nodrink')) {
+  const o = await fbx(R + 'no-drink-soviet-poster-1/source/SM_NoDrink.fbx'); const T = R + 'no-drink-soviet-poster-1/textures/';
+  const m = new THREE.MeshStandardMaterial({ name: 'NoDrink', map: await tex(T + 'NoDrink.jpg', true), normalMap: await tex(T + 'schcbgfp_2K_Normal.jpg', false), roughnessMap: await tex(T + 'schcbgfp_2K_Roughness.jpg', false), roughness: 1 });
+  o.traverse(x => { if (x.isMesh) x.material = m; });
+  await save('nodrink', normalize(o, { height: .7 }), 1024);
+}
+if (want('vodka')) {
+  const o = await fbx(R + 'vodka-bottle/source/Vodka Bottle.fbx'); const t = await tex(R + 'vodka-bottle/textures/Bottle_texture.png', true, 'image/png');
+  o.traverse(x => { if (x.isMesh) { const a = Array.isArray(x.material) ? x.material : [x.material]; const n = a.map(mm => /Texture/.test(mm.name) ? new THREE.MeshStandardMaterial({ name: 'VodkaLabel', map: t, roughness: .35, transparent: false }) : new THREE.MeshStandardMaterial({ name: 'VodkaGlass', color: 0xdfeee8, roughness: .08, metalness: 0, transparent: true, opacity: .55 })); x.material = Array.isArray(x.material) ? n : n[0]; } });
+  await save('vodka', normalize(o, { height: .3 }), 1024);
+}
+if (want('cigarette')) {
+  const o = await fbx(R + 'cigarette-smoke-on/source/cigarette.fbx'); const T = R + 'cigarette-smoke-on/textures/';
+  const m = new THREE.MeshStandardMaterial({ name: 'Cigarette', map: await tex(T + 'base.jpg', true), emissiveMap: await tex(T + 'emission.jpg', true), emissive: 0xffffff, emissiveIntensity: 1, roughness: .8 });
+  o.traverse(x => { if (x.isMesh) x.material = m; });
+  await save('cigarette', normalize(o, { longest: .085 }), 512);
+}
+if (want('stew')) {
+  const o = (await new ColladaLoader(blank).loadAsync(R + 'beef-stew/source/inner/model/model.dae')).scene; const T = R + 'beef-stew/source/inner/model/textures/default_';
+  const m = new THREE.MeshStandardMaterial({ name: 'Stew', map: await tex(T + 'albedo.jpg', true), normalMap: await tex(T + 'normal.png', false), roughnessMap: await tex(T + 'roughness.jpg', false), metalnessMap: await tex(T + 'metallic.jpg', false), aoMap: await tex(T + 'AO.jpg', false), metalness: 1, roughness: 1 });
+  o.traverse(x => { if (x.isMesh) x.material = m; });
+  await save('stew', normalize(o, { height: .1 }), 512);
+}
+if (want('gun')) {
+  const o = await new OBJLoader(blank).loadAsync(encodeURI(R + 'fusil-de-chasse/source/inner/fusil chasse.obj'));
+  const m = new THREE.MeshStandardMaterial({ name: 'Shotgun', map: await tex(R + 'fusil-de-chasse/source/inner/fusil chasse_1.jpg', true), roughness: .55, metalness: .25 });
+  o.traverse(x => { if (x.isMesh) x.material = m; });
+  window.INFO.gun = simplify(o, .02, .05);
+  await save('gun', normalize(o, { longest: 1.1 }), 2048);
+}
+if (want('phone')) {
+  const o = await fbx(R + 'phone/source/Landline.fbx'); const T = R + 'phone/textures/Landline_low_DefaultMaterial_';
+  const m = new THREE.MeshStandardMaterial({ name: 'Phone', map: await tex(T + 'BaseColor.png', true), normalMap: await tex(T + 'Normal.png', false), roughnessMap: await tex(T + 'Roughness.png', false), metalnessMap: await tex(T + 'Metallic.png', false), metalness: 1, roughness: 1 });
+  const names = []; o.traverse(x => { if (x.isMesh) { x.material = m; const g = x.geometry; names.push(x.name + ':' + Math.round((g.index ? g.index.count : g.attributes.position.count) / 3)); } });
+  window.INFO.phoneMeshes = names;
+  window.INFO.phone = simplify(o, .15, .01);
+  // отделяем трубку: связные части сетки (union-find по треугольникам)
+  let mesh = null; o.traverse(x => { if (x.isMesh) mesh = x; });
+  mesh.updateMatrixWorld(true); mesh.geometry.applyMatrix4(mesh.matrixWorld); mesh.matrixWorld.identity();
+  const g = mesh.geometry, idx = g.index.array, pos = g.attributes.position, nV = pos.count;
+  const par = new Int32Array(nV).map((_, i) => i), f = a => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+  // сварка по позиции, чтобы швы UV не рвали связность
+  const key = new Map(); for (let i = 0; i < nV; i++) { const k = pos.getX(i).toFixed(4) + ',' + pos.getY(i).toFixed(4) + ',' + pos.getZ(i).toFixed(4); if (key.has(k)) par[f(i)] = f(key.get(k)); else key.set(k, i); }
+  for (let t = 0; t < idx.length; t += 3) { const a = f(idx[t]), b = f(idx[t + 1]), c = f(idx[t + 2]); par[b] = a; par[f(c)] = a; }
+  const comps = new Map(); for (let t = 0; t < idx.length; t += 3) { const r = f(idx[t]); if (!comps.has(r)) comps.set(r, { tris: [], box: new THREE.Box3() }); const cp = comps.get(r); cp.tris.push(t); for (let k = 0; k < 3; k++) cp.box.expandByPoint(new THREE.Vector3().fromBufferAttribute(pos, idx[t + k])); }
+  const list = [...comps.values()].map(c => ({ ...c, size: c.box.getSize(new THREE.Vector3()) }));
+  window.INFO.comps = list.filter(c => c.tris.length > 20).map(c => [c.tris.length, ...c.box.min.toArray().map(v => +v.toFixed(1)), ...c.box.max.toArray().map(v => +v.toFixed(1))]);
+  // трубка — длинная деталь в верхней части
+  const top = Math.max(...list.map(c => c.box.max.y));
+  // трубка сплавлена с корпусом: режем корпус по высоте (верхний слой — трубка), шнур остаётся с корпусом
+  const body = list.sort((a, b) => b.tris.length - a.tris.length)[0], bb = body.box, H = bb.max.y - bb.min.y;
+  const CUT = bb.min.y + H * (+new URLSearchParams(location.search).get('cut') || .55);
+  const hTris = [], bTris = [];
+  for (const t of body.tris) { let cy = 0; for (let k = 0; k < 3; k++) cy += pos.getY(idx[t + k]); cy /= 3; (cy > CUT ? hTris : bTris).push(t); }
+  const hand = { tris: hTris }; body.tris = bTris; list.push(hand);
+  if (hand.tris.length) {
+    const mk = sel => { const ni = []; for (const c of list) if (sel(c)) for (const t of c.tris) ni.push(idx[t], idx[t + 1], idx[t + 2]); const ng = g.clone(); ng.setIndex(ni); return ng; };
+    const base = new THREE.Mesh(mk(c => c !== hand), mesh.material); base.name = 'PhoneBase';
+    const hs = new THREE.Mesh(mk(c => c === hand), mesh.material); hs.name = 'Handset';
+    const grp = new THREE.Group(); grp.add(base); grp.add(hs); window.INFO.handsetTris = hand.tris.length;
+    await save('phone', normalize(grp, { longest: .24 }), 1024);
+  } else await save('phone', normalize(o, { longest: .24 }), 1024);
+}
+window.DONE = true;
+</script>

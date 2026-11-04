@@ -43,17 +43,28 @@ const GOODS = {
   vodka: { name:'Спирт «Король»',         short:'«Король»',  icon:'🍾', base:260 },
   tape:  { name:'Кассета «Хиты-92»',      short:'Кассета',   icon:'📼', base:380 },
   toy:   { name:'Тамагочка',              short:'Тамагочка', icon:'🐣', base:900, from:13 },
+  tushonka:{ name:'Тушёнка «Говядина»',    short:'Тушёнка',   icon:'🥫', base:85 },
+  kilka: { name:'Килька в томате',        short:'Килька',    icon:'🐟', base:28 },
+  bread: { name:'Хлеб «Дарницкий»',       short:'Хлеб',      icon:'🍞', base:10 },
+  mag:   { name:'Журнал «Mode International»', short:'Журнал мод', icon:'📖', base:150, euro:true },
+  mag2:  { name:'Журнал «Auto Welt»',     short:'Auto Welt', icon:'📘', base:170, euro:true },
 };
+// товары «из-под полы»: в обычном ассортименте и на витрине их нет, хранятся отдельно
+const HIDDEN = {
+  samogon: { name:'Самогон (бутылка)', short:'Самогон', base:90 },
+  kontra:  { name:'Сигареты без акциза (блок)', short:'Контрабанда', base:150 },
+};
+const hiddenPrice = id => Math.round(HIDDEN[id].base * S.idx);
 const GOOD_IDS = Object.keys(GOODS);
 const goodAvail = id => !GOODS[id].from || S.day >= GOODS[id].from;
 
 const TYPES = {
-  babka:   { name:'Бабушка',        wants:{paper:4, soda:2, choc:2, batt:1}, tol:.18, qty:[1,1], pat:9,  w:3 },
+  babka:   { name:'Бабушка',        wants:{paper:4, soda:2, choc:2, batt:1, bread:5, kilka:3, tushonka:2}, tol:.18, qty:[1,1], pat:9,  w:3 },
   school:  { name:'Школьник',       wants:{gum:5, soda:3, choc:3, toy:3},    tol:.35, qty:[1,3], pat:7,  w:3, young:true },
-  worker:  { name:'Рабочий',        wants:{beer:4, cig:4, paper:1, batt:1},  tol:.45, qty:[1,3], pat:8,  w:4 },
-  student: { name:'Студент',        wants:{tape:3, beer:2, gum:1, batt:2},   tol:.40, qty:[1,2], pat:8,  w:2, young:true },
+  worker:  { name:'Рабочий',        wants:{beer:4, cig:4, paper:1, batt:1, tushonka:3, kilka:2, bread:2},  tol:.45, qty:[1,3], pat:8,  w:4 },
+  student: { name:'Студент',        wants:{tape:3, beer:2, gum:1, batt:2, mag2:2, mag:1},   tol:.40, qty:[1,2], pat:8,  w:2, young:true },
   chelnok: { name:'Челнок',         wants:{cig:3, gum:2, batt:2, vodka:2},   tol:.15, qty:[4,8], pat:10, w:1.2 },
-  newrus:  { name:'«Новый русский»',wants:{vodka:3, tape:2, cig:2, choc:1, toy:2}, tol:1.4, qty:[2,5], pat:6, w:.6 },
+  newrus:  { name:'«Новый русский»',wants:{vodka:3, tape:2, cig:2, choc:1, toy:2, mag:2, mag2:2}, tol:1.4, qty:[2,5], pat:6, w:.6 },
 };
 
 const OUTFITS = {
@@ -123,7 +134,8 @@ function newGame(name, sex) {
     outfit:'none', owned:['none'], up:{}, permit:false, seller:false, src:'market',
     wave:null, nextWaveDay:4, voucher:null, fundGone:false, pmp:0, pmpCrashDay:RI(18,21), pmpDead:false,
     cheap:0, fakeLoss:0, cards:[], gumBought:0, lastSeen:Date.now(), mute:false, free:false, ending:null,
-    totalProfit:0, inflLast:0, flags:{}, gun:true, ammo:2, shells:4,
+    totalProfit:0, inflLast:0, flags:{}, gun:false, gunState:'wall', ammo:2, shells:0,
+    order:{ lines:{}, hidden:{} }, deliveries:[], items:[], hidden:{}, butts:0, cigs:0, bottle:null,
   };
   genPrices();
   // наследство дяди
@@ -212,7 +224,7 @@ function renderHud() {
 function renderTabs() {
   if (!S) { $('#tabs').innerHTML = ''; return; }
   const trade = S.phase === 'trade';
-  const T_ = [['kiosk', '🏪', 'Ларёк'], ['market', '🛒', 'Рынок'], ['exch', '💱', 'Обмен'], ['hero', '👤', 'Герой'], ['set', '⚙', 'Опции']];
+  const T_ = [['kiosk', '🏪', 'Ларёк'], ['exch', '💱', 'Обмен'], ['hero', '👤', 'Герой'], ['set', '⚙', 'Опции']];
   $('#tabs').innerHTML = T_.map(([k, i, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}" ${trade && (k === 'market' || k === 'exch') ? 'disabled' : ''}><span>${i}</span>${n}</button>`).join('');
 }
 function openSheet(t) { if (t) tab = t; sheetOpen = true; render(); $('#screen').scrollTop = 0; }
@@ -220,7 +232,7 @@ function closeSheet() { if (!W) return; sheetOpen = false; render(); }
 function renderControls() {
   $('#topBtns').style.display = S ? 'flex' : 'none';
   $('#muteBtn').textContent = S && S.mute ? '🔇' : '🔊';
-  const playing = !!(S && W && !sheetOpen && !cardOpen);
+  const playing = !!(S && W && !sheetOpen && !cardOpen && !npOpen && !npBusy);
   $('#cross').style.display = playing && !dialogOpen ? 'block' : 'none';
   $('#cross').classList.toggle('aim', !!(W && W.weapon.aiming));
   if (controls) controls.setVisible(playing || (controls && controls.editing));
@@ -249,7 +261,7 @@ function render() {
     const keepScroll = scr.dataset.view === tab ? scr.scrollTop : 0;
     scr.dataset.view = tab;
     if (tab === 'kiosk') scr.innerHTML = kioskHtml();
-    else if (tab === 'market') scr.innerHTML = marketHtml();
+    else if (tab === 'market') { tab = 'kiosk'; scr.innerHTML = kioskHtml(); }
     else if (tab === 'exch') scr.innerHTML = exchHtml();
     else if (tab === 'hero') scr.innerHTML = heroHtml();
     else if (tab === 'set') scr.innerHTML = setHtml();
@@ -570,6 +582,7 @@ function custHtml() {
       ${st.msg ? `<div class="warn">${st.msg}</div>` : ''}
       <div class="pat"><i id="patBar" style="width:${clamp(c.pat / c.patMax * 100, 0, 100)}%"></i></div>
     </div>
+    ${hiddenCount() > 0 ? '<button class="btn small" data-a="hiddenOffer" style="margin-top:6px">🤫 Предложить из-под полы…</button>' : ''}
     <div class="acts">
       <button class="btn green" data-a="sell" ${st.ok ? '' : 'disabled'}>Продать${st.ok ? ' ' + st.n + ' шт' : ''}</button>
       <button class="btn yellow" data-a="discount" ${st.ok ? '' : 'disabled'}>Скинуть 10%</button>
@@ -1080,10 +1093,11 @@ document.addEventListener('click', e => {
   if (d.skill) { if (S.sp > 0 && S.sk[d.skill] < 3) { S.sp--; S.sk[d.skill]++; sfx.ching(); render(); } return; }
   switch (d.a) {
     case 'new': if (load()) queueCard({ title:'Начать заново?', html:'<p>Текущее сохранение пропадёт.</p>', buttons:[{ label:'Да, заново', cls:'red', fn() { setTimeout(startNewFlow, 0); } }, { label:'Отмена' }] }); else startNewFlow(); break;
-    case 'continue': S = load(); if (S.phase !== 'night') S.phase = 'morning'; S.gun = S.gun !== false; S.shells = S.shells ?? 4; S.ammo = S.ammo ?? 2; tab = 'kiosk'; if (W) W.reset(); syncAmmoToWeapon(); offlineIncome(); render(); break;
+    case 'continue': S = load(); if (S.phase !== 'night') S.phase = 'morning'; S.gunState = S.gunState || 'wall'; S.gun = S.gunState === 'carried'; S.shells = S.shells ?? 0; S.ammo = S.ammo ?? 2; S.order = S.order || { lines: {}, hidden: {} }; S.deliveries = S.deliveries || []; S.items = S.items || []; S.hidden = S.hidden || {}; S.cigs = S.cigs || 0; S.butts = S.butts || 0; tab = 'kiosk'; if (W) W.reset(); syncAmmoToWeapon(); offlineIncome(); render(); break;
     case 'shells': { const p = usdToRub(3); if (S.money < p) return; S.money -= p; if (W) W.weapon.reserve += 5; else S.shells += 5; syncAmmoFromWeapon(); sfx.coin(); toast('Пачка патронов: +5', 'good'); render(); break; }
     case 'editctl': sheetOpen = false; render(); controls && controls.setEditing(true); renderControls(); break;
     case 'sleep': sheetOpen = false; sleep(); break;
+    case 'hiddenOffer': offerHidden(); break;
     case 'radio': audio.radioToggle(); render(); break;
     case 'sheet': sheetOpen ? closeSheet() : openSheet(); break;
     case 'closeSheet': closeSheet(); break;
@@ -1131,6 +1145,147 @@ function offlineIncome() {
 }
 
 // ============================================================
+//  Заказы: бумажный блокнот, телефон, доставка, распаковка, товар из-под полы
+// ============================================================
+const CATS = [
+  ['Продукты', ['bread', 'choc', 'toy']], ['Консервы', ['tushonka', 'kilka']], ['Напитки', ['soda', 'beer']], ['Сигареты', ['cig']],
+  ['Жвачка', ['gum']], ['Журналы', ['paper', 'mag', 'mag2']], ['Алкоголь', ['vodka']], ['Прочее', ['batt', 'tape', 'outfit:sport', 'outfit:varenki', 'outfit:raspberry', 'outfit:business']],
+  ['Карандашом…', ['h:samogon', 'h:kontra']],
+];
+const DELIV = { min: 1.5, rate: .06 };
+let npOpen = false, npCat = 0, npBusy = false;
+const ordQty = id => (id.startsWith('h:') ? S.order.hidden[id.slice(2)] : S.order.lines[id]) || 0;
+function lineInfo(id) {
+  if (id.startsWith('h:')) { const k = id.slice(2); return { name: HIDDEN[k].name, unit: hiddenPrice(k), pack: 1, avail: true, hidden: true }; }
+  if (id.startsWith('outfit:')) { const k = id.slice(7), o = OUTFITS[k]; return { name: o.name, unit: usdToRub(o.usd), pack: 1, avail: (!o.from || S.day >= o.from) && !S.owned.includes(k), outfit: true }; }
+  return { name: GOODS[id].name, unit: S.prices[id], pack: 5, avail: goodAvail(id) };
+}
+function orderSum(hidden) {
+  let sum = 0, n = 0; const src = hidden ? S.order.hidden : S.order.lines;
+  for (const [k, q] of Object.entries(src)) { if (!q) continue; const li = lineInfo(hidden ? 'h:' + k : k); sum += li.unit * q; n += q; }
+  const deliv = n ? Math.round(Math.max(usdToRub(DELIV.min), sum * DELIV.rate)) : 0;
+  return { sum, deliv, total: sum + deliv, n };
+}
+function setOrd(id, q) { q = Math.max(0, Math.min(200, q)); if (id.startsWith('h:')) S.order.hidden[id.slice(2)] = q; else S.order.lines[id] = q; if (!q) { delete S.order.hidden[id.slice(2)]; delete S.order.lines[id]; } save(); }
+function notepadHtml() {
+  const [cname, ids] = CATS[npCat], hid = cname.startsWith('Карандаш');
+  const o = orderSum(false), oh = orderSum(true);
+  const lines = Object.entries(S.order.lines).filter(([, q]) => q).map(([k, q]) => `<div class="np-ln"><span>${lineInfo(k).name.replace(/«|»/g, '')}</span><span>${q} шт</span><span>${fmt(lineInfo(k).unit * q)}</span><button data-np="del" data-id="${k}">×</button></div>`).join('') || '<div class="np-ln np-dim">пока пусто…</div>';
+  const pend = (S.deliveries || []).length;
+  return `<div class="np-book">
+    <div class="np-page np-left">
+      <div class="np-h">Заказ на базу «Оптторг»</div>
+      <div class="np-cats">${CATS.map(([n], i) => `<button data-np="cat" data-i="${i}" class="${i === npCat ? 'on' : ''} ${n.startsWith('Карандаш') ? 'pencil' : ''}">${n}</button>`).join('')}</div>
+      <div class="np-h2">Список:</div>${lines}
+      <div class="np-sum"><div>товар: <b>${fmt(o.sum)} р.</b></div><div>доставка (прим.): <b>${fmt(o.deliv)} р.</b></div><div class="np-tot">итого: ${fmt(o.total)} р.</div></div>
+      ${oh.n ? `<div class="np-pencil">Вове: ${oh.n} шт на ${fmt(oh.total)} р.</div>` : ''}
+      <div class="np-note">${o.n || oh.n ? '→ позвонить с телефона на стене, подтвердить' : ''}${pend ? `<br>везут: ${pend} заказ(а)` : ''}</div>
+      <div class="np-cash">в кассе: ${fmt(S.money)} р.</div>
+    </div>
+    <div class="np-page np-right ${hid ? 'np-pencilpage' : ''}">
+      <div class="np-h">${cname}</div>
+      ${hid ? '<div class="np-dim">для своих. Вова с вокзала, звонить вечером.</div>' : ''}
+      ${ids.map(id => { const li = lineInfo(id); if (!li.avail) return ''; const q = ordQty(id);
+        return `<div class="np-item"><div class="np-nm">${li.name}</div><div class="np-pr">${fmt(li.unit)} р.${li.pack > 1 ? '/шт' : ''}</div>
+          <div class="np-q"><button data-np="q" data-id="${id}" data-d="-${li.pack}">−</button><span>${q}</span><button data-np="q" data-id="${id}" data-d="${li.pack}">+</button></div></div>`; }).join('')}
+    </div>
+    <div class="np-flip"></div>
+  </div>
+  <div class="np-bar"><button data-np="clear">Очистить заказ</button><button data-np="close" class="np-close">Убрать блокнот</button></div>`;
+}
+function renderNotepad() { const el = $('#notepad'); if (!el) return; el.innerHTML = notepadHtml(); }
+function openOrders() {
+  if (npOpen || npBusy || !W) return; npBusy = true; sfx.click();
+  W.openNotepadAnim(() => { npBusy = false; npOpen = true; const el = $('#notepad'); renderNotepad(); el.classList.add('on'); renderControls(); });
+  renderControls();
+}
+function closeOrders() {
+  if (!npOpen) return; npOpen = false; const el = $('#notepad'); el.classList.remove('on'); npBusy = true;
+  setTimeout(() => W.closeNotepadAnim(() => { npBusy = false; renderControls(); }), 250); renderControls();
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-np]'); if (!b || !npOpen) return; e.stopPropagation();
+  const a = b.dataset.np; sfx.click();
+  if (a === 'close') { closeOrders(); return; }
+  if (a === 'cat') { const i = +b.dataset.i; if (i === npCat) return; const fl = document.querySelector('.np-flip'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go'); audio.click(2400, .25, 0, .12); setTimeout(() => { npCat = i; renderNotepad(); }, 280); return; }
+  if (a === 'q') { setOrd(b.dataset.id, ordQty(b.dataset.id) + +b.dataset.d); }
+  if (a === 'del') setOrd(b.dataset.id, 0);
+  if (a === 'clear') { S.order = { lines: {}, hidden: {} }; save(); }
+  renderNotepad();
+}, true);
+
+// --- телефон: атмосферный звонок с гудками ---
+let callBusy = false;
+function phoneCall() {
+  if (callBusy || !W) return;
+  const o = orderSum(false), oh = orderSum(true);
+  showDialog({ name: 'Телефон', text: 'Кому звонить? Номера записаны на обоях карандашом.', options: [
+    { label: `«Оптторг» — база${o.n ? ` (заказ: ${o.n} шт, ${fmt(o.total)} р.)` : ''}`, fn() { closeDialog(); dial('opt'); } },
+    { label: `Вова с вокзала${oh.n ? ` (${oh.n} шт, ${fmt(oh.total)} р.)` : ''}`, fn() { closeDialog(); dial('vova'); } },
+    { label: 'Справочная — курс доллара', fn() { closeDialog(); dial('info'); } },
+    { label: 'Положить трубку', fn() { closeDialog(); } },
+  ] });
+}
+function dial(who) {
+  callBusy = true; W.P.locked = true; W.life.startCall(); renderControls();
+  audio.tone425(true); // длинный гудок
+  setTimeout(() => { audio.tone425(false); W.life.setDialing(true); audio.dialClicks(7); }, 1300);
+  setTimeout(() => { audio.dialClicks(4); }, 2300);
+  setTimeout(() => { W.life.setDialing(false); audio.tone425(true, 'ring'); }, 3200);
+  const rings = who === 'vova' && (S.phase === 'trade') && Math.random() < .5 ? 99 : RI(1, 2);
+  setTimeout(() => { audio.tone425(false); if (rings > 3) { audio.tone425(true, 'busy'); showDialog({ name: 'Телефон', text: 'Никто не берёт. Вова днём на вокзале, звони вечером.', options: [{ label: 'Положить трубку', fn: hangUp }] }); return; } audio.click(800, .5, 0, .05); talk(who); }, 3200 + rings * 5000 - 3500);
+}
+function hangUp() { closeDialog(); audio.tone425(false); audio.click(400, .7, 0, .06); audio.tone425(true, 'busy'); setTimeout(() => audio.tone425(false), 1800); W.life.hangUp(); W.P.locked = false; callBusy = false; renderControls(); }
+function talk(who) {
+  if (who === 'info') { showDialog({ name: 'Справочная', text: `Курс доллара на сегодня — ${fmt(S.rate)} рублей. Спасибо за звонок.`, options: [{ label: 'Спасибо', fn: hangUp }] }); return; }
+  const hidden = who === 'vova', o = orderSum(hidden);
+  const name = hidden ? 'Вова' : '«Оптторг»';
+  if (!o.n) { showDialog({ name, text: hidden ? 'Ну? Чего молчишь? Надо чего — так записывай и звони.' : 'База «Оптторг», слушаю. Заказ готов? Нет? Тогда не занимайте линию.', options: [{ label: 'Извините, перезвоню', fn: hangUp }] }); return; }
+  showDialog({ name, text: hidden ? `Записал: ${o.n} шт. С тебя ${fmt(o.total)}. Деньги — на месте, коробку под дверь поставлю.` : `Слушаю. Значит, ${o.n} единиц товара на ${fmt(o.sum)} и доставка ${fmt(o.deliv)}. Итого ${fmt(o.total)} рублей. Подтверждаете?`, options: [
+    { label: `Подтвердить (${fmt(o.total)} р.)`, fn() {
+      if (S.money < o.total) { showDialog({ name, text: 'Денег-то хватит? Касса не сходится. Перезвоните, когда будет.', options: [{ label: 'Положить трубку', fn: hangUp }] }); return; }
+      S.money -= o.total;
+      const src = hidden ? S.order.hidden : S.order.lines, contents = {};
+      for (const [k, q] of Object.entries(src)) if (q) contents[k] = [q, lineInfo(hidden ? 'h:' + k : k).unit];
+      S.deliveries = S.deliveries || []; S.deliveries.push({ contents, hidden, label: name, eta: R(35, 60), state: 'way' });
+      if (hidden) S.order.hidden = {}; else S.order.lines = {};
+      if (hidden) rep('street', 1);
+      save(); renderHud(); sfx.coin();
+      showDialog({ name, text: hidden ? 'Добро. Жди, постучу.' : 'Заказ принят. Машина будет в течение часа. Постучат в дверь.', options: [{ label: 'Положить трубку', fn: hangUp }] });
+    } },
+    { label: 'Нет, отбой', fn: hangUp },
+  ] });
+}
+function onDelivered(d) { toast('Тук-тук! Привезли заказ — коробка у двери.', 'good'); }
+function onUnpack(data) {
+  const c = data.contents || {}; let n = 0;
+  for (const [k, [q, unit]] of Object.entries(c)) {
+    if (data.hidden) { S.hidden[k] = (S.hidden[k] || 0) + q; }
+    else if (k.startsWith('outfit:')) { const id = k.slice(7); if (!S.owned.includes(id)) S.owned.push(id); toast('Обновка: ' + OUTFITS[id].name + ' (надеть — меню → Герой)', 'good'); }
+    else { addStock(k, q, unit); if (k === 'gum') S.gumBought += q; }
+    n += q;
+  }
+  sfx.ching(); toast(data.hidden ? `Разложили «товар для своих»: ${n} шт — под прилавок` : `Распаковали: ${n} шт товара на склад`, 'good'); save(); render();
+}
+const hiddenCount = () => Object.values(S.hidden || {}).reduce((a, b) => a + b, 0);
+// предложение из-под полы — часть разговора с покупателем
+function offerHidden() {
+  const c = T && T.cur; if (!c || c.special) return;
+  const opts = Object.entries(S.hidden).filter(([, q]) => q > 0).map(([k]) => ({ label: `${HIDDEN[k].name} — ${fmt(hiddenPrice(k) * 1.9)} р.`, fn() { closeDialog(); hiddenReact(c, k); } }));
+  showDialog({ name: c.name, text: 'Вы наклоняетесь к окошку и вполголоса: «Есть кое-что, не для всех…»', options: [...opts, { label: 'Да нет, ничего', fn: closeDialog }] });
+}
+function hiddenReact(c, k) {
+  const chance = { worker: { samogon: .8, kontra: .6 }, chelnok: { samogon: .4, kontra: .85 }, newrus: { samogon: .2, kontra: .5 }, babka: { samogon: .35, kontra: .1 }, student: { samogon: .5, kontra: .55 }, school: { samogon: 0, kontra: 0 } }[c.k] || { samogon: .3, kontra: .3 };
+  const price = Math.round(hiddenPrice(k) * 1.9);
+  if (c.k === 'school') { rep('folk', -4); c.said = 'Дядь, вы чего?! Я мамке скажу!'; toast('Предлагать такое школьнику… Народ −4', 'bad'); renderTrade(); return; }
+  if (Math.random() < .06) { rep('law', -8); S.hidden[k]--; const fine = Math.min(S.money, usdToRub(10)); S.money -= fine; c.said = 'Милиция! Контрольная закупка.'; toast(`Подставной покупатель! Штраф ${fmt(fine)} р., товар изъят. Закон −8`, 'bad'); T.cur = null; renderTrade(); renderHud(); return; }
+  if (Math.random() < (chance[k] || .3) + S.rep.street / 300) {
+    S.hidden[k]--; S.money += price; T.rev += price; rep('street', 1); c.said = pick(['Во, это дело. Давай.', 'Только тихо…', 'Беру, не вопрос.', 'Деду своему возьму, он оценит.']);
+    sfx.ching(); floatText('+' + fmt(price) + ' ₽'); if (W) W.customerEvent(c, 'sold'); renderHud(); setTimeout(() => { if (T && T.cur === c) { T.cur = null; renderTrade(); } }, 600);
+  } else { c.said = pick(['Не, такого не надо.', 'Ты чего, у меня совесть есть.', 'Обойдусь.']); if (c.k === 'babka') rep('folk', -1); renderTrade(); }
+}
+
+// ============================================================
 //  Настройки, звук, 3D-мир, управление, диалоги
 // ============================================================
 const SET_KEY = 'larek-settings-v1';
@@ -1169,7 +1324,8 @@ function look(dx, dy, kind) { if (controls && kind !== 'mouse') controls.look(dx
 const W = (() => { try { return createWorld({
   getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET,
   toast, openSheet, onCtl, rep, qOf, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
-  arrive, customerScared, gopnikDemand, say, sleep,
+  arrive, customerScared, gopnikDemand, say, sleep, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
+  onDrink(k, strong) { if (strong > .3 && W && W.life.fx.drunkTarget > 1) toast('Голова поплыла… Хватит, пожалуй.'); },
   dialog: showDialog, closeDialog,
   gopResolved(how) { if (how === 'scared') { rep('street', 3); toast('Гопники отступили. Улица +3'); } },
   onShot() { syncAmmoFromWeapon(); toast('Выстрел в воздух! Все разбегаются. Закон −4', 'bad'); renderHud(); },
@@ -1178,39 +1334,50 @@ const W = (() => { try { return createWorld({
   onLoaded() { worldReady = true; const li = document.getElementById('loadInfo'); if (li) li.textContent = ''; },
 }); } catch (e) { console.error('3D не запустился', e); return null; } })();
 if (W) {
+  const hasCig = () => S && (S.cigs > 0 || qOf('cig') > 0 || (S.hidden.kontra || 0) > 0);
+  const hasBottle = () => S && ((S.bottle && S.bottle.left > 0) || qOf('vodka') > 0 || qOf('beer') > 0 || (S.hidden.samogon || 0) > 0);
+  const handsFree = () => S && !W.life.habit.busy && !W.life.held && !W.weapon.drawn && !W.P.locked && !npOpen;
+  const carried = () => S && S.gunState === 'carried';
   const ACTIONS = {
-    move:      { label: 'Движение', icon: '✥', kind: 'stick' },
-    interact:  { label: 'Действие', icon: '✋', kind: 'tap', down() { const a = W.action(); if (a) { sfx.click(); a.fn(); } }, enabled: () => !!W.action(), text: () => { const a = W.action(); return a ? a.label : 'Действие'; } },
-    fire:      { label: 'Огонь', icon: '💥', kind: 'tap', down() { if (!S || !S.gun) return; if (!W.weapon.drawn) { W.weapon.draw(); renderHud(); return; } const r = W.weapon.fire(); if (r === 'empty') toast('Стволы пусты — перезарядите'); syncAmmoFromWeapon(); renderHud(); }, enabled: () => !!(S && S.gun) },
-    aim:       { label: 'Прицел', icon: '◎', kind: 'hold', down() { if (S && S.gun) W.weapon.aim(true); }, up() { W.weapon.aim(false); }, enabled: () => !!(S && S.gun), active: () => W.weapon.aiming },
-    reload:    { label: 'Перезарядка', icon: '⟳', kind: 'tap', down() { if (!W.weapon.reload()) { if (W.weapon.reserve <= 0) toast('Патронов нет — купите на рынке'); } setTimeout(() => { syncAmmoFromWeapon(); renderHud(); }, 2500); }, enabled: () => !!(S && S.gun && W.weapon.drawn) },
-    weapon:    { label: 'Ружьё', icon: '⇅', kind: 'tap', down() { if (!S || !S.gun) { toast('Ружья нет'); return; } W.weapon.toggle(); setTimeout(renderHud, 500); }, enabled: () => !!(S && S.gun), active: () => W.weapon.drawn },
-    sprint:    { label: 'Бег', icon: '»', kind: 'hold', down() { W.setSprint(true); }, up() { W.setSprint(false); }, active: () => W.sprint },
-    crouch:    { label: 'Присесть', icon: '⤓', kind: 'tap', down() { W.toggleCrouch(); }, active: () => W.crouch },
-    inventory: { label: 'Блокнот', icon: '📒', kind: 'tap', down() { openSheet(); } },
-    door:      { label: 'Дверь', icon: '🚪', kind: 'tap', down() { W.toggleDoor(); }, enabled: () => W.nearDoor() },
-    use:       { label: 'Предмет', icon: '🔦', kind: 'tap', down() { if (W.inKiosk()) { audio.radioToggle(); toast(audio.radioOn ? 'Радио включено' : 'Радио выключено'); } else toast(W.toggleFlashlight() ? 'Фонарик включён' : 'Фонарик выключен'); }, text: () => W.inKiosk() ? 'Радио' : 'Фонарик', active: () => W.inKiosk() ? audio.radioOn : W.flashlightOn },
+    move:      { label: 'Движение', icon: 'move', kind: 'stick' },
+    interact:  { label: 'Действие', icon: 'interact', kind: 'tap', down() { const a = W.action(); if (a) { sfx.click(); a.fn(); } }, visible: () => !!W.action(), text: () => { const a = W.action(); return a ? a.label : 'Действие'; } },
+    use:       { label: 'Ещё', icon: 'hand', kind: 'tap', down() { const a = W.action(); if (a && a.alt) { sfx.click(); a.alt.fn(); } }, visible: () => { const a = W.action(); return !!(a && a.alt); }, text: () => { const a = W.action(); return a && a.alt ? a.alt.label : ''; } },
+    fire:      { label: 'Огонь', icon: 'fire', kind: 'tap', down() { if (!carried()) return; if (!W.weapon.drawn) { W.weapon.draw(); renderHud(); return; } const r = W.weapon.fire(); if (r === 'empty') toast('Стволы пусты — перезарядите'); syncAmmoFromWeapon(); renderHud(); }, visible: carried },
+    aim:       { label: 'Прицел', icon: 'aim', kind: 'hold', down() { if (carried()) W.weapon.aim(true); }, up() { W.weapon.aim(false); }, visible: () => carried() && W.weapon.drawn, active: () => W.weapon.aiming },
+    reload:    { label: 'Перезарядка', icon: 'reload', kind: 'tap', down() { if (!W.weapon.reload()) { if (W.weapon.reserve <= 0) toast('Патронов нет — спросите у Марата на остановке'); } setTimeout(() => { syncAmmoFromWeapon(); renderHud(); }, 2500); }, visible: () => carried() && W.weapon.drawn && W.weapon.ammo < 2 },
+    weapon:    { label: 'Ружьё', icon: 'weapon', kind: 'tap', down() { W.weapon.toggle(); setTimeout(renderHud, 500); }, visible: carried, active: () => W.weapon.drawn },
+    gunput:    { label: 'Положить ружьё', icon: 'drop', kind: 'tap', down() { W.putGunDown(); }, visible: () => carried() && !W.weapon.aiming && !W.life.held },
+    sprint:    { label: 'Бег', icon: 'sprint', kind: 'hold', down() { W.setSprint(true); }, up() { W.setSprint(false); }, active: () => W.sprint, visible: () => !W.P.seated },
+    crouch:    { label: 'Присесть', icon: 'crouch', kind: 'tap', down() { W.toggleCrouch(); }, active: () => W.crouch, visible: () => !W.P.seated },
+    inventory: { label: 'Меню', icon: 'menu', kind: 'tap', down() { openSheet(); } },
+    smoke:     { label: 'Закурить', icon: 'smoke', kind: 'tap', down() { if (!hasCig()) return; if (S.cigs <= 0) { if ((S.hidden.kontra || 0) > 0) { S.hidden.kontra--; S.cigs += 200; } else { takeStock('cig', 1); S.cigs += 20; } } S.cigs--; W.life.habit.startSmoke(); save(); }, visible: () => hasCig() && handsFree() },
+    drink:     { label: 'Выпить', icon: 'drink', kind: 'tap', down() { if (!hasBottle()) return; if (!S.bottle || S.bottle.left <= 0) { const k = (S.hidden.samogon || 0) > 0 ? 'samogon' : qOf('vodka') > 0 ? 'vodka' : 'beer'; if (k === 'samogon') S.hidden.samogon--; else takeStock(k, 1); S.bottle = { kind: k, left: k === 'beer' ? 3 : 6 }; } S.bottle.left--; W.life.habit.startDrink(S.bottle.kind); save(); }, visible: () => hasBottle() && handsFree() },
+    flashlight:{ label: 'Фонарик', icon: 'flashlight', kind: 'tap', down() { toast(W.toggleFlashlight() ? 'Фонарик включён' : 'Фонарик выключен'); }, active: () => W.flashlightOn, visible: () => W.flashlightOn || (!W.inKiosk() && W.isNight()) },
+    door:      { label: 'Дверь', icon: 'door', kind: 'tap', down() { W.toggleDoor(); }, visible: () => W.nearDoor() },
   };
   const defaults = () => ({ elements: [
     { uid: 'mv', action: 'move', x: .13, y: .76, size: 150, opacity: .6, hit: 1.5, sens: 1 },
-    { uid: 'in', action: 'interact', x: .66, y: .84, size: 72, opacity: .8, hit: 1.2 },
+    { uid: 'in', action: 'interact', x: .66, y: .84, size: 78, opacity: .85, hit: 1.2 },
+    { uid: 'us', action: 'use', x: .53, y: .86, size: 60, opacity: .8, hit: 1.2 },
     { uid: 'fi', action: 'fire', x: .9, y: .8, size: 84, opacity: .75, hit: 1.2 },
     { uid: 'ai', action: 'aim', x: .78, y: .88, size: 62, opacity: .7, hit: 1.2 },
     { uid: 're', action: 'reload', x: .79, y: .7, size: 52, opacity: .7, hit: 1.2 },
     { uid: 'we', action: 'weapon', x: .91, y: .6, size: 56, opacity: .7, hit: 1.2 },
+    { uid: 'gp', action: 'gunput', x: .91, y: .44, size: 50, opacity: .65, hit: 1.2 },
     { uid: 'sp', action: 'sprint', x: .3, y: .88, size: 56, opacity: .65, hit: 1.2 },
     { uid: 'cr', action: 'crouch', x: .3, y: .73, size: 50, opacity: .6, hit: 1.2 },
-    { uid: 'dr', action: 'door', x: .55, y: .72, size: 52, opacity: .65, hit: 1.2 },
-    { uid: 'us', action: 'use', x: .55, y: .88, size: 52, opacity: .65, hit: 1.2 },
+    { uid: 'sm', action: 'smoke', x: .55, y: .7, size: 50, opacity: .65, hit: 1.2 },
+    { uid: 'dk', action: 'drink', x: .66, y: .66, size: 50, opacity: .65, hit: 1.2 },
+    { uid: 'fl', action: 'flashlight', x: .06, y: .56, size: 48, opacity: .6, hit: 1.2 },
     { uid: 'iv', action: 'inventory', x: .06, y: .42, size: 52, opacity: .6, hit: 1.2 },
   ] });
-  controls = createControls({ root: $('#ui'), actions: ACTIONS, defaults, storageKey: 'larek-controls-v1',
+  controls = createControls({ root: $('#ui'), actions: ACTIONS, defaults, storageKey: 'larek-controls-v2',
     onLook: (dx, dy) => W.look(dx, dy, 'touch'), onMove: (x, y) => W.move(x, y) });
   window.addEventListener('keydown', e => {
     if (!S || cardOpen || dialogOpen || sheetOpen || e.repeat) return;
     const k = e.code;
-    if (k === 'KeyE') ACTIONS.interact.down(); if (k === 'KeyF') ACTIONS.door.down(); if (k === 'KeyQ') ACTIONS.weapon.down(); if (k === 'KeyR') ACTIONS.reload.down();
-    if (k === 'KeyC') ACTIONS.crouch.down(); if (k === 'KeyG') ACTIONS.use.down(); if (k === 'ShiftLeft') W.setSprint(true); if (k === 'Tab') { e.preventDefault(); openSheet(); }
+    if (k === 'KeyE') ACTIONS.interact.down(); if (k === 'KeyF') ACTIONS.use.down(); if (k === 'KeyQ' && carried()) ACTIONS.weapon.down(); if (k === 'KeyR' && carried()) ACTIONS.reload.down(); if (k === 'KeyT' && ACTIONS.smoke.visible()) ACTIONS.smoke.down(); if (k === 'KeyY' && ACTIONS.drink.visible()) ACTIONS.drink.down(); if (k === 'KeyX' && carried()) ACTIONS.gunput.down();
+    if (k === 'KeyC') ACTIONS.crouch.down(); if (k === 'KeyG') ACTIONS.flashlight.down(); if (k === 'ShiftLeft') W.setSprint(true); if (k === 'Tab') { e.preventDefault(); openSheet(); }
   });
   window.addEventListener('keyup', e => { if (e.code === 'ShiftLeft') W.setSprint(false); });
 }

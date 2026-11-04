@@ -140,6 +140,19 @@ export function createAudio() {
   }
   function door(open) { if (!ensure()) return; click(open ? 700 : 400, .5, 0, .08); click(open ? 1400 : 250, .3, .08, .1); }
 
+  // ---- телефон (советская сеть: 425 Гц) и бытовые звуки ----
+  let toneNode = null;
+  function tone425(on, pattern) { if (!ensure()) return; if (toneNode) { try { toneNode.o.stop(); } catch (e) {} toneNode = null; } if (!on) return;
+    const o = ctx.createOscillator(); o.frequency.value = 425; const g = ctx.createGain(); g.gain.value = 0; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = .5;
+    o.connect(g); g.connect(f); f.connect(sfxBus); o.start(); const t = ctx.currentTime;
+    if (pattern === 'ring') { for (let i = 0; i < 6; i++) { g.gain.setValueAtTime(.07, t + i * 5); g.gain.setValueAtTime(0, t + i * 5 + 1); } }
+    else if (pattern === 'busy') { for (let i = 0; i < 6; i++) { g.gain.setValueAtTime(.07, t + i * .7); g.gain.setValueAtTime(0, t + i * .7 + .35); } }
+    else g.gain.setValueAtTime(.06, t);
+    toneNode = { o, g }; }
+  function dialClicks(n) { if (!ensure()) return; for (let i = 0; i < n; i++) click(500, .35, i * .1, .02); }
+  function knock() { if (!ensure()) return; const t = ctx.currentTime; for (let i = 0; i < 1; i++) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(60, t + .12); const g = ctx.createGain(); g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t + .18); o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + .2); } click(300, .6, 0, .05); }
+  function gulp() { if (!ensure()) return; for (let i = 0; i < 3; i++) { const t = ctx.currentTime + i * .38; const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(140, t + .12); const g = ctx.createGain(); g.gain.setValueAtTime(.25, t); g.gain.exponentialRampToValueAtTime(.001, t + .15); o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + .16); } }
+
   // ---- моторы машин ----
   function addCar(id) {
     if (!ctx || cars.has(id)) return;
@@ -153,7 +166,7 @@ export function createAudio() {
   function carState(id, x, z, speed) { const c = cars.get(id); if (c) { c.pos.x = x; c.pos.z = z; c.speed = speed; } else if (ctx) addCar(id); }
 
   return {
-    ensure, update, step, shot, click, reloadOpen, shellOut, shellIn, reloadClose, thud, horn, door, carState,
+    ensure, update, step, shot, click, tone425, dialClicks, knock, gulp, reloadOpen, shellOut, shellIn, reloadClose, thud, horn, door, carState,
     get settings() { return st; },
     setVolume(k, v) { st[k] = v; if (k === 'master' && master) master.gain.value = st.muted ? 0 : v; if (k === 'ambience' && ambBus) ambBus.gain.value = v; },
     setMuted(m) { st.muted = m; if (master) master.gain.value = m ? 0 : st.master; },

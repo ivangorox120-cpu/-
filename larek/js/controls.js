@@ -29,7 +29,8 @@ export function createControls({ root, actions, onLook, onMove, storageKey = 'co
       const a = actions[cfg.action]; if (!a) continue;
       const el = document.createElement('div');
       el.className = 'ctl ' + (a.kind === 'stick' ? 'ctl-stick' : 'ctl-btn');
-      el.innerHTML = a.kind === 'stick' ? '<div class="ctl-knob"></div>' : `<span class="ctl-ic">${a.icon || ''}</span><span class="ctl-lb">${a.label}</span>`;
+      const ic = a.icon && /^[a-z_]+$/.test(a.icon) ? `<img class="ctl-img" src="assets/icons/${a.icon}.png" alt="">` : (a.icon || '');
+      el.innerHTML = a.kind === 'stick' ? '<div class="ctl-knob"></div>' : `<span class="ctl-ic">${ic}</span><span class="ctl-lb">${a.label}</span>`;
       el.dataset.uid = cfg.uid;
       layer.appendChild(el); els.set(cfg.uid, { el, cfg });
       place(cfg);
@@ -50,8 +51,9 @@ export function createControls({ root, actions, onLook, onMove, storageKey = 'co
     for (const [id, { el, cfg }] of els) {
       const a = actions[cfg.action]; if (!a) continue;
       const en = editing || !a.enabled || a.enabled(), act = !!(a.active && a.active()), txt = a.text ? a.text() : '';
-      sig += id + en + act + txt;
-      el.classList.toggle('off', !en); el.classList.toggle('on', act);
+      const vis = editing || !a.visible || a.visible(); // контекстные кнопки появляются только когда нужны
+      sig += id + en + act + txt + vis;
+      el.classList.toggle('off', !en); el.classList.toggle('on', act); el.style.display = vis ? '' : 'none';
       if (a.kind !== 'stick') { const lb = el.querySelector('.ctl-lb'); const want = txt || a.label; if (lb.textContent !== want) lb.textContent = want; }
     }
     lastSig = sig;
@@ -127,7 +129,7 @@ export function createControls({ root, actions, onLook, onMove, storageKey = 'co
       <div class="ce-row">
         <label>Камера: чувствительность <input type="range" min="0.3" max="3" step="0.05" value="${store.lookSens}" data-ce="lookSens"><span>${store.lookSens.toFixed(2)}</span></label>
         <label><input type="checkbox" data-ce="invertY" ${store.invertY ? 'checked' : ''}> инверсия Y</label>
-        <select data-ce="addaction"><option value="">＋ Добавить кнопку…</option>${Object.entries(actions).map(([k, a]) => opt(k, '', (a.icon || '') + ' ' + a.label)).join('')}</select>
+        <select data-ce="addaction"><option value="">＋ Добавить кнопку…</option>${Object.entries(actions).map(([k, a]) => opt(k, '', a.label)).join('')}</select>
       </div>
       ${cfg ? `<div class="ce-row ce-sel">
         <b>${actions[cfg.action].icon || ''} ${actions[cfg.action].label}</b>

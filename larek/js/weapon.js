@@ -1,6 +1,7 @@
 // Охотничье ружьё (двустволка-«вертикалка» в духе ИЖ) от первого лица.
 // Используется только для устрашения: дробь уходит в воздух/землю, урон NPC не наносится.
 import * as THREE from 'three';
+import { Rope } from './rope.js';
 
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -131,9 +132,28 @@ export function createWeapon({ audio, onShot }) {
     for (const sm of smokes) if (sm.life > 0) { sm.life -= dt; sm.s.position.addScaledVector(sm.v, dt); sm.s.scale.multiplyScalar(1 + dt * 1.6); sm.s.material.opacity = Math.max(0, sm.life * .35); if (sm.life <= 0) sm.s.visible = false; }
     for (const e of ejected) if (e.visible) { e.userData.life -= dt; e.userData.v.y -= 9.8 * dt; e.position.addScaledVector(e.userData.v, dt); e.rotation.x += dt * 12; if (e.userData.life <= 0) e.visible = false; }
     W.kick = Math.max(0, W.kick - dt * 6);
+    slingTick(dt);
   }
 
+  // ---------- реальная модель ружья (скан) и нормальные руки ----------
+  let sling = null; const slA = new THREE.Object3D(), slB = new THREE.Object3D(); const wa = new THREE.Vector3(), wb = new THREE.Vector3();
+  function setModel(model, makeHand) {
+    // процедурный корпус прячем, шарнир (для анимации перезарядки) оставляем
+    gun.traverse(o => { if (o.isMesh && !chamberShells.some(c => c === o || c.children.includes(o))) o.visible = false; });
+    const holder = new THREE.Group(); holder.rotation.x = -Math.PI / 2; holder.position.set(0, -.035, .36); gun.add(holder); holder.add(model);
+    model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
+    if (makeHand) {
+      const r = makeHand(1); r.position.set(.03, -.06, .1); r.rotation.set(.35, .15, .25); r.curl(.75); gun.add(r);
+      const l = makeHand(-1); l.position.set(-.035, -.055, -.22); l.rotation.set(-.15, -.4, -.6); l.curl(.55); hinge.add(l);
+      [handR, handL].forEach(h => h.visible = false);
+    }
+    slA.position.set(0, -.045, -.42); hinge.add(slA); slB.position.set(0, -.085, .3); gun.add(slB);
+    sling = new Rope(scene, { n: 12, length: .78, width: .028, thick: .004 });
+  }
+  function slingTick(dt) { if (!sling) return; sling.visible = rig.visible; if (!rig.visible) { sling.reset(); return; } rig.updateMatrixWorld(true); slA.getWorldPosition(wa); slB.getWorldPosition(wb); sling.update(wa, wb, dt); }
+
   return {
+    setModel, slingTick,
     scene, cam, update, draw, holster, toggle, aim, fire, reload,
     get state() { return W.state; }, get drawn() { return W.state !== 'holstered' && W.state !== 'holstering'; }, get aiming() { return W.aimK > .6; },
     get aimK() { return W.aimK; }, get ammo() { return W.ammo; }, get reserve() { return W.reserve; }, set reserve(v) { W.reserve = v; },
