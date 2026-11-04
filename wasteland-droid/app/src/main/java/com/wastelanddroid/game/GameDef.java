@@ -36,7 +36,7 @@ public enum GameDef {
     public final String id;
     public final String title;
     public final String exe;
-    /** Имя папки в «Мои документы/My Games» и ветки реестра Bethesda Softworks. */
+    /** Имя папки в 'Мои документы/My Games' и ветки реестра Bethesda Softworks. */
     public final String folder;
     public final String scriptExtender;
     public final String scriptExtenderName;

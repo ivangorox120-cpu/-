@@ -26,8 +26,8 @@ import com.wastelanddroid.util.WastelandBackdrop;
 import java.io.File;
 
 /**
- * Заставка: фон с медленным наездом камеры, плавно проявляющаяся надпись «Fallout Droid»
- * и «by Rommy» под словом Droid. Затем — сразу игра (если включён автозапуск и всё готово)
+ * Заставка: фон с медленным наездом камеры, плавно проявляющаяся надпись 'Fallout Droid'
+ * и 'by Rommy' под словом Droid. Затем — сразу игра (если включён автозапуск и всё готово)
  * или лаунчер. Касание экрана пропускает заставку.
  */
 public final class SplashActivity extends Activity {
@@ -74,7 +74,7 @@ public final class SplashActivity extends Activity {
         bg.setAlpha(0f);
         bg.animate().alpha(1f).setDuration(900).start();
 
-        // Надпись: проявление с «разъезжающимися» буквами
+        // Надпись: проявление с 'разъезжающимися' буквами
         title.setAlpha(0f);
         title.setLetterSpacing(0.45f);
         title.setScaleX(0.94f);

@@ -11,7 +11,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Передача ввода в дисплейный сервер рантайма (см. docs/ARCHITECTURE.md, «Ввод»).
+ * Передача ввода в дисплейный сервер рантайма (см. docs/ARCHITECTURE.md, 'Ввод').
  *
  * Протокол: пакеты по 8 байт (little-endian):
  *   u8 type | u8 flags | u16 code | i16 a | i16 b
@@ -41,7 +41,7 @@ public final class InputBridge {
     public void mouseMove(float dx, float dy) {
         accDx.addAndGet(Math.round(dx));
         accDy.addAndGet(Math.round(dy));
-        queue.offer(new byte[0]); // «будильник»: накопленное движение будет отправлено
+        queue.offer(new byte[0]); // 'будильник': накопленное движение будет отправлено
     }
 
     public void wheel(int steps) { queue.offer(packet(3, 0, steps, 0)); }

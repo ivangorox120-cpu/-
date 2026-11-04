@@ -22,7 +22,7 @@ public final class GamepadEditor {
         int p = Ui.dp(a, 16);
         col.setPadding(p, p / 2, p, p / 2);
 
-        TextView status = Ui.hint(a, GamepadInput.anyConnected() ? "🎮 Геймпад подключён" : "Геймпад не обнаружен — подключите по Bluetooth или USB");
+        TextView status = Ui.withIcon(Ui.hint(a, GamepadInput.anyConnected() ? "Геймпад подключён" : "Геймпад не обнаружен — подключите по Bluetooth или USB"), com.wastelanddroid.R.drawable.ic_gamepad, Ui.FG_DIM);
         col.addView(status);
         col.addView(Ui.hint(a, "Левый стик — ходьба, правый — обзор"));
         col.addView(Ui.slider(a, "Скорость обзора, %", 20, 300, Math.round(m.lookSpeed * 100), v -> m.lookSpeed = v / 100f));

@@ -51,12 +51,12 @@ public final class GraphicsActivity extends Activity {
         cols.setGravity(Gravity.TOP);
 
         LinearLayout left = Ui.column(this);
-        LinearLayout tex = Ui.card(this, "▌ Текстуры и фильтрация");
+        LinearLayout tex = Ui.card(this, "Текстуры и фильтрация");
         tex.addView(Ui.slider(this, "Качество текстур (0 — высокое, 2 — низкое)", 0, 2, g.textureQuality, v -> g.textureQuality = v));
         tex.addView(Ui.slider(this, "Анизотропная фильтрация", 1, 16, g.anisotropy, v -> g.anisotropy = v));
         tex.addView(Ui.slider(this, "Поле зрения (FOV)", 60, 100, g.fov, v -> g.fov = v));
         left.addView(tex);
-        LinearLayout light = Ui.card(this, "▌ Свет и тени");
+        LinearLayout light = Ui.card(this, "Свет и тени");
         light.addView(Ui.slider(this, "Тени (0 — выкл, 3 — высокие)", 0, 3, g.shadows, v -> g.shadows = v));
         light.addView(check("Тени от деревьев (дорого)", g.treeShadows, v -> g.treeShadows = v));
         light.addView(check("HDR (иначе — Bloom)", g.hdr, v -> g.hdr = v));
@@ -66,12 +66,12 @@ public final class GraphicsActivity extends Activity {
         cols.addView(new View(this), new LinearLayout.LayoutParams(Ui.dp(this, 14), 1));
 
         LinearLayout right = Ui.column(this);
-        LinearLayout dist = Ui.card(this, "▌ Дальность");
+        LinearLayout dist = Ui.card(this, "Дальность");
         dist.addView(Ui.slider(this, "Дальность ландшафта и объектов", 1, 10, g.viewDistance, v -> g.viewDistance = v));
         dist.addView(Ui.slider(this, "Прорисовка персонажей и предметов", 1, 10, g.fade, v -> g.fade = v));
         dist.addView(Ui.slider(this, "Трава (0 — выкл)", 0, 3, g.grassDensity, v -> g.grassDensity = v));
         right.addView(dist);
-        LinearLayout fx = Ui.card(this, "▌ Эффекты");
+        LinearLayout fx = Ui.card(this, "Эффекты");
         fx.addView(check("Отражения в воде (самое дорогое)", g.waterReflections, v -> g.waterReflections = v));
         fx.addView(check("Следы от пуль и крови (декали)", g.decals, v -> g.decals = v));
         fx.addView(Ui.hint(this, "Размер мира (uGridsToLoad) зафиксирован на 5: большие значения вызывают вылеты."));

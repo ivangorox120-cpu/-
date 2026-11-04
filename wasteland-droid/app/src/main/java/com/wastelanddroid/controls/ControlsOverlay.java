@@ -14,7 +14,7 @@ import com.wastelanddroid.runtime.InputBridge;
 
 /**
  * Прозрачный слой экранного управления поверх изображения игры.
- * Режим игры: мультитач, стик → W/A/S/D, «тачпад обзора» → относительное движение мыши.
+ * Режим игры: мультитач, стик → W/A/S/D, 'тачпад обзора' → относительное движение мыши.
  * Режим редактора: перетаскивание элементов, выбор для настройки размера/прозрачности/клавиши.
  */
 public final class ControlsOverlay extends View {
@@ -262,7 +262,7 @@ public final class ControlsOverlay extends View {
         stickW = w; stickA = a; stickS = s; stickD = d;
     }
 
-    /** Отпустить всё (при сворачивании), чтобы в игре не «залипли» клавиши. */
+    /** Отпустить всё (при сворачивании), чтобы в игре не 'залипли' клавиши. */
     public void releaseAll() {
         for (int i = 0; i < touches.size(); i++) release(touches.valueAt(i));
         touches.clear();

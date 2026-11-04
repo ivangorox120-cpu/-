@@ -73,3 +73,8 @@ gradle assembleRelease      # нужен Android SDK + NDK 27
 APK: `app/build/outputs/apk/release/app-release.apk` (только arm64-v8a, Android 11+).
 
 Рантайм собирается отдельно: [docs/RUNTIME.md](docs/RUNTIME.md).
+
+## Ресурсы
+
+- Иконки: [Game Icon Pack](https://github.com/Nieobie/game-icon-pack) by Nieobie — CC0 1.0.
+- Шрифт `res/font/fallout.ttf`: «Fallout Regular» © Ash Fargouh (в метаданных шрифта указана General Public License; файл COPYRIGHT — `assets/FONT-COPYRIGHT.txt`).

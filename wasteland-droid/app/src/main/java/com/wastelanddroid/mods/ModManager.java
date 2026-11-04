@@ -28,7 +28,7 @@ import java.util.zip.ZipInputStream;
  * Порядок загрузки в этих играх определяется датой изменения файлов .esm/.esp,
  * а список включённых плагинов — файлом %LOCALAPPDATA%\<Игра>\plugins.txt.
  * Менеджер поддерживает оба: пишет plugins.txt и выставляет даты по порядку.
- * Установка — из .zip (структура Data/… или meshes/textures/… — определяется автоматически),
+ * Установка — из .zip (структура Data/... или meshes/textures/... — определяется автоматически),
  * с записью списка файлов и резервной копией перезаписанных, чтобы мод можно было удалить начисто.
  */
 public final class ModManager {
@@ -225,7 +225,7 @@ public final class ModManager {
                     String rel = path.substring(root.length());
                     if (rel.isEmpty() || rel.toLowerCase(Locale.ROOT).startsWith("fomod/")) continue;
                     File dst = new File(dataDir, rel);
-                    // защита от «zip slip» (../ в путях архива)
+                    // защита от 'zip slip' (../ в путях архива)
                     if (!dst.getCanonicalPath().startsWith(dataCanon)) continue;
                     if (dst.exists()) {
                         File bk = new File(backup, rel);

@@ -75,7 +75,7 @@ public final class MainActivity extends Activity {
 
         GameCard(GameDef d) {
             def = d;
-            play = Ui.button(MainActivity.this, "▶  ИГРАТЬ", v -> launch(def));
+            play = Ui.button(MainActivity.this, R.drawable.ic_play, "ИГРАТЬ", v -> launch(def));
             play.setTextSize(18);
             play.setLetterSpacing(0.15f);
         }
@@ -91,13 +91,13 @@ public final class MainActivity extends Activity {
             card.addView(path, Ui.matchWrap(MainActivity.this, 6));
             card.addView(status);
             LinearLayout btns = Ui.row(MainActivity.this);
-            Button folder = Ui.ghostButton(MainActivity.this, "📁 Папка", v -> { pendingGame = def; pickGameDir(); });
-            Button art = Ui.ghostButton(MainActivity.this, "🖼 Обложка", v -> { pendingGame = def; pickCover(); });
-            Button mods = Ui.ghostButton(MainActivity.this, "🧩 Моды", v -> {
+            Button folder = Ui.ghostButton(MainActivity.this, R.drawable.ic_folder, "Папка", v -> { pendingGame = def; pickGameDir(); });
+            Button art = Ui.ghostButton(MainActivity.this, R.drawable.ic_image, "Обложка", v -> { pendingGame = def; pickCover(); });
+            Button mods = Ui.ghostButton(MainActivity.this, R.drawable.ic_mods, "Моды", v -> {
                 if (def.gameDir(MainActivity.this) == null) { Toast.makeText(MainActivity.this, "Сначала выберите папку игры", Toast.LENGTH_SHORT).show(); return; }
                 open(new Intent(MainActivity.this, ModManagerActivity.class).putExtra(ModManagerActivity.EXTRA_GAME, def.id));
             });
-            Button saves = Ui.ghostButton(MainActivity.this, "💾 Сейвы", v ->
+            Button saves = Ui.ghostButton(MainActivity.this, R.drawable.ic_save, "Сейвы", v ->
                     open(new Intent(MainActivity.this, SavesActivity.class).putExtra(SavesActivity.EXTRA_GAME, def.id)));
             btns.addView(folder, Ui.weight());
             btns.addView(art, Ui.weight());
@@ -179,21 +179,19 @@ public final class MainActivity extends Activity {
         title.setShadowLayer(Ui.dp(this, 10), 0, 0, Color.argb(160, 138, 255, 128));
         titles.addView(title);
         headerTitle = title;
-        TextView by = Ui.hint(this, "by Rommy  ·  Fallout 3 · New Vegas · 60 FPS · v" + versionName());
+        TextView by = Ui.hint(this, "by Rommy  |  Fallout 3 | New Vegas | 60 FPS | v" + versionName());
         by.setTextColor(Ui.AMBER);
         titles.addView(by);
         header.addView(titles, Ui.weight());
 
-        // Telegram-«пилюля»
+        // Telegram-'пилюля'
         LinearLayout tg = Ui.row(this);
         tg.setBackground(Ui.rounded(Color.argb(50, 42, 171, 238), Ui.TG, 22, this));
         int p = Ui.dp(this, 6);
         tg.setPadding(p, p, Ui.dp(this, 14), p);
-        TextView plane = new TextView(this);
-        plane.setText("✈");
-        plane.setTextSize(16);
-        plane.setTextColor(Color.WHITE);
-        plane.setGravity(Gravity.CENTER);
+        ImageView plane = new ImageView(this);
+        plane.setImageDrawable(Ui.icon(this, R.drawable.ic_telegram, Color.WHITE, 18));
+        plane.setScaleType(ImageView.ScaleType.CENTER);
         plane.setBackground(Ui.rounded(Ui.TG, 0, 16, this));
         int s = Ui.dp(this, 32);
         tg.addView(plane, new LinearLayout.LayoutParams(s, s));
@@ -235,10 +233,10 @@ public final class MainActivity extends Activity {
         Anim.stagger(row, 150, 140);
         col.addView(Ui.hint(this, "Совет: удерживайте обложку, чтобы вернуть стандартную."), Ui.matchWrap(this, 4));
 
-        LinearLayout rt = Ui.card(this, "▌ Рантайм Box64 · Wine · DXVK · Turnip");
+        LinearLayout rt = Ui.card(this, "Рантайм Box64 | Wine | DXVK | Turnip");
         runtimeStatus = Ui.column(this);
         rt.addView(runtimeStatus);
-        rt.addView(Ui.ghostButton(this, "⬇  Импорт rootfs.tar.gz", v -> pickRuntime()));
+        rt.addView(Ui.ghostButton(this, R.drawable.ic_download, "Импорт rootfs.tar.gz", v -> pickRuntime()));
         col.addView(rt, Ui.matchWrap(this, 10));
         return col;
     }
@@ -255,40 +253,40 @@ public final class MainActivity extends Activity {
     private View buildRight() {
         LinearLayout col = Ui.column(this);
 
-        LinearLayout gfx = Ui.card(this, "▌ Графика");
+        LinearLayout gfx = Ui.card(this, "Графика");
         String[] qVals = {"auto", "low", "medium", "high"};
-        String[] qNames = {"Авто — " + qualityName(DeviceProfile.autoQuality(this)), "Низкое · 720p", "Среднее · 900p", "Высокое · 1080p"};
+        String[] qNames = {"Авто — " + qualityName(DeviceProfile.autoQuality(this)), "Низкое | 720p", "Среднее | 900p", "Высокое | 1080p"};
         gfx.addView(spinner(qNames, qVals, Prefs.QUALITY, "auto"), new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
         gfx.addView(Ui.slider(this, "Масштаб разрешения, %", 50, 100, prefs.getInt(Prefs.RES_SCALE, 100),
                 v -> prefs.edit().putInt(Prefs.RES_SCALE, v).apply()));
-        gfx.addView(Ui.hint(this, "🔒 Лок 60 FPS включён всегда: выше 60 ломается физика движка."));
+        gfx.addView(Ui.withIcon(Ui.hint(this, "Лок 60 FPS включён всегда: выше 60 ломается физика движка."), R.drawable.ic_lock, Ui.AMBER));
         gfx.addView(check("Счётчик FPS (DXVK HUD)", Prefs.SHOW_HUD, false));
-        gfx.addView(Ui.ghostButton(this, "⚙  Тонкая настройка графики", v -> open(new Intent(this, GraphicsActivity.class))), Ui.matchWrap(this, 4));
+        gfx.addView(Ui.ghostButton(this, R.drawable.ic_settings, "Тонкая настройка графики", v -> open(new Intent(this, GraphicsActivity.class))), Ui.matchWrap(this, 4));
         col.addView(gfx);
 
-        LinearLayout ctl = Ui.card(this, "▌ Управление");
+        LinearLayout ctl = Ui.card(this, "Управление");
         ctl.addView(Ui.hint(this, "Экранные кнопки"));
         ctl.addView(spinner(new String[]{"Авто — скрывать при геймпаде", "Всегда показывать", "Полностью выключены"},
                 new String[]{"auto", "on", "off"}, Prefs.OVERLAY_MODE, "auto"), new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
         LinearLayout ctlBtns = Ui.row(this);
-        ctlBtns.addView(Ui.ghostButton(this, "✋ Кнопки", v -> open(new Intent(this, ControlsEditorActivity.class))), Ui.weight());
-        ctlBtns.addView(Ui.ghostButton(this, "🎮 Геймпад", v -> GamepadEditor.show(this)), Ui.weight());
+        ctlBtns.addView(Ui.ghostButton(this, R.drawable.ic_touch, "Кнопки", v -> open(new Intent(this, ControlsEditorActivity.class))), Ui.weight());
+        ctlBtns.addView(Ui.ghostButton(this, R.drawable.ic_gamepad, "Геймпад", v -> GamepadEditor.show(this)), Ui.weight());
         ctl.addView(ctlBtns, Ui.matchWrap(this, 4));
         col.addView(ctl, Ui.matchWrap(this, 12));
 
-        LinearLayout stab = Ui.card(this, "▌ Стабильность");
+        LinearLayout stab = Ui.card(this, "Стабильность");
         stab.addView(check("Сразу запускать последнюю игру", Prefs.AUTOSTART, true));
         stab.addView(check("Патч памяти 4 ГБ (LAA)", Prefs.LAA, true));
         stab.addView(check("Запуск через FOSE / NVSE, если есть", Prefs.USE_FOSE, true));
         stab.addView(check("Автосохранения", Prefs.AUTOSAVE, true));
         stab.addView(check("Пропуск вступительных роликов", Prefs.SKIP_INTRO, true));
         stab.addView(check("Сторож зависаний", Prefs.WATCHDOG, true));
-        stab.addView(check("Только «большие» ядра CPU", Prefs.PIN_BIG_CORES, true));
+        stab.addView(check("Только 'большие' ядра CPU", Prefs.PIN_BIG_CORES, true));
         col.addView(stab, Ui.matchWrap(this, 12));
 
-        LinearLayout look = Ui.card(this, "▌ Оформление");
+        LinearLayout look = Ui.card(this, "Оформление");
         LinearLayout lb = Ui.row(this);
-        lb.addView(Ui.ghostButton(this, "🖼 Фон заставки", v -> pickSplash()), Ui.weight());
+        lb.addView(Ui.ghostButton(this, R.drawable.ic_image, "Фон заставки", v -> pickSplash()), Ui.weight());
         lb.addView(Ui.ghostButton(this, "Сбросить", v -> {
             //noinspection ResultOfMethodCallIgnored
             WastelandBackdrop.customFile(this).delete();
@@ -369,7 +367,7 @@ public final class MainActivity extends Activity {
     }
 
     private void ensureStoragePermission() {
-        // Wine работает с обычными путями файловой системы, поэтому нужен «доступ ко всем файлам».
+        // Wine работает с обычными путями файловой системы, поэтому нужен 'доступ ко всем файлам'.
         boolean granted;
         try {
             granted = Environment.isExternalStorageManager();
@@ -379,7 +377,7 @@ public final class MainActivity extends Activity {
         if (granted) return;
         new AlertDialog.Builder(this)
                 .setTitle("Нужен доступ к файлам")
-                .setMessage("Игра читает файлы напрямую из выбранной папки. Разрешите «Доступ ко всем файлам».")
+                .setMessage("Игра читает файлы напрямую из выбранной папки. Разрешите 'Доступ ко всем файлам'.")
                 .setPositiveButton("Открыть настройки", (d, w) -> {
                     try {
                         startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
@@ -445,7 +443,7 @@ public final class MainActivity extends Activity {
             refresh();
         } else if (req == REQ_RUNTIME) {
             runtimeStatus.removeAllViews();
-            TextView busy = status("◌", "Установка рантайма…", Ui.AMBER);
+            TextView busy = status(R.drawable.ic_download, "Установка рантайма...", Ui.AMBER);
             Animation blink = new AlphaAnimation(1f, 0.3f);
             blink.setDuration(600);
             blink.setRepeatMode(Animation.REVERSE);
@@ -466,19 +464,19 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private TextView status(String icon, String text, int color) {
-        TextView t = Ui.label(this, icon + "  " + text);
+    private TextView status(int icon, String text, int color) {
+        TextView t = Ui.label(this, text);
         t.setTextColor(color);
         t.setTextSize(13);
-        return t;
+        return Ui.withIcon(t, icon, color);
     }
 
     private void refresh() {
         String miss = new RuntimeManager(this).missingComponent();
         runtimeStatus.removeAllViews();
         runtimeStatus.addView(miss == null
-                ? status("✔", "Рантайм установлен", Ui.FG)
-                : status("✖", "Не установлен (нет " + miss + ")", Ui.RED));
+                ? status(R.drawable.ic_check, "Рантайм установлен", Ui.FG)
+                : status(R.drawable.ic_cross, "Не установлен (нет " + miss + ")", Ui.RED));
 
         for (GameCard c : cards.values()) {
             GameDef d = c.def;
@@ -488,19 +486,19 @@ public final class MainActivity extends Activity {
             boolean ok = false;
             if (path == null) {
                 c.path.setText("Папка не выбрана");
-                c.status.addView(status("›", "Укажите папку с " + d.exe + " и Data", Ui.FG_DIM));
+                c.status.addView(status(R.drawable.ic_info, "Укажите папку с " + d.exe + " и Data", Ui.FG_DIM));
             } else {
                 c.path.setText(path);
                 GameFiles.Report r = GameFiles.validate(d, new File(path));
-                if (r.ok()) c.status.addView(status("✔", "Файлы в порядке", Ui.FG));
-                if (!r.dlcs.isEmpty()) c.status.addView(status("◆", "DLC: " + r.dlcs.size(), Ui.FG));
-                for (String e : r.errors) c.status.addView(status("✖", e, Ui.RED));
-                for (String w : r.warnings) c.status.addView(status("⚠", w, Ui.AMBER));
+                if (r.ok()) c.status.addView(status(R.drawable.ic_check, "Файлы в порядке", Ui.FG));
+                if (!r.dlcs.isEmpty()) c.status.addView(status(R.drawable.ic_diamond, "DLC: " + r.dlcs.size(), Ui.FG));
+                for (String e : r.errors) c.status.addView(status(R.drawable.ic_cross, e, Ui.RED));
+                for (String w : r.warnings) c.status.addView(status(R.drawable.ic_warning, w, Ui.AMBER));
                 ok = r.ok();
             }
             c.cover.setSelectedCard(ok && miss == null);
             c.play.setEnabled(ok && miss == null);
-            c.play.setText(c.play.isEnabled() ? "▶  ИГРАТЬ" : "не готово");
+            c.play.setText(c.play.isEnabled() ? "ИГРАТЬ" : "не готово");
             if (c.pulse != null) { c.pulse.cancel(); loops.remove(c.pulse); c.pulse = null; c.play.setScaleX(1f); c.play.setScaleY(1f); }
             if (c.play.isEnabled()) { c.pulse = Anim.pulse(c.play); loops.add(c.pulse); }
         }

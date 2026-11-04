@@ -21,7 +21,7 @@ import java.util.zip.ZipInputStream;
 /**
  * Сохранения игры внутри префикса Wine: My Games/<Игра>/Saves.
  * Файлы сохранений — *.fos (и у Fallout 3, и у New Vegas); рядом могут лежать
- * «ко-сейвы» расширителей скриптов (*.fose, *.nvse) — переносятся вместе с ними.
+ * 'ко-сейвы' расширителей скриптов (*.fose, *.nvse) — переносятся вместе с ними.
  */
 public final class SaveStore {
     public static final class Save {
@@ -71,7 +71,7 @@ public final class SaveStore {
     public int importStream(String name, InputStream in) throws IOException {
         String l = name.toLowerCase(Locale.ROOT);
         if (l.endsWith(".zip")) return importZip(in);
-        if (!acceptsFile(name)) throw new IOException("«" + name + "» — не файл сохранения (.fos)");
+        if (!acceptsFile(name)) throw new IOException("'" + name + "' — не файл сохранения (.fos)");
         File dst = new File(dir, new File(name).getName());
         writeAtomic(in, dst);
         return isSave(name) ? 1 : 0;

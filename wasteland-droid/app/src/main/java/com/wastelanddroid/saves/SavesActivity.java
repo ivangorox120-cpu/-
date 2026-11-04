@@ -55,25 +55,25 @@ public final class SavesActivity extends Activity {
         page.setPadding(pad, Ui.dp(this, 12), pad, Ui.dp(this, 12));
 
         LinearLayout header = Ui.row(this);
-        TextView title = Ui.label(this, "СОХРАНЕНИЯ · " + game.title.toUpperCase());
+        TextView title = Ui.label(this, "СОХРАНЕНИЯ | " + game.title.toUpperCase());
         title.setTextSize(20);
         title.setTypeface(Ui.mono(true));
         header.addView(title, Ui.weight());
-        header.addView(Ui.button(this, "⬇ Добавить сохранения", v -> pickImport()));
-        header.addView(Ui.ghostButton(this, "⬆ Экспорт всех", v -> exportAll()));
+        header.addView(Ui.button(this, com.wastelanddroid.R.drawable.ic_download, "Добавить сохранения", v -> pickImport()));
+        header.addView(Ui.ghostButton(this, com.wastelanddroid.R.drawable.ic_upload, "Экспорт всех", v -> exportAll()));
         page.addView(header);
         Anim.enterFromTop(header, 0);
 
         LinearLayout cols = Ui.row(this);
         cols.setGravity(Gravity.TOP);
-        LinearLayout left = Ui.card(this, "▌ В игре (новые сверху)");
+        LinearLayout left = Ui.card(this, "В игре (новые сверху)");
         list = Ui.column(this);
         left.addView(list);
         left.addView(Ui.hint(this, "Добавляйте файлы .fos (вместе с .fose/.nvse, если есть) или .zip с ними. "
                 + "Сохранения с ПК подходят как есть."));
         cols.addView(scroll(left), new LinearLayout.LayoutParams(0, -1, 1.5f));
         cols.addView(new View(this), new LinearLayout.LayoutParams(Ui.dp(this, 14), 1));
-        LinearLayout right = Ui.card(this, "▌ Автокопии перед запуском");
+        LinearLayout right = Ui.card(this, "Автокопии перед запуском");
         backups = Ui.column(this);
         right.addView(backups);
         cols.addView(scroll(right), new LinearLayout.LayoutParams(0, -1, 1f));
@@ -106,11 +106,11 @@ public final class SavesActivity extends Activity {
             LinearLayout row = Ui.row(this);
             row.setBackground(Ui.rounded(i % 2 == 0 ? Color.argb(20, 138, 255, 128) : Color.TRANSPARENT, 0, 8, this));
             TextView t = Ui.label(this, s.title() + "\n" + df.format(new Date(s.file.lastModified()))
-                    + " · " + (s.size() / 1024) + " КБ" + (s.companions.isEmpty() ? "" : " · +" + s.companions.size()));
+                    + " | " + (s.size() / 1024) + " КБ" + (s.companions.isEmpty() ? "" : " | +" + s.companions.size()));
             t.setTextSize(13);
             row.addView(t, Ui.weight());
             row.addView(Ui.styledButton(this, "Удалить", v -> new AlertDialog.Builder(this)
-                    .setTitle("Удалить «" + s.title() + "»?")
+                    .setTitle("Удалить '" + s.title() + "'?")
                     .setPositiveButton("Удалить", (d, w) -> { store.delete(s); render(); })
                     .setNegativeButton("Отмена", null).show(), Color.argb(60, 255, 100, 90), Ui.RED, Ui.RED));
             list.addView(row);

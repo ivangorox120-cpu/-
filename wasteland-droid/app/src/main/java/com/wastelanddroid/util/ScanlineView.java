@@ -8,7 +8,7 @@ import android.graphics.RadialGradient;
 import android.graphics.Shader;
 import android.view.View;
 
-/** Декоративный слой «кинескопа»: едва заметные строки развёртки и виньетка. Касания не перехватывает. */
+/** Декоративный слой 'кинескопа': едва заметные строки развёртки и виньетка. Касания не перехватывает. */
 public final class ScanlineView extends View {
     private final Paint line = new Paint();
     private final Paint vignette = new Paint();

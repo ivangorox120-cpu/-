@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Game Icon Pack (CC0 1.0), github.com/Nieobie/game-icon-pack -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="10" android:viewportHeight="10">
+    <path android:pathData="M5 2.3a.7.7 0 0 1 .7.7v.345c0 .428 0 .641.123.783a1 1 0 0 0 .05.05c.14.122.354.122.782.122H7a.7.7 0 0 1 0 1.4h-.345c-.428 0-.642 0-.783.123a1 1 0 0 0-.05.05c-.122.14-.122.354-.122.782V7a.7.7 0 0 1-1.4 0v-.345c0-.428 0-.642-.123-.783a1 1 0 0 0-.05-.05c-.14-.122-.354-.122-.782-.122H3a.7.7 0 0 1 0-1.4h.345c.428 0 .641 0 .783-.123a1 1 0 0 0 .05-.05c.122-.14.122-.354.122-.782V3a.7.7 0 0 1 .7-.7" android:fillColor="#FFFFFFFF" />
+</vector>

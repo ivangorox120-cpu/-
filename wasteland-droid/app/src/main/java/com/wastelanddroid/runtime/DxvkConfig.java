@@ -19,7 +19,7 @@ public final class DxvkConfig {
                 "d3d9.numBackBuffers = 2",
                 "# Игра 2008 г. не знает про >4 ГБ VRAM и может переполнить счётчик — ограничиваем.",
                 "d3d9.maxAvailableMemory = 2048",
-                "# Компиляция пайплайнов в фоне на «больших» ядрах.",
+                "# Компиляция пайплайнов в фоне на 'больших' ядрах.",
                 "dxvk.numCompilerThreads = 3",
                 "dxvk.enableGraphicsPipelineLibrary = Auto",
                 "d3d9.deferSurfaceCreation = True",

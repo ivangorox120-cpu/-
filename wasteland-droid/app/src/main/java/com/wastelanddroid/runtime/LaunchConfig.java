@@ -13,7 +13,7 @@ public final class LaunchConfig {
     /** Запуск игры (или fose_loader.exe) в виртуальном рабочем столе Wine. */
     public static LaunchConfig game(RuntimeManager rt, File gameDir, File exe, File dxvkConf, int width, int height,
                                     File tmpDir, String display) {
-        // Виртуальный рабочий стол Wine: игра не переключает видеорежим «экрана» —
+        // Виртуальный рабочий стол Wine: игра не переключает видеорежим 'экрана' —
         // это устраняет чёрный экран/зависание при сворачивании приложения.
         return new LaunchConfig(rt, gameDir, dxvkConf, tmpDir, display,
                 "explorer", "/desktop=Wasteland," + width + "x" + height, toWinPath(exe));
@@ -62,7 +62,7 @@ public final class LaunchConfig {
         env.add("MESA_SHADER_CACHE_MAX_SIZE=1G");
         env.add("TU_DEBUG=noconform");
 
-        // Box64: профиль «стабильность прежде всего» для многопоточного Gamebryo.
+        // Box64: профиль 'стабильность прежде всего' для многопоточного Gamebryo.
         env.add("BOX64_LOG=0");
         env.add("BOX64_NOBANNER=1");
         env.add("BOX64_DYNAREC=1");
@@ -74,7 +74,7 @@ public final class LaunchConfig {
         env.add("BOX64_DYNAREC_X87DOUBLE=1"); // точность x87, на которой построена физика
         env.add("BOX64_DYNAREC_CALLRET=1");
         env.add("BOX64_DYNAREC_WAIT=1");
-        env.add("BOX64_MAXCPU=4");            // совпадает с числом «больших» ядер на SD870
+        env.add("BOX64_MAXCPU=4");            // совпадает с числом 'больших' ядер на SD870
         env.add("BOX64_AVX=0");
     }
 

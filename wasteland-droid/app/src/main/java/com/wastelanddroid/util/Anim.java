@@ -12,9 +12,9 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
 
-/** Анимации интерфейса: появление, «нажатие», пульсация. Все — на RenderThread-совместимых свойствах. */
+/** Анимации интерфейса: появление, 'нажатие', пульсация. Все — на RenderThread-совместимых свойствах. */
 public final class Anim {
-    /** Плавная кривая «Material emphasized». */
+    /** Плавная кривая 'Material emphasized'. */
     public static final PathInterpolator EMPHASIZED = new PathInterpolator(0.2f, 0f, 0f, 1f);
 
     private Anim() {}
@@ -40,7 +40,7 @@ public final class Anim {
         for (int i = 0; i < g.getChildCount(); i++) enter(g.getChildAt(i), startDelay + i * step);
     }
 
-    /** «Пружинящее» нажатие для любой кликабельной View. */
+    /** 'Пружинящее' нажатие для любой кликабельной View. */
     @SuppressLint("ClickableViewAccessibility")
     public static void pressable(View v) {
         v.setOnTouchListener((view, e) -> {
@@ -61,7 +61,7 @@ public final class Anim {
         });
     }
 
-    /** Бесконечная мягкая пульсация (кнопка «Играть»). */
+    /** Бесконечная мягкая пульсация (кнопка 'Играть'). */
     public static Animator pulse(View v) {
         ObjectAnimator sx = ObjectAnimator.ofFloat(v, View.SCALE_X, 1f, 1.035f);
         ObjectAnimator sy = ObjectAnimator.ofFloat(v, View.SCALE_Y, 1f, 1.035f);
@@ -77,7 +77,7 @@ public final class Anim {
         return set;
     }
 
-    /** Мерцание «лампового» текста. */
+    /** Мерцание 'лампового' текста. */
     public static Animator flicker(View v) {
         ObjectAnimator a = ObjectAnimator.ofFloat(v, View.ALPHA, 1f, 0.82f, 1f, 0.9f, 1f);
         a.setDuration(2600);

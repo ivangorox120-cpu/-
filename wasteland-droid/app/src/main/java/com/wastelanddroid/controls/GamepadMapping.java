@@ -36,10 +36,10 @@ public final class GamepadMapping {
         BUTTON_NAMES.put(KeyEvent.KEYCODE_BUTTON_THUMBR, "R3");
         BUTTON_NAMES.put(KeyEvent.KEYCODE_BUTTON_START, "Start");
         BUTTON_NAMES.put(KeyEvent.KEYCODE_BUTTON_SELECT, "Back");
-        BUTTON_NAMES.put(PAD_UP, "Крестовина ↑");
-        BUTTON_NAMES.put(PAD_DOWN, "Крестовина ↓");
-        BUTTON_NAMES.put(PAD_LEFT, "Крестовина ←");
-        BUTTON_NAMES.put(PAD_RIGHT, "Крестовина →");
+        BUTTON_NAMES.put(PAD_UP, "Крестовина вверх");
+        BUTTON_NAMES.put(PAD_DOWN, "Крестовина вниз");
+        BUTTON_NAMES.put(PAD_LEFT, "Крестовина влево");
+        BUTTON_NAMES.put(PAD_RIGHT, "Крестовина вправо");
     }
 
     public final Map<Integer, Integer> keys = new LinkedHashMap<>();

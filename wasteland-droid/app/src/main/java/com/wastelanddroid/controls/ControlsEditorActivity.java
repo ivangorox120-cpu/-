@@ -95,11 +95,12 @@ public final class ControlsEditorActivity extends Activity {
         root.addView(panel, lp);
 
         // Панель можно свернуть, чтобы видеть нижние кнопки.
-        Button hide = Ui.ghostButton(this, "▼ панель", null);
+        Button hide = Ui.ghostButton(this, com.wastelanddroid.R.drawable.ic_arrow_down, "панель", null);
         hide.setOnClickListener(v -> {
             boolean vis = panel.getVisibility() == View.VISIBLE;
             panel.setVisibility(vis ? View.GONE : View.VISIBLE);
-            hide.setText(vis ? "▲ панель" : "▼ панель");
+            hide.setText("панель");
+            Ui.withIcon(hide, vis ? com.wastelanddroid.R.drawable.ic_arrow_up : com.wastelanddroid.R.drawable.ic_arrow_down, Ui.FG);
         });
         root.addView(hide, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         setContentView(root);
@@ -109,7 +110,7 @@ public final class ControlsEditorActivity extends Activity {
         if (b == null || b.type == ControlButton.Type.LOOK_PAD) { selPanel.setVisibility(View.GONE); return; }
         binding = true;
         selPanel.setVisibility(View.VISIBLE);
-        selTitle.setText(b.type == ControlButton.Type.STICK ? "Стик" : "«" + b.label + "»");
+        selTitle.setText(b.type == ControlButton.Type.STICK ? "Стик" : "'" + b.label + "'");
         selSize.setProgress(Math.round(b.size * 100) - 4);
         selAlpha.setProgress(Math.round(b.alpha * 100));
         boolean isBtn = b.type == ControlButton.Type.BUTTON;

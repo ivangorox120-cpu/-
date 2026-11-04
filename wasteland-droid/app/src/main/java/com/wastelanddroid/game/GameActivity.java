@@ -85,7 +85,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         getSystemService(InputManager.class).registerInputDeviceListener(this, null);
         updateOverlayVisibility();
 
-        status = Ui.label(this, "Подготовка…");
+        status = Ui.label(this, "Подготовка...");
         status.setTextSize(16);
         status.setTypeface(Ui.mono(true));
         status.setBackground(Ui.rounded(Ui.CARD, Ui.LINE, 14, this));
@@ -130,21 +130,21 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (gamePath == null) { fail("Не выбрана папка с игрой."); return; }
         File gameDir = new File(gamePath);
         try {
-            setStatus("Проверка файлов игры…");
+            setStatus("Проверка файлов игры...");
             GameFiles.Report rep = GameFiles.validate(def, gameDir);
             if (!rep.ok()) { fail(String.join("\n", rep.errors)); return; }
             if (!rt.isInstalled()) { fail("Рантайм не установлен: нет " + rt.missingComponent() + "\nИмпортируйте пакет рантайма в лаунчере."); return; }
 
             File exe = Files2.findCaseInsensitive(gameDir, def.exe);
             if (p.getBoolean(Prefs.LAA, true) && gameDir.canWrite()) {
-                setStatus("Патч памяти 4 ГБ…");
+                setStatus("Патч памяти 4 ГБ...");
                 ExePatcher.applyLargeAddressAware(exe);
             }
-            setStatus("Резервная копия сохранений…");
+            setStatus("Резервная копия сохранений...");
             SaveBackup.backup(def, rt.prefix, rt.backups);
-            setStatus("Настройка игры…");
+            setStatus("Настройка игры...");
             IniTweaks.apply(def, gameDir, rt.prefix, profile, GraphicsSettings.load(this, profile.quality), p.getBoolean(Prefs.SKIP_INTRO, true), p.getBoolean(Prefs.AUTOSAVE, true));
-            setStatus("Порядок загрузки модов…");
+            setStatus("Порядок загрузки модов...");
             new ModManager(this, def, gameDir).apply(rt.prefix);
             File conf = DxvkConfig.write(new File(getFilesDir(), "conf"), p.getBoolean(Prefs.SHOW_HUD, false));
             File tmp = new File(getCacheDir(), "tmp");
@@ -158,7 +158,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
             String disp = display.start(h.getSurface(), profile.renderWidth, profile.renderHeight);
 
-            setStatus("Регистрация игры в реестре Wine…");
+            setStatus("Регистрация игры в реестре Wine...");
             File reg = Registry.writeRegFile(def, gameDir, new File(getFilesDir(), "conf"));
             LaunchConfig regCfg = LaunchConfig.wine(rt, gameDir, conf, tmp, disp, "regedit", "/S", LaunchConfig.toWinPath(reg));
             int regPid = NativeBridge.nativeSpawn(regCfg.argvArray(), regCfg.envArray(), gameDir.getPath(),
@@ -169,7 +169,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             File fose = Files2.findCaseInsensitive(gameDir, def.scriptExtender);
             if (fose != null && p.getBoolean(Prefs.USE_FOSE, true)) launchExe = fose;
 
-            setStatus("Запуск…");
+            setStatus("Запуск...");
             LaunchConfig cfg = LaunchConfig.game(rt, gameDir, launchExe, conf, profile.renderWidth, profile.renderHeight, tmp, disp);
             int pid = game.start(cfg, new File(rt.logs, def.id + ".log"), p.getBoolean(Prefs.PIN_BIG_CORES, true),
                     p.getBoolean(Prefs.WATCHDOG, true), this);
@@ -265,7 +265,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override
     public void onBackPressed() {
-        // «Назад» = Esc в игре; выход — только через меню игры или диалог.
+        // 'Назад' = Esc в игре; выход — только через меню игры или диалог.
         input.key(0x1B, true);
         input.key(0x1B, false);
     }

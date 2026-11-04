@@ -108,7 +108,7 @@ public final class GamepadInput implements Choreographer.FrameCallback {
         InputDevice.MotionRange r = dev.getMotionRange(ax, e.getSource());
         float flat = r != null ? Math.max(r.getFlat(), map.deadzone) : map.deadzone;
         if (Math.abs(v) < flat) return 0f;
-        // перенормировка после мёртвой зоны: без «рывка» на её границе
+        // перенормировка после мёртвой зоны: без 'рывка' на её границе
         return Math.signum(v) * (Math.abs(v) - flat) / (1f - flat);
     }
 

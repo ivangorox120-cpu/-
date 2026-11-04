@@ -37,7 +37,7 @@ public final class GameFiles {
     public static Report validate(GameDef g, File dir) {
         Report r = new Report();
         if (dir == null || !dir.isDirectory() || !dir.canRead()) {
-            r.errors.add("Папка недоступна. Выдайте разрешение «Доступ ко всем файлам».");
+            r.errors.add("Папка недоступна. Выдайте разрешение 'Доступ ко всем файлам'.");
             return r;
         }
         if (Files2.findCaseInsensitive(dir, g.exe) == null) r.errors.add("Не найден: " + g.exe);
@@ -48,7 +48,7 @@ public final class GameFiles {
             File esm = Files2.findCaseInsensitive(dir, "Data/" + dlc + ".esm");
             if (esm == null) continue;
             if (Files2.findCaseInsensitive(dir, "Data/" + dlc + " - Main.bsa") == null) {
-                r.warnings.add("DLC " + dlc + ": найден .esm, но нет «" + dlc + " - Main.bsa» — возможен вылет при загрузке.");
+                r.warnings.add("DLC " + dlc + ": найден .esm, но нет '" + dlc + " - Main.bsa' — возможен вылет при загрузке.");
             }
             r.dlcs.add(dlc);
         }

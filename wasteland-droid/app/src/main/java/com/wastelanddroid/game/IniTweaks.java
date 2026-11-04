@@ -14,7 +14,7 @@ import java.io.IOException;
 public final class IniTweaks {
     private IniTweaks() {}
 
-    /** Каталог «Мои документы/My Games/Fallout3» внутри префикса Wine. */
+    /** Каталог 'Мои документы/My Games/Fallout3' внутри префикса Wine. */
     public static File myGamesDir(GameDef g, File winePrefix) {
         File users = new File(winePrefix, "drive_c/users");
         File docs = new File(users, "steamuser/Documents"); // имя пользователя задаётся в LaunchConfig (USER=steamuser)
@@ -61,7 +61,7 @@ public final class IniTweaks {
         f.set("Display", "bFull Screen", "1");
         f.set("Water", "bUseWaterDisplacements", "0");
         f.set("Water", "bUseWaterHiRes", p.quality == DeviceProfile.Quality.HIGH ? "1" : "0");
-        // Без этого «свободные» файлы модов (meshes/textures) не перекрывают BSA — моды «не работают».
+        // Без этого 'свободные' файлы модов (meshes/textures) не перекрывают BSA — моды 'не работают'.
         f.set("Archive", "bInvalidateOlderFiles", "1");
         f.set("Archive", "SInvalidationFile", "");
         // Стабильный размер мира: больше 5 — классическая причина вылетов и битых сейвов.

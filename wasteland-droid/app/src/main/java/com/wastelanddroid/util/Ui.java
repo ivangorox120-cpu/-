@@ -21,7 +21,7 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-/** Дизайн-система приложения: «ламповый терминал» — янтарь и фосфорная зелень на графите. */
+/** Дизайн-система приложения: 'ламповый терминал' — янтарь и фосфорная зелень на графите. */
 public final class Ui {
     // Палитра
     public static final int BG = Color.rgb(11, 14, 12);
@@ -43,8 +43,36 @@ public final class Ui {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics()));
     }
 
+    private static Typeface font = Typeface.MONOSPACE;
+
+    /** Загружает фирменный шрифт приложения (res/font/fallout.ttf). Вызывается из Application. */
+    public static void init(Context c) {
+        try {
+            font = c.getResources().getFont(com.wastelanddroid.R.font.fallout);
+        } catch (RuntimeException e) {
+            font = Typeface.MONOSPACE; // не должно случаться, но без шрифта приложение всё равно работает
+        }
+    }
+
     public static Typeface mono(boolean bold) {
-        return Typeface.create(Typeface.MONOSPACE, bold ? Typeface.BOLD : Typeface.NORMAL);
+        return bold ? Typeface.create(font, Typeface.BOLD) : font;
+    }
+
+    /** Иконка из пака (векторная, белая) в нужном цвете и размере. */
+    public static Drawable icon(Context c, int res, int color, float sizeDp) {
+        Drawable d = c.getDrawable(res).mutate();
+        d.setTint(color);
+        int s = dp(c, sizeDp);
+        d.setBounds(0, 0, s, s);
+        return d;
+    }
+
+    /** Ставит иконку слева от текста кнопки/надписи. */
+    public static <T extends TextView> T withIcon(T v, int res, int color) {
+        Drawable d = icon(v.getContext(), res, color, Math.max(16, v.getTextSize() / v.getResources().getDisplayMetrics().density + 4));
+        v.setCompoundDrawablesRelative(d, null, null, null);
+        v.setCompoundDrawablePadding(dp(v.getContext(), 8));
+        return v;
     }
 
     /**
@@ -116,7 +144,7 @@ public final class Ui {
         return lp;
     }
 
-    /** Карточка с заголовком-«вкладкой». Содержимое добавляется в возвращаемый контейнер. */
+    /** Карточка с заголовком-'вкладкой'. Содержимое добавляется в возвращаемый контейнер. */
     public static LinearLayout card(Context c, String title) {
         LinearLayout card = column(c);
         card.setBackground(rounded(CARD, LINE, 14, c));
@@ -164,6 +192,14 @@ public final class Ui {
     /** Основная кнопка (залитая фосфором). */
     public static Button button(Context c, String s, View.OnClickListener l) {
         return styledButton(c, s, l, FG, ON_ACCENT, 0);
+    }
+
+    public static Button button(Context c, int icon, String s, View.OnClickListener l) {
+        return withIcon(button(c, s, l), icon, ON_ACCENT);
+    }
+
+    public static Button ghostButton(Context c, int icon, String s, View.OnClickListener l) {
+        return withIcon(ghostButton(c, s, l), icon, FG);
     }
 
     /** Второстепенная кнопка (контур). */

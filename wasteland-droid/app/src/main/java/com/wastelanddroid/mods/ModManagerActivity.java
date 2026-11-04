@@ -53,18 +53,18 @@ public final class ModManagerActivity extends Activity {
         page.setPadding(pad, Ui.dp(this, 12), pad, Ui.dp(this, 12));
 
         LinearLayout header = Ui.row(this);
-        TextView title = Ui.label(this, "МОДЫ · " + game.title.toUpperCase());
+        TextView title = Ui.label(this, "МОДЫ | " + game.title.toUpperCase());
         title.setTextSize(20);
         title.setTypeface(Ui.mono(true));
         header.addView(title, Ui.weight());
-        header.addView(Ui.ghostButton(this, "⬇ Установить .zip", v -> pickZip()));
+        header.addView(Ui.ghostButton(this, com.wastelanddroid.R.drawable.ic_download, "Установить .zip", v -> pickZip()));
         header.addView(Ui.button(this, "Сохранить", v -> save(true)));
         page.addView(header);
 
         LinearLayout cols = Ui.row(this);
         cols.setGravity(Gravity.TOP);
 
-        LinearLayout left = Ui.card(this, "▌ Порядок загрузки (сверху вниз)");
+        LinearLayout left = Ui.card(this, "Порядок загрузки (сверху вниз)");
         counter = Ui.hint(this, "");
         left.addView(counter);
         pluginList = Ui.column(this);
@@ -72,7 +72,7 @@ public final class ModManagerActivity extends Activity {
         cols.addView(scroll(left), new LinearLayout.LayoutParams(0, -1, 1.5f));
         cols.addView(new View(this), new LinearLayout.LayoutParams(Ui.dp(this, 14), 1));
 
-        LinearLayout right = Ui.card(this, "▌ Установленные архивы");
+        LinearLayout right = Ui.card(this, "Установленные архивы");
         modList = Ui.column(this);
         right.addView(modList);
         right.addView(Ui.hint(this, "Поддерживаются .zip. Архивы .7z/.rar сначала перепакуйте в .zip. "
@@ -101,7 +101,7 @@ public final class ModManagerActivity extends Activity {
     private void renderPlugins() {
         pluginList.removeAllViews();
         int enabled = mm.enabledCount(plugins);
-        counter.setText("Включено: " + enabled + " / 255" + (enabled > 255 ? "  ⚠ превышен лимит движка!" : ""));
+        counter.setText("Включено: " + enabled + " / 255" + (enabled > 255 ? "  — превышен лимит движка!" : ""));
         counter.setTextColor(enabled > 255 ? Ui.RED : Ui.FG_DIM);
         for (int i = 0; i < plugins.size(); i++) {
             final int idx = i;
@@ -117,8 +117,8 @@ public final class ModManagerActivity extends Activity {
             cb.setOnCheckedChangeListener((v, on) -> { p.enabled = on; renderCounterOnly(); });
             row.addView(cb, Ui.weight());
             if (!p.official) {
-                row.addView(small("▲", v -> move(idx, -1)));
-                row.addView(small("▼", v -> move(idx, +1)));
+                row.addView(small(com.wastelanddroid.R.drawable.ic_arrow_up, v -> move(idx, -1)));
+                row.addView(small(com.wastelanddroid.R.drawable.ic_arrow_down, v -> move(idx, +1)));
             }
             pluginList.addView(row);
         }
@@ -126,11 +126,12 @@ public final class ModManagerActivity extends Activity {
 
     private void renderCounterOnly() {
         int enabled = mm.enabledCount(plugins);
-        counter.setText("Включено: " + enabled + " / 255" + (enabled > 255 ? "  ⚠ превышен лимит движка!" : ""));
+        counter.setText("Включено: " + enabled + " / 255" + (enabled > 255 ? "  — превышен лимит движка!" : ""));
     }
 
-    private android.widget.Button small(String t, View.OnClickListener l) {
-        android.widget.Button b = Ui.ghostButton(this, t, l);
+    private android.widget.Button small(int icon, View.OnClickListener l) {
+        android.widget.Button b = Ui.ghostButton(this, "", l);
+        b.setCompoundDrawablesRelative(Ui.icon(this, icon, Ui.FG, 16), null, null, null);
         b.setMinWidth(Ui.dp(this, 40));
         b.setMinimumWidth(Ui.dp(this, 40));
         b.setMinHeight(Ui.dp(this, 36));
@@ -157,7 +158,7 @@ public final class ModManagerActivity extends Activity {
             TextView t = Ui.label(this, m.name + "\n" + m.files.size() + " файлов");
             row.addView(t, Ui.weight());
             row.addView(Ui.styledButton(this, "Удалить", v -> new AlertDialog.Builder(this)
-                    .setTitle("Удалить «" + m.name + "»?")
+                    .setTitle("Удалить '" + m.name + "'?")
                     .setMessage("Файлы мода будут удалены, перезаписанные им файлы — восстановлены.")
                     .setPositiveButton("Удалить", (d, w) -> {
                         try { mm.uninstall(m); } catch (Exception e) { toast("Ошибка: " + e.getMessage()); }
@@ -184,7 +185,7 @@ public final class ModManagerActivity extends Activity {
         if (req != REQ_ZIP || res != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         String name = displayName(uri);
-        toast("Установка «" + name + "»…");
+        toast("Установка '" + name + "'...");
         new Thread(() -> {
             String msg;
             try (InputStream in = getContentResolver().openInputStream(uri)) {
