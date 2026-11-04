@@ -6,6 +6,7 @@ import { Human, makeLook, splitStaticModel, preparePeople } from './npc.js';
 import { createWeapon } from './weapon.js';
 import { createLife } from './life.js';
 import { Rope } from './rope.js';
+import { createTransport, STOPS } from './transport.js';
 
 const R = (a, b) => a + Math.random() * (b - a);
 const RI = (a, b) => Math.floor(R(a, b + 1));
@@ -536,7 +537,11 @@ export function createWorld(ctx) {
     if (ASSETS.busstop) { // открытая сторона модели смотрит в +X локально → поворот −90°, к дороге (+Z)
       const o = placeModel(ASSETS.busstop, STOP.x, 4.15, -Math.PI / 2); busStopObj = o;
       o.traverse(m => { if (m.isMesh) { const ms = Array.isArray(m.material) ? m.material : [m.material]; ms.forEach(mt => { if (/glass/i.test(mt.name)) { mt.transparent = true; mt.opacity = .35; mt.depthWrite = false; mt.side = THREE.FrontSide; m.castShadow = false; } }); } });
-      occ(o); const b = new THREE.Box3().setFromObject(o); addCol(b.min.x, b.max.x, b.min.z, b.min.z + .2); addCol(b.min.x, b.min.x + .15, b.min.z, b.max.z - .3); addCol(b.max.x - .15, b.max.x, b.min.z, b.max.z - .3); }
+      occ(o); const b = new THREE.Box3().setFromObject(o); addCol(b.min.x, b.max.x, b.min.z, b.min.z + .2); addCol(b.min.x, b.min.x + .15, b.min.z, b.max.z - .3); addCol(b.max.x - .15, b.max.x, b.min.z, b.max.z - .3);
+      // вторая остановка — «Завод»
+      const o2 = placeModel(ASSETS.busstop, STOPS.factory.x, 4.15, -Math.PI / 2); o2.traverse(m => { if (m.isMesh) (Array.isArray(m.material) ? m.material : [m.material]).forEach(mt => { if (/glass/i.test(mt.name)) { mt.transparent = true; mt.opacity = .35; mt.depthWrite = false; } }); });
+      occ(o2); const b2 = new THREE.Box3().setFromObject(o2); addCol(b2.min.x, b2.max.x, b2.min.z, b2.min.z + .2); }
+    for (const st of Object.values(STOPS)) { const tx = textTex(256, 128, 'А', '#d9b23a', '#1a1a1a', '900 90px Arial', (g, w, h) => { g.font = '700 16px Arial'; g.fillText(st.name.split(' ')[0].toUpperCase(), w / 2, h - 14); }); cyl(.04, .04, 2.8, MAT.steel, st.x + 2.2, 1.4, 5.7, 6); const sg = new THREE.Mesh(new THREE.PlaneGeometry(.6, .3), std({ map: tx, side: THREE.DoubleSide })); sg.position.set(st.x + 2.2, 2.75, 5.7); scene.add(sg); addCol(st.x + 2.1, st.x + 2.3, 5.6, 5.8); }
     // бетонный забор из плит (инстансинг)
     if (ASSETS.beton) {
       const ms = meshesOf(ASSETS.beton); const m0 = ms[0]; const geo = m0.geometry.clone().applyMatrix4(m0.matrixWorld);
@@ -577,6 +582,7 @@ export function createWorld(ctx) {
       const m = new THREE.Mesh(g, big.material); m.position.set(-.35, 1.25, -KD + .04); m.rotation.y = Math.abs(bb.max.x - bb.min.x) < Math.abs(bb.max.z - bb.min.z) ? Math.PI / 2 : 0; scene.add(m); }
     if (ASSETS.stew) { const sm = meshesOf(ASSETS.stew)[0]; if (sm) { const f = FOOD.find(q => q.id === 'tushonka'); const g = sm.geometry.clone().applyMatrix4(sm.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox; g.translate(0, -(bb.min.y + bb.max.y) / 2, 0); f.geo = g; f.model = sm.material; buildFood(); } }
     if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = gm.geometry.clone().applyMatrix4(gm.matrixWorld); gunMat = gm.material; weapon.setModel(gunWorldMesh(), life.makeHand); buildWallGun(); }
+    spawnMarat();
     for (let i = 0; i < 3; i++) spawnVendor(i);
     season = -1;
     ctx.onLoaded && ctx.onLoaded();
@@ -604,8 +610,8 @@ export function createWorld(ctx) {
   for (const [x, z, r, c] of [[18, -7, 0, 0xd8d4c8], [24.5, -7.3, .05, 0x7a2a22], [31, -9.5, Math.PI / 2, 0x3a5a3a], [-8, -2.6, 0, 0xc8b88a]]) { const m = carMesh(c); m.position.set(x, 0, z); m.rotation.y = r; const hx = Math.abs(Math.sin(r)) > .5 ? .9 : 2.1, hz = Math.abs(Math.sin(r)) > .5 ? 2.1 : .9; addCol(x - hx, x + hx, z - hz, z + hz); occ(m.children[0]); }
   // кольцевые маршруты (с поворотами за домами)
   const ROUTES = [
-    [[-82, 8.4], [86, 8.4], [92, 14], [92, 44], [86, 50], [-82, 50], [-88, 44], [-88, 14]],
-    [[86, 12], [-82, 12], [-90, 18], [-90, 46], [-84, 52], [84, 52], [90, 46], [90, 18]],
+    [[-82, 12], [86, 12], [92, 18], [92, 46], [86, 52], [-84, 52], [-90, 46], [-90, 18]],
+    [[86, 8.4], [-82, 8.4], [-88, 14], [-88, 44], [-82, 50], [84, 50], [90, 44], [90, 14]],
   ];
   function routePoint(route, s) { // s — пройденная длина
     let total = 0; const segs = []; for (let i = 0; i < route.length; i++) { const a = route[i], b = route[(i + 1) % route.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]); segs.push([a, b, l]); total += l; }
@@ -624,7 +630,7 @@ export function createWorld(ctx) {
   const inKiosk = (x = P.x, z = P.z) => Math.abs(x) < KW && Math.abs(z) < KD;
   const PR = .26;
   const hitAny = (x, z, r = PR) => colliders.some(b => x > b.x1 - r && x < b.x2 + r && z > b.z1 - r && z < b.z2 + r);
-  function canMove() { return ctx.getS() && !P.seated && !P.locked && !ctx.cardOpen() && !ctx.sheetOpen() && P.stun <= 0; }
+  function canMove() { return ctx.getS() && !P.seated && !P.locked && !transport.riding && !ctx.cardOpen() && !ctx.sheetOpen() && P.stun <= 0; }
   function sit() { P.seated = true; P.crouch = false; ctx.onCtl(); }
   function stand() { if (P.locked) return; P.seated = false; const S = ctx.getS(); S && (S.flags.stood = true); ctx.onCtl(); }
   let fadeBusy = false;
@@ -821,6 +827,7 @@ export function createWorld(ctx) {
     return Math.hypot(mx, mz);
   }
   function npcBlocked(x, z) {
+    { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca; if (Math.abs(x - o.x) < hx + .2 && Math.abs(z - o.z) < hz + .2) return true; }
     if (Math.abs(x) < KW + .3 && z > -KD - .3 && z < KD + .3) return true; // ларёк
     for (const b of colliders) if (b.tag !== 'door' && x > b.x1 - .22 && x < b.x2 + .22 && z > b.z1 - .22 && z < b.z2 + .22) return true;
     for (const c of cars) { const cx = c.m.position.x, cz = c.m.position.z, ca = Math.abs(Math.cos(c.heading)), sa = Math.abs(Math.sin(c.heading)), hx = 2.2 * ca + .9 * sa, hz = 2.2 * sa + .9 * ca; if (Math.abs(x - cx) < hx + .25 && Math.abs(z - cz) < hz + .25) return true; }
@@ -832,6 +839,8 @@ export function createWorld(ctx) {
   }
   function peopleTick(dt) {
     const camPos = camera.position;
+    if (marat) { const S3 = ctx.getS(), away = !!(S3 && S3.phase === 'night' && hour > 23); marat.hidden = away; marat.h.obj.visible = !away; const d = Math.hypot(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z);
+      if (marat.state !== 'scared') { marat.anim = d < 5 ? (marat.talking ? 'talk' : 'idle') : 'smoke'; if (d < 7) faceTo(marat, Math.atan2(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z), dt); else faceTo(marat, Math.PI * .6, dt); } }
     for (const p of people.slice()) {
       if (p.role === 'cust') custTick(p, dt);
       let dist = 0;
@@ -852,8 +861,28 @@ export function createWorld(ctx) {
     }
   }
 
+  function busExchange(key, door) {
+    for (const p of people) if (p.role === 'ped' && !p.leaving && Math.hypot(p.h.obj.position.x - door.x, p.h.obj.position.z - door.z) < 9) { p.state = 'walk'; p.path = [{ x: door.x, z: door.z }]; p.then = () => { p.inBus = true; removePerson(p); }; }
+    const n = Math.random() < .6 ? RI(1, 2) : 0;
+    for (let i = 0; i < n && people.length < Q.npc; i++) { const kind = pick(['babka', 'worker', 'youth', 'neighbor']); const id = 'tmpBus' + Math.random(); N(id, door.x, door.z); const pp = newPerson(kind, 'ped', id); delete NODES[id]; pp.h.obj.position.set(door.x + i * .5, 0, door.z); setTimeout(() => people.includes(pp) && wander(pp), 600 + i * 700); }
+  }
+  // ---------- Марат: посредник на остановке ----------
+  let marat = null;
+  function spawnMarat() {
+    const look = makeLook('worker'); Object.assign(look, { male: true, height: 1.78, build: 1.15, top: '#141414', leather: true, puffy: false, pants: '#1d1d22', boots: '#111', hat: 'kepka', hatC: '#262626', hairStyle: 'short', hair: '#1c1410', facial: 'mustache', chain: true, scarf: null, bag: null, coat: false, stripes: null, apron: null, age: 38, nerve: .7, aggression: .2, swagger: .6, kind: 'worker' });
+    const h = new Human(look, null); h.obj.position.set(STOPS.kiosk.x + 3.1, 0, 4.25); scene.add(h.obj);
+    const sh = new THREE.Mesh(blobGeo, blobMat); sh.rotation.x = -Math.PI / 2; sh.position.y = .02; h.obj.add(sh);
+    marat = { h, role: 'marat', state: 'stand', anim: 'smoke', path: [], kind: 'worker', title: 'Марат', talk: () => ctx.maratTalk && ctx.maratTalk(), id: 'marat' };
+    people.push(marat);
+  }
   // ---------- ружьё и реакции ----------
   const weapon = createWeapon({ audio: ctx.audio, onShot: () => onShot() });
+  // ---------- автобус №7 и остановки ----------
+  let riderCam = null;
+  const transport = createTransport({ scene, std, routePoint, route: ROUTES[1], P, camera, ctx, audio: ctx.audio, onCtl: () => ctx.onCtl(), night: () => nightK > .45,
+    setRiderCam: (p, k) => { riderCam = p.clone(); }, onAlight: (x, z, key) => { riderCam = null; P.x = x; P.z = z; P.vx = P.vz = 0; P.h = 1.66; ctx.toast && ctx.toast('Остановка «' + STOPS[key].name + '»'); },
+    onArrive: (key, door) => busExchange(key, door) });
+  const busCol = addCol(999, 999, 999, 999, 'bus');
   // ---------- ружьё как физический предмет: на стене / в руках / лежит в мире ----------
   let gunGeo = null, gunMat = null;
   function gunWorldMesh() { const g = new THREE.Group(); if (gunGeo) { const m = new THREE.Mesh(gunGeo, gunMat); m.rotation.x = -Math.PI / 2; m.position.set(0, .04, .55); m.castShadow = true; g.add(m); } else { const m = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, 1.1), MAT.dark); m.position.y = .03; g.add(m); } return g; }
@@ -875,7 +904,7 @@ export function createWorld(ctx) {
     onDelivered: d => ctx.onDelivered && ctx.onDelivered(d), onUnpack: data => ctx.onUnpack && ctx.onUnpack(data), onDrink: (k, s) => ctx.onDrink && ctx.onDrink(k, s) });
   function aimedPerson(maxD = 30) {
     camera.getWorldDirection(tmpV2); let best = null, bd = .5;
-    for (const p of people) { const o = p.h.obj.position; tmpV.set(o.x, 1.3 * p.h.L.height / 1.75, o.z).sub(camera.position); const along = tmpV.dot(tmpV2); if (along < .5 || along > maxD) continue; const perp = tmpV.addScaledVector(tmpV2, -along).length(); if (perp < bd) { bd = perp; best = p; } }
+    for (const p of people) { if (p.hidden) continue; const o = p.h.obj.position; tmpV.set(o.x, 1.3 * p.h.L.height / 1.75, o.z).sub(camera.position); const along = tmpV.dot(tmpV2); if (along < .5 || along > maxD) continue; const perp = tmpV.addScaledVector(tmpV2, -along).length(); if (perp < bd) { bd = perp; best = p; } }
     return best;
   }
   function threaten(p) { // ружьё наведено на человека
@@ -890,7 +919,7 @@ export function createWorld(ctx) {
       else { gopLeave(g, 'flee'); ctx.say(g.leader, 'Атас!'); ctx.gopResolved && ctx.gopResolved('scared'); }
       return;
     }
-    if (p.role === 'vendor') { p.state = 'scared'; p.anim = 'handsUp'; p.timer = 4; p.h.setExpr('scared'); return; }
+    if (p.role === 'vendor' || p.role === 'marat') { p.state = 'scared'; p.anim = 'handsUp'; p.timer = 4; p.h.setExpr('scared'); if (p.role === 'marat') { const S2 = ctx.getS(); S2 && (S2.flags.maratAngry = S2.day); p.timer = 3; } return; }
     // мирные — пугаются
     p.prevState = p.state; p.state = 'scared'; p.anim = L.nerve > .3 ? 'handsUp' : 'scared'; p.timer = 2.5; p.h.setExpr('scared');
     if (!p.scaredOnce) { p.scaredOnce = true; ctx.rep('folk', -1.5); }
@@ -1004,6 +1033,8 @@ export function createWorld(ctx) {
     if (life.held) return { label: life.canPlace() ? 'Поставить' : 'Бросить', icon: life.canPlace() ? 'place' : 'drop', fn: () => { if (!life.placeHeld()) life.dropHeld(); }, alt: { label: 'Повернуть', icon: 'rotate', fn: () => life.rotateHeld() } };
     if (gunState() === 'wall' && inKiosk() && lookingAtBox(rackBox, 2)) return { label: 'Снять ружьё со стены', icon: 'weapon', fn: () => { setGunState('carried'); ctx.audio.reloadClose(); weapon.draw(); } };
     if (gunState() === 'carried' && inKiosk() && lookingAtBox(rackBox, 2) && !weapon.aiming) return { label: 'Повесить ружьё на стену', icon: 'weapon', fn: () => { setGunState('wall'); ctx.audio.click(900, .5, 0, .06); } };
+    if (transport.riding) return transport.canAlight() ? { label: 'Выйти: ' + STOPS[transport.stopKey].name, icon: 'bus', fn: () => transport.alight() } : null;
+    if (transport.canBoard()) return { label: 'Сесть в автобус №7', icon: 'bus', fn: () => transport.board() };
     const li = life.lookItem(2.2);
     if (li && li.kind === 'gun') return { label: 'Поднять ружьё', icon: 'weapon', fn: () => { life.removeItem(li); setGunState('carried'); weapon.draw(); } };
     if (li && li.kind === 'box') return { label: 'Поднять коробку', icon: 'box', fn: () => life.pick(li),
@@ -1086,6 +1117,7 @@ export function createWorld(ctx) {
     P.shake = Math.max(0, P.shake - dt * 1.5); P.roll += ((P.stun > 0 ? Math.sin(tAll * 3) * .25 * (P.stun / 2.5) : 0) - P.roll) * Math.min(1, dt * 5);
     const sh = P.shake * .03;
     camera.position.set(P.x + rx * bobX + R(-sh, sh), P.h - bobY + R(-sh, sh), P.z + rz * bobX);
+    if (riderCam) { camera.position.copy(riderCam); P.x = riderCam.x; P.z = riderCam.z; }
     const sway = dr * (Math.sin(tAll * .8) * .05 + Math.sin(tAll * 1.7) * .02);
     camera.rotation.set(P.pitch + weapon.kick * .05 + dr * Math.sin(tAll * 1.1) * .02, P.yaw + dr * Math.sin(tAll * .6) * .03, P.roll + bobX * .5 * bobAmt + sway);
     post.uniforms.dbl.value = dr > .2 ? (dr - .2) * .012 : 0; post.uniforms.dbt.value = tAll * .8; post.uniforms.smoke.value = life.fx.smoke;
@@ -1097,6 +1129,10 @@ export function createWorld(ctx) {
     const _t0 = performance.now();
     // машины
     carsTick(dt);
+    transport.tick(dt, [{ x: P.x, z: P.z }, ...cars.map(c => ({ x: c.m.position.x, z: c.m.position.z })), ...people.filter(p => !p.inBus).map(p => ({ x: p.h.obj.position.x, z: p.h.obj.position.z }))]);
+    { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca;
+      if (transport.riding) { busCol.x1 = busCol.x2 = 999; } else { busCol.x1 = o.x - hx; busCol.x2 = o.x + hx; busCol.z1 = o.z - hz; busCol.z2 = o.z + hz; }
+      if (!transport.riding && o.v > 1.5 && P.stun <= 0 && Math.abs(P.x - o.x) < hx + .3 && Math.abs(P.z - o.z) < hz + .3) hitByCar({ v: o.v }, Math.cos(-o.heading), Math.sin(-o.heading)); }
     const _t1 = performance.now();
     // люди
     if (S) { ambientTick(dt); gopTick(dt); }
@@ -1137,6 +1173,7 @@ export function createWorld(ctx) {
       let block = 99;
       for (const o of cars) if (o !== c && o.ri === c.ri) { const ds = ((o.s - c.s) % total + total) % total; if (ds > 0 && ds < 12) block = Math.min(block, ds - 5); }
       const ahead = (px, pz) => { const vx = px - x, vz = pz - z, al = (vx * dirx + vz * dirz) / dl, lat = Math.abs(vx * dirz - vz * dirx) / dl; return al > 0 && lat < 1.6 ? al : 99; };
+      { const bo = transport.obstacle(), ba = ahead(bo.x, bo.z); if (ba < 18) block = Math.min(block, ba - 8); }
       const pAhead = ahead(P.x, P.z); if (pAhead < 9) { block = Math.min(block, pAhead - 2.6); if (c.honk <= 0 && c.v > 3) { ctx.audio && ctx.audio.horn(); c.honk = 4; } }
       for (const p of people) { const a = ahead(p.h.obj.position.x, p.h.obj.position.z); if (a < 10) block = Math.min(block, a - 3); }
       c.honk -= dt;
@@ -1186,8 +1223,8 @@ export function createWorld(ctx) {
     gopLeave, get gopnik() { return gopnikGroup; },
     get hour() { return hour; }, get doorOpen() { return doorOpen; },
     reset() { life.loadItems(); const S0 = ctx.getS(); if (S0) { S0.gunState = S0.gunState || 'wall'; S0.gun = S0.gunState === 'carried'; life.setButts(S0.butts || 0); }
-      P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; P.pitch = -.08; P.seated = true; P.locked = false; P.crouch = false; P.vx = P.vz = 0; shelfSig = ''; season = -1; hour = 8; doorTarget = 0; people.slice().forEach(p => { if (p.role !== 'vendor') removePerson(p); }); gopnikGroup = null; },
-    life, env2, gunState, setGunState, openNotepadAnim: f => life.openNotepad(f), closeNotepadAnim: f => life.closeNotepad(f),
+      P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; P.pitch = -.08; P.seated = true; P.locked = false; P.crouch = false; P.vx = P.vz = 0; shelfSig = ''; season = -1; hour = 8; doorTarget = 0; people.slice().forEach(p => { if (p.role !== 'vendor' && p.role !== 'marat') removePerson(p); }); gopnikGroup = null; },
+    transport, life, env2, gunState, setGunState, openNotepadAnim: f => life.openNotepad(f), closeNotepadAnim: f => life.closeNotepad(f),
     putGunDown() { if (gunState() !== 'carried') return; const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); },
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },

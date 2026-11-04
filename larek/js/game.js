@@ -1214,6 +1214,24 @@ document.addEventListener('click', e => {
   renderNotepad();
 }, true);
 
+// --- Марат: патроны на остановке ---
+function maratTalk() {
+  if (!W) return; const m = W.debug.people.find(p => p.role === 'marat'); if (m) m.talking = true;
+  const done = () => { if (m) m.talking = false; closeDialog(); };
+  if (S.flags.maratAngry === S.day) { showDialog({ name: 'Марат', text: 'Ты на меня ствол наставлял. Сегодня — разговора нет. Иди.', options: [{ label: 'Ладно…', fn: done }] }); return; }
+  if (!S.marat || S.marat.day !== S.day) S.marat = { day: S.day, stock: RI(10, 25) };
+  const price5 = usdToRub(4), have = S.marat.stock;
+  const buy = n => { const cost = price5 * n / 5; if (have < n) { showDialog({ name: 'Марат', text: `Столько нет. Осталось ${have}.`, options: [{ label: 'Понял', fn: () => maratTalk() }] }); return; } if (S.money < cost) { showDialog({ name: 'Марат', text: 'Денег не хватает, брат. Без денег — никак.', options: [{ label: 'Понял', fn: done }] }); return; }
+    S.money -= cost; S.marat.stock -= n; if (W) { W.weapon.reserve += n; syncAmmoFromWeapon(); } else S.shells += n; sfx.coin(); renderHud(); save();
+    showDialog({ name: 'Марат', text: pick(['Держи. И не свети особо.', 'Двенадцатый калибр, дробь. Как договаривались.', 'Бери. Если что — ты меня не знаешь.']), options: [{ label: 'Спасибо', fn: done }] }); };
+  showDialog({ name: 'Марат', text: S.gunState === 'wall' && !S.flags.maratMet ? 'Ты с ларька? Слыхал, у тебя дядина двустволка на стене висит. Патроны нужны — ко мне. Пять штук — ' + fmt(price5) + '.' : `Патроны есть, ${have} штук. Пять — ${fmt(price5)} р. Берёшь?`, options: [
+    { label: `Пачку (5 шт) — ${fmt(price5)} р.`, fn() { buy(5); } },
+    { label: `Две пачки (10 шт) — ${fmt(price5 * 2)} р.`, fn() { buy(10); } },
+    { label: 'Что слышно в районе?', fn() { showDialog({ name: 'Марат', text: pick([`Заводские опять по ларькам ходят. ${S.rep.street >= 30 ? 'Но тебя не тронут — ты свой.' : 'Смотри в оба.'}`, 'Говорят, на вокзале самогон дешёвый. Вова там знает.', 'Курс скачет, держи в долларах.', 'Автобус до завода каждые десять минут, если не сломался.']), options: [{ label: 'Ясно', fn: () => maratTalk() }] }); } },
+    { label: 'Бывай', fn: done },
+  ] });
+  S.flags.maratMet = true;
+}
 // --- телефон: атмосферный звонок с гудками ---
 let callBusy = false;
 function phoneCall() {
@@ -1324,7 +1342,7 @@ function look(dx, dy, kind) { if (controls && kind !== 'mouse') controls.look(dx
 const W = (() => { try { return createWorld({
   getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET,
   toast, openSheet, onCtl, rep, qOf, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
-  arrive, customerScared, gopnikDemand, say, sleep, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
+  arrive, customerScared, gopnikDemand, say, sleep, maratTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
   onDrink(k, strong) { if (strong > .3 && W && W.life.fx.drunkTarget > 1) toast('Голова поплыла… Хватит, пожалуй.'); },
   dialog: showDialog, closeDialog,
   gopResolved(how) { if (how === 'scared') { rep('street', 3); toast('Гопники отступили. Улица +3'); } },
@@ -1386,7 +1404,7 @@ if (W) {
 // ============================================================
 let last = performance.now(), hudT = 0;
 function loop(now) {
-  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  const dt = Math.min(.1, (now - last) / 1000) * (window.__larekTimeScale || 1); last = now; // ускорение времени — только для автотестов
   if (S) tradeTick(dt);
   hudT -= dt; if (hudT <= 0 && S) { hudT = .5; const c = document.getElementById('clock'); if (c) c.textContent = clockStr(); if (controls) controls.refresh(); $('#cross').classList.toggle('aim', !!(W && W.weapon.aiming)); }
   if (W) { try { W.frame(dt); } catch (e) { console.error(e); } }
