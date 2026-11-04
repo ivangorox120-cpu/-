@@ -290,7 +290,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
 
   // ---------- ЛАРЁК ----------
-  const K = new THREE.Group(); scene.add(K);
+  const K = new THREE.Group(); scene.add(K); const seasonHooks = [];
   const KW = 1.5, KD = 1.2, KH = 2.5, T_ = .06;
   drift(KW + .45, -KD + .3, KW + .45, KD - .3, .9, .42, 1); drift(-KW - .45, -KD + .3, -KW - .45, KD - .3, .9, .38, 2); flushDrifts(); // наносы у боковых стен ларька
   const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : MAT.kiosk);
@@ -317,12 +317,35 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const roofSnow = box(KW * 2 + .3, .08, KD * 2 + .3, MAT.snow, 0, KH + .14, 0, K, false); roofSnow.userData.winter = true;
   const signTex = textTex(512, 96, 'ПРОДУКТЫ · 24 ЧАСА', '#d9b23a', '#7a1f16', '900 46px "Arial Black", Arial, sans-serif');
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, .33), std({ map: signTex, emissive: 0x332200, emissiveMap: signTex, emissiveIntensity: 0 })); sign.position.set(0, 2.32, KD + .035); K.add(sign);
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 1.15), MAT.glass); glass.position.set(0, 1.575, KD + .01); glass.renderOrder = 2; K.add(glass);
-  for (let x = -1.3; x <= 1.31; x += .13) if (Math.abs(x) > .5) cyl(.008, .008, 1.15, MAT.steel, x, 1.575, KD + .05, 6, K);
-  box(2.7, .02, .02, MAT.steel, 0, 2.15, KD + .05, K); box(2.7, .02, .02, MAT.steel, 0, 1.0, KD + .05, K);
+  // панорамная витрина без решёток: стекло в алюминиевой раме; зимой — иней от краёв, в остальное время — пыль и потёки
+  const winTexes = (() => { const W = 512, H = 224;
+    const mk = draw => { const t = regTex(ctex(W, H, g => draw(g, W, H))); return t; };
+    const frost = mk((g, w, h) => { const im = g.createImageData(w, h), d = im.data;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const ex = Math.min(x, w - x) / w, ey = Math.min(y, h - y) / h, e = Math.min(ex * 1.6, ey * 2.2 + (y > h * .5 ? -.18 * (y / h - .5) : 0)); // ближе к краю и низу — гуще
+        const n = Math.random(), a = clamp(1 - e * 5.2 + (n - .5) * .5, 0, 1); const i = (y * w + x) * 4; d[i] = 228 + n * 20; d[i + 1] = 236 + n * 15; d[i + 2] = 245; d[i + 3] = 25 + a * 215; }
+      g.putImageData(im, 0, 0); g.strokeStyle = 'rgba(255,255,255,.26)';
+      for (let k = 0; k < 220; k++) { let x = Math.random() < .5 ? Math.random() * w * .25 : w - Math.random() * w * .25, y = Math.random() * h, a = Math.random() * 6.28; if (Math.random() < .4) { x = Math.random() * w; y = h - Math.random() * h * .3; } g.lineWidth = .5 + Math.random(); g.beginPath(); g.moveTo(x, y); for (let j = 0; j < 8; j++) { a += (Math.random() - .5) * .9; const L = 4 + Math.random() * 8; x += Math.cos(a) * L; y += Math.sin(a) * L; g.lineTo(x, y); g.moveTo(x, y); g.lineTo(x + Math.cos(a + .9) * L * .6, y + Math.sin(a + .9) * L * .6); g.moveTo(x, y); } g.stroke(); } });
+    const dirt = mk((g, w, h) => { g.fillStyle = 'rgba(150,140,120,.10)'; g.fillRect(0, 0, w, h);
+      const gr = g.createLinearGradient(0, h * .55, 0, h); gr.addColorStop(0, 'rgba(120,105,85,0)'); gr.addColorStop(1, 'rgba(110,95,75,.45)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 70; k++) { const x = Math.random() * w, y0 = Math.random() * h * .5, L = 30 + Math.random() * h * .6; const gg = g.createLinearGradient(0, y0, 0, y0 + L); gg.addColorStop(0, 'rgba(90,80,65,0)'); gg.addColorStop(.6, 'rgba(90,80,65,.16)'); gg.addColorStop(1, 'rgba(90,80,65,0)'); g.fillStyle = gg; g.fillRect(x, y0, 1.5 + Math.random() * 2.5, L); } // потёки
+      for (let k = 0; k < 900; k++) { g.fillStyle = `rgba(${90 + Math.random() * 60},${85 + Math.random() * 50},70,${Math.random() * .25})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2); }
+      g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 18; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 40 + Math.random() * 60, Math.random() * 3, Math.random() * 3 + 2); g.stroke(); } }); // разводы от тряпки
+    return { frost, dirt }; })();
+  const winGlassMat = new THREE.MeshStandardMaterial({ map: winTexes.frost, transparent: true, roughness: .12, metalness: .1, color: 0xffffff, depthWrite: false, side: THREE.DoubleSide });
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.86, 1.15), winGlassMat); glass.position.set(0, 1.575, KD + .012); glass.renderOrder = 2; K.add(glass);
+  const alu = std({ color: 0x9a9c98, roughness: .45, metalness: .75 });
+  box(2.96, .05, .07, alu, 0, 2.15, KD + .01, K); box(2.96, .05, .08, alu, 0, 1.005, KD + .01, K); // рама сверху и снизу
+  for (const x of [-1.455, -.5, .5, 1.455]) box(.045, 1.15, .07, alu, x, 1.575, KD + .01, K); // стойки (по центру — окошко выдачи)
+  box(.95, .03, .05, alu, 0, 1.36, KD + .015, K); // перемычка над окошком
+  seasonHooks.push(w => { winGlassMat.map = w ? winTexes.frost : winTexes.dirt; winGlassMat.needsUpdate = true; });
   // прилавок, витрина
   box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(2.9, .93, .06, MAT.wood, 0, .47, KD - .44, K); box(1.0, .04, .25, MAT.counter, 0, 1.0, KD + .14, K);
-  for (const y of [1.36, 1.76]) for (const sx of [-1, 1]) box(.88, .015, .3, MAT.glass, sx * .9, y, KD - .12, K, false);
+  { const shelfGlass = new THREE.MeshPhysicalMaterial({ color: 0xcfe6df, roughness: .08, metalness: 0, transparent: true, opacity: .42, depthWrite: false, clearcoat: 1, clearcoatRoughness: .05 }), edge = std({ color: 0x5f9a86, roughness: .15, transparent: true, opacity: .85 }), chrome = std({ color: 0xd0d2d0, roughness: .2, metalness: 1 });
+    for (const y of [1.36, 1.76]) for (const sx of [-1, 1]) { const x = sx * .9; // стекло 8 мм с зелёной кромкой и хромированными держателями
+      const gsh = box(.86, .008, .28, shelfGlass, x, y, KD - .13, K, false); gsh.renderOrder = 3;
+      box(.86, .012, .006, edge, x, y, KD - .267, K, false); box(.86, .012, .006, edge, x, y, KD + .007, K, false); box(.006, .012, .28, edge, x - .43, y, KD - .13, K, false); box(.006, .012, .28, edge, x + .43, y, KD - .13, K, false);
+      for (const dx of [-.4, .4]) for (const dz of [-.24, -.02]) { box(.02, .022, .02, chrome, x + dx, y - .012, KD + dz, K, false); } }
+    for (const sx of [-1, 1]) for (const ox of [.47, 1.33]) for (const dz of [-.24, -.02]) cyl(.006, .006, 1.13, chrome, sx * ox, 1.575, KD + dz, 8, K); } // стойки витрины
   box(.36, .08, .2, MAT.steel, 0, 1.02, KD - .05, K);
   const stool = new THREE.Group(); K.add(stool); stool.position.set(0, 0, .25);
   cyl(.19, .19, .05, MAT.wood, 0, .62, 0, 16, stool);
@@ -1257,6 +1280,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     scene.traverse(o => { if (o.userData.winter) o.visible = winter; }); awnSnow.visible = roofSnow.visible = winter;
     crowns.winter.forEach(c => c.visible = winter); crowns.summer.forEach(c => c.visible = !winter);
     weather.target = winter ? pick([0, .3, .6, .6, 1]) : 0; weather.windT = R(.1, .9);
+    seasonHooks.forEach(f => f(winter, m));
   }
 
   // ---------- настройки качества ----------
