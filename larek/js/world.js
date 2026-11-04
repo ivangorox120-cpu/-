@@ -374,10 +374,10 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(2.9, .93, .06, MAT.wood, 0, .47, KD - .44, K); box(1.0, .04, .25, MAT.counter, 0, 1.0, KD + .14, K);
   { const shelfGlass = new THREE.MeshPhysicalMaterial({ color: 0xcfe6df, roughness: .08, metalness: 0, transparent: true, opacity: .42, depthWrite: false, clearcoat: 1, clearcoatRoughness: .05 }), edge = std({ color: 0x5f9a86, roughness: .15, transparent: true, opacity: .85 }), chrome = std({ color: 0xd0d2d0, roughness: .2, metalness: 1 });
     for (const y of [1.36, 1.76]) for (const sx of [-1, 1]) { const x = sx * .9; // стекло 8 мм с зелёной кромкой и хромированными держателями
-      const gsh = box(.86, .008, .28, shelfGlass, x, y, KD - .13, K, false); gsh.renderOrder = 3;
-      box(.86, .012, .006, edge, x, y, KD - .267, K, false); box(.86, .012, .006, edge, x, y, KD + .007, K, false); box(.006, .012, .28, edge, x - .43, y, KD - .13, K, false); box(.006, .012, .28, edge, x + .43, y, KD - .13, K, false);
-      for (const dx of [-.4, .4]) for (const dz of [-.24, -.02]) { box(.02, .022, .02, chrome, x + dx, y - .012, KD + dz, K, false); } }
-    for (const sx of [-1, 1]) for (const ox of [.47, 1.33]) for (const dz of [-.24, -.02]) cyl(.006, .006, 1.13, chrome, sx * ox, 1.575, KD + dz, 8, K); } // стойки витрины
+      const gsh = box(.86, .008, .24, shelfGlass, x, y, KD - .155, K, false); gsh.renderOrder = 3; // стекло за рамой витрины, без пересечения со стойками
+      box(.86, .012, .006, edge, x, y, KD - .272, K, false); box(.86, .012, .006, edge, x, y, KD - .038, K, false); box(.006, .012, .24, edge, x - .43, y, KD - .155, K, false); box(.006, .012, .24, edge, x + .43, y, KD - .155, K, false);
+      for (const dx of [-.4, .4]) for (const dz of [-.25, -.06]) { box(.02, .022, .02, chrome, x + dx, y - .012, KD + dz, K, false); } }
+    for (const sx of [-1, 1]) for (const ox of [.47, 1.33]) for (const dz of [-.25, -.06]) cyl(.006, .006, 1.13, chrome, sx * ox, 1.575, KD + dz, 8, K); } // стойки витрины
   box(.36, .08, .2, MAT.steel, 0, 1.02, KD - .05, K);
   const stool = new THREE.Group(); K.add(stool); stool.position.set(0, 0, .25);
   cyl(.19, .19, .05, MAT.wood, 0, .62, 0, 16, stool);

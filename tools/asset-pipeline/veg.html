@@ -1,0 +1,26 @@
+<!doctype html><script type="importmap">{"imports":{"three":"./three/package/build/three.module.js","three/addons/":"./three/package/examples/jsm/"}}</script>
+<script type="module">
+// Дерево (Tree IT, FBX 6.1 -> OBJ скриптом fbx6obj.py) и куст: упрощение коры, текстуры, экспорт GLB
+import * as THREE from 'three'; import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'; import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'; import { MeshoptSimplifier } from './mo/package/meshopt_simplifier.module.js'; await MeshoptSimplifier.ready;
+const tl = new THREE.TextureLoader(); const tex = async (u, mime) => { const t = await tl.loadAsync(u); t.colorSpace = THREE.SRGBColorSpace; t.userData.mimeType = mime; t.flipY = false; return t; };
+function simp(g, ratio, err) { g = mergeVertices(g, 1e-4); const idx = new Uint32Array(g.index.array); const [r] = MeshoptSimplifier.simplify(idx, g.attributes.position.array, 3, Math.floor(idx.length * ratio / 3) * 3, err);
+  const map = new Map(), keep = [], ni = new Uint32Array(r.length); for (let i = 0; i < r.length; i++) { let v = map.get(r[i]); if (v === undefined) { v = keep.length; map.set(r[i], v); keep.push(r[i]); } ni[i] = v; }
+  const o = new THREE.BufferGeometry(); for (const [k, a] of Object.entries(g.attributes)) { const arr = new Float32Array(keep.length * a.itemSize); keep.forEach((s, j) => { for (let c = 0; c < a.itemSize; c++) arr[j * a.itemSize + c] = a.array[s * a.itemSize + c]; }); o.setAttribute(k, new THREE.BufferAttribute(arr, a.itemSize)); }
+  o.setIndex(new THREE.BufferAttribute(ni, 1)); o.computeVertexNormals(); return o; }
+const exp = async sc => { const glb = await new GLTFExporter().parseAsync(sc, { binary: true }); let s = ''; const u8 = new Uint8Array(glb); for (let i = 0; i < u8.length; i += 32768) s += String.fromCharCode.apply(null, u8.subarray(i, i + 32768)); return btoa(s); };
+window.OUT = {}; window.INFO = {};
+{ const obj = await new OBJLoader().loadAsync('veg/tree.obj'); const sc = new THREE.Scene(); const g = new THREE.Group(); g.name = 'tree'; sc.add(g);
+  const bark = new THREE.MeshStandardMaterial({ name: 'bark', map: await tex('veg/bark512.jpg', 'image/jpeg'), roughness: .95 }), leaves = new THREE.MeshStandardMaterial({ name: 'leaves', map: await tex('veg/leaves1k.png', 'image/png'), alphaTest: .4, side: THREE.DoubleSide, roughness: .8 });
+  let bb = new THREE.Box3().setFromObject(obj); const c = bb.getCenter(new THREE.Vector3());
+  obj.traverse(m => { if (!m.isMesh) return; let geo = m.geometry.clone(); geo.translate(-c.x, -bb.min.y, -c.z); const isBark = m.name.includes('bark');
+    if (isBark) { for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'uv') geo.deleteAttribute(k); geo = simp(geo, .11, .02); }
+    const mesh = new THREE.Mesh(geo, isBark ? bark : leaves); mesh.name = isBark ? 'bark' : 'leaves'; g.add(mesh); window.INFO['tree_' + mesh.name] = (geo.index ? geo.index.count : geo.attributes.position.count) / 3; });
+  window.INFO.treeSize = bb.getSize(new THREE.Vector3()).toArray().map(v => v.toFixed(2)); window.OUT.tree = await exp(sc); }
+{ const gl = await new GLTFLoader().loadAsync('veg/kust.glb'); const sc = new THREE.Scene(); const g = new THREE.Group(); g.name = 'bush'; sc.add(g); gl.scene.updateMatrixWorld(true);
+  const leaf = new THREE.MeshStandardMaterial({ name: 'bushleaf', map: await tex('veg/bushleaf512.png', 'image/png'), alphaTest: .4, side: THREE.DoubleSide, roughness: .85 });
+  const bb = new THREE.Box3().setFromObject(gl.scene);
+  gl.scene.traverse(m => { if (!m.isMesh) return; const geo = m.geometry.clone().applyMatrix4(m.matrixWorld); geo.translate(0, -bb.min.y, 0); const mesh = new THREE.Mesh(geo, leaf); mesh.name = 'bushleaves'; g.add(mesh); });
+  window.OUT.bush = await exp(sc); }
+window.DONE = 1;
+</script>
