@@ -4,6 +4,10 @@ plugins {
 apply plugin: 'kotlin-android'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
+// Fallout Droid: нативные части движка берутся готовыми из закреплённого upstream-релиза
+// (tools/engine/fetch-prebuilt.sh). Полная сборка C++/Rust: -PprebuiltEngine=false.
+def prebuiltEngine = (project.findProperty('prebuiltEngine') ?: 'true').toString().toBoolean()
+def prebuiltDir = layout.buildDirectory.dir('prebuilt-engine')
 def localBuildOptions = new Properties()
 def localBuildOptionsFile = rootProject.layout.projectDirectory.file('local.properties')
 if (localBuildOptionsFile.asFile.exists()) {
@@ -117,10 +121,6 @@ if (desktopRemovalSources.archives[desktopKde.DESKTOP_KDE_TAG] != desktopKde.DES
 if (!file('src/main/assets/desktop-removal/versions.txt').readLines().contains(desktopKde.DESKTOP_KDE_TAG)) {
     throw new GradleException('Regenerate desktop removal inventories for ' + desktopKde.DESKTOP_KDE_TAG)
 }
-// Fallout Droid: нативные части движка берутся готовыми из закреплённого upstream-релиза
-// (tools/engine/fetch-prebuilt.sh). Полная сборка C++/Rust: -PprebuiltEngine=false.
-def prebuiltEngine = (project.findProperty('prebuiltEngine') ?: 'true').toString().toBoolean()
-def prebuiltDir = layout.buildDirectory.dir('prebuilt-engine')
 def variantSuffixes = rootProject.file('tools/release/variants.txt').readLines()
     .findAll { it.trim() && !it.startsWith('#') }
     .collect { def f = it.trim().split(/\s+/); "${f[1]}=${f[2] == '-' ? '' : f[2]}" }
