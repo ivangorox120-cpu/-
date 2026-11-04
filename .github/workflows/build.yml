@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package game
+        run: |
+          mkdir -p dist/snake-boom
+          cp index.html README.md dist/snake-boom/
+          cd dist && zip -r snake-boom.zip snake-boom
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-boom
+          path: dist/snake-boom/
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" dist/snake-boom.zip dist/snake-boom/index.html \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Змейка: Бабах — сборка #${{ github.run_number }}" \
+            --notes "Скачай \`index.html\` (или zip) и открой в браузере. Ветка: \`${{ github.ref_name }}\`, коммит ${{ github.sha }}." \
+            --latest
