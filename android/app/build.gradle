@@ -14,6 +14,23 @@ android {
         versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '0'}"
     }
 
+    // Две игры из одного проекта: каждая — свой APK со своим applicationId
+    flavorDimensions 'game'
+    productFlavors {
+        snake {
+            dimension 'game'
+            applicationId 'com.snakeboom.game'
+            resValue 'string', 'app_name', 'Змейка: Бабах'
+            manifestPlaceholders = [orientation: 'unspecified']
+        }
+        larek {
+            dimension 'game'
+            applicationId 'com.larek.game'
+            resValue 'string', 'app_name', 'Ларёк'
+            manifestPlaceholders = [orientation: 'portrait'] // бизнес-экраны вертикальные
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -33,13 +50,18 @@ android {
     }
 
     sourceSets {
-        main.assets.srcDirs += "$buildDir/gameAssets"
+        snake.assets.srcDirs += "$buildDir/snakeAssets"
+        larek.assets.srcDirs += "$buildDir/larekAssets"
     }
 }
 
-// Кладём index.html из корня репозитория в assets приложения
-def copyGame = tasks.register('copyGame', Copy) {
+// Кладём игру в assets приложения: змейка — index.html из корня, ларёк — larek/index.html
+def copySnake = tasks.register('copySnake', Copy) {
     from rootProject.file('../index.html')
-    into "$buildDir/gameAssets"
+    into "$buildDir/snakeAssets"
 }
-preBuild.dependsOn copyGame
+def copyLarek = tasks.register('copyLarek', Copy) {
+    from rootProject.file('../larek/index.html')
+    into "$buildDir/larekAssets"
+}
+preBuild.dependsOn copySnake, copyLarek

@@ -4,14 +4,14 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
-        android:label="Змейка: Бабах"
+        android:label="@string/app_name"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
         android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode"
-            android:screenOrientation="unspecified">
+            android:screenOrientation="${orientation}">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
