@@ -41,6 +41,18 @@
             android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation" />
 
         <activity
+            android:name=".game.GraphicsActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation" />
+
+        <activity
+            android:name=".mods.ModManagerActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation" />
+
+        <activity
             android:name=".game.GameActivity"
             android:exported="false"
             android:process=":game"

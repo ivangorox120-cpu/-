@@ -21,7 +21,8 @@ public final class IniTweaks {
         return new File(docs, "My Games/" + g.folder);
     }
 
-    public static void apply(GameDef g, File gameDir, File winePrefix, DeviceProfile p, boolean skipIntro, boolean autosave)
+    public static void apply(GameDef g, File gameDir, File winePrefix, DeviceProfile p, GraphicsSettings gfx,
+                             boolean skipIntro, boolean autosave)
             throws IOException {
         File dir = myGamesDir(g, winePrefix);
         dir.mkdirs();
@@ -30,6 +31,7 @@ public final class IniTweaks {
 
         // При первом запуске игра сама копирует Fallout_default.ini — делаем это заранее, чтобы
         // наши правки не были перезаписаны.
+        // Замена оригинального лаунчера: он лишь создаёт эти ini при первом запуске.
         if (!ini.exists()) {
             File def = Files2.findCaseInsensitive(gameDir, "Fallout_default.ini");
             if (def != null) Files2.copy(def, ini);
@@ -57,11 +59,14 @@ public final class IniTweaks {
         // VSync включён внутри игры, сам лок 60 к/с обеспечивает DXVK + 60 Гц режим экрана.
         f.set("Display", "iPresentInterval", "1");
         f.set("Display", "bFull Screen", "1");
-        // Отражения воды — самый дорогой эффект для Adreno.
-        f.set("Water", "bUseWaterReflections", p.quality == DeviceProfile.Quality.LOW ? "0" : "1");
-        f.set("Water", "bUseWaterHiRes", p.quality == DeviceProfile.Quality.HIGH ? "1" : "0");
         f.set("Water", "bUseWaterDisplacements", "0");
-        f.save(ini);
+        f.set("Water", "bUseWaterHiRes", p.quality == DeviceProfile.Quality.HIGH ? "1" : "0");
+        // Без этого «свободные» файлы модов (meshes/textures) не перекрывают BSA — моды «не работают».
+        f.set("Archive", "bInvalidateOlderFiles", "1");
+        f.set("Archive", "SInvalidationFile", "");
+        // Стабильный размер мира: больше 5 — классическая причина вылетов и битых сейвов.
+        f.set("General", "uGridsToLoad", "5");
+        f.set("General", "uExterior Cell Buffer", "36");
 
         IniFile pr = IniFile.load(prefs);
         pr.set("Display", "iSize W", String.valueOf(p.renderWidth));
@@ -69,13 +74,9 @@ public final class IniTweaks {
         pr.set("Display", "bFull Screen", "1");
         pr.set("Display", "iPresentInterval", "1");
         pr.set("Display", "iMultiSample", "0");
-        pr.set("Display", "iMaxAnisotropy", p.quality == DeviceProfile.Quality.LOW ? "4" : "8");
-        pr.set("Display", "iShadowMapResolution", p.quality == DeviceProfile.Quality.HIGH ? "1024" : "512");
-        pr.set("Display", "bDoCanopyShadowPass", "0");
-        pr.set("Display", "fDefaultFOV", "75.0000");
-        pr.set("Water", "bUseWaterReflections", p.quality == DeviceProfile.Quality.LOW ? "0" : "1");
-        pr.set("Grass", "fGrassStartFadeDistance", p.quality == DeviceProfile.Quality.LOW ? "3000" : "5000");
-        pr.set("LOD", "fLODFadeOutMultObjects", p.quality == DeviceProfile.Quality.LOW ? "8.0000" : "12.0000");
+        IniFile iniAgain = IniFile.load(ini);
+        gfx.apply(iniAgain, pr);
+        iniAgain.save(ini);
         pr.set("Controls", "bBackground Mouse", "0");
         pr.set("Controls", "fMouseSensitivity", "0.0025");
         if (autosave) {

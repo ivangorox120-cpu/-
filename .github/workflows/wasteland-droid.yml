@@ -6,6 +6,9 @@ on:
     paths: ["wasteland-droid/**", ".github/workflows/wasteland-droid.yml"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -24,3 +27,21 @@ jobs:
         with:
           name: wasteland-droid-apk
           path: wasteland-droid/app/build/outputs/apk/release/app-release.apk
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="wasteland-droid-${{ github.run_number }}"
+          cp wasteland-droid/app/build/outputs/apk/release/app-release.apk wasteland-droid.apk
+          gh release create "$TAG" wasteland-droid.apk \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Wasteland Droid — сборка #${{ github.run_number }}" \
+            --prerelease \
+            --notes "Скачайте \`wasteland-droid.apk\` и установите (разрешите установку из неизвестных источников). Android 11+, arm64.
+
+          Предварительная сборка: лаунчер, менеджер модов, настройки графики, управление и геймпады работают; вывод изображения игры (дисплейный сервер) ещё в разработке.
+
+          Telegram: https://t.me/rommy_apps
+
+          Ветка: \`${{ github.ref_name }}\`, коммит ${{ github.sha }}."

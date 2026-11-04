@@ -19,6 +19,7 @@ import com.wastelanddroid.controls.ControlLayout;
 import com.wastelanddroid.controls.ControlsOverlay;
 import com.wastelanddroid.controls.GamepadInput;
 import com.wastelanddroid.controls.GamepadMapping;
+import com.wastelanddroid.mods.ModManager;
 import com.wastelanddroid.runtime.DisplayServer;
 import com.wastelanddroid.runtime.DxvkConfig;
 import com.wastelanddroid.runtime.GameProcess;
@@ -141,7 +142,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             setStatus("Резервная копия сохранений…");
             SaveBackup.backup(def, rt.prefix, rt.backups);
             setStatus("Настройка игры…");
-            IniTweaks.apply(def, gameDir, rt.prefix, profile, p.getBoolean(Prefs.SKIP_INTRO, true), p.getBoolean(Prefs.AUTOSAVE, true));
+            IniTweaks.apply(def, gameDir, rt.prefix, profile, GraphicsSettings.load(this, profile.quality), p.getBoolean(Prefs.SKIP_INTRO, true), p.getBoolean(Prefs.AUTOSAVE, true));
+            setStatus("Порядок загрузки модов…");
+            new ModManager(this, def, gameDir).apply(rt.prefix);
             File conf = DxvkConfig.write(new File(getFilesDir(), "conf"), p.getBoolean(Prefs.SHOW_HUD, false));
             File tmp = new File(getCacheDir(), "tmp");
             tmp.mkdirs();

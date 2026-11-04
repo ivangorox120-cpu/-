@@ -31,6 +31,8 @@ import com.wastelanddroid.controls.ControlsEditorActivity;
 import com.wastelanddroid.controls.GamepadEditor;
 import com.wastelanddroid.game.DeviceProfile;
 import com.wastelanddroid.game.GameDef;
+import com.wastelanddroid.game.GraphicsActivity;
+import com.wastelanddroid.mods.ModManagerActivity;
 import com.wastelanddroid.game.GameActivity;
 import com.wastelanddroid.game.GameFiles;
 import com.wastelanddroid.runtime.RuntimeManager;
@@ -83,9 +85,14 @@ public final class MainActivity extends Activity {
             LinearLayout btns = Ui.row(MainActivity.this);
             Button folder = Ui.ghostButton(MainActivity.this, "📁 Папка", v -> { pendingGame = def; pickGameDir(); });
             Button art = Ui.ghostButton(MainActivity.this, "🖼 Обложка", v -> { pendingGame = def; pickCover(); });
+            Button mods = Ui.ghostButton(MainActivity.this, "🧩 Моды", v -> {
+                if (def.gameDir(MainActivity.this) == null) { Toast.makeText(MainActivity.this, "Сначала выберите папку игры", Toast.LENGTH_SHORT).show(); return; }
+                startActivity(new Intent(MainActivity.this, ModManagerActivity.class).putExtra(ModManagerActivity.EXTRA_GAME, def.id));
+            });
             btns.addView(folder, Ui.weight());
             btns.addView(art, Ui.weight());
             card.addView(btns);
+            card.addView(mods, Ui.matchWrap(MainActivity.this, 0));
             card.addView(play, Ui.matchWrap(MainActivity.this, 2));
             play.setMinHeight(Ui.dp(MainActivity.this, 54));
             cover.setOnLongClickListener(v -> { new File(coverFile(def).getPath()).delete(); refresh(); return true; });
@@ -231,6 +238,7 @@ public final class MainActivity extends Activity {
                 v -> prefs.edit().putInt(Prefs.RES_SCALE, v).apply()));
         gfx.addView(Ui.hint(this, "🔒 Лок 60 FPS включён всегда: выше 60 ломается физика движка."));
         gfx.addView(check("Счётчик FPS (DXVK HUD)", Prefs.SHOW_HUD, false));
+        gfx.addView(Ui.ghostButton(this, "⚙  Тонкая настройка графики", v -> startActivity(new Intent(this, GraphicsActivity.class))), Ui.matchWrap(this, 4));
         col.addView(gfx);
 
         LinearLayout ctl = Ui.card(this, "▌ Управление");
