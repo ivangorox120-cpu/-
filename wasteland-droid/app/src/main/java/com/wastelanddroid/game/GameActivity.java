@@ -21,6 +21,7 @@ import com.wastelanddroid.runtime.LaunchConfig;
 import com.wastelanddroid.runtime.NativeBridge;
 import com.wastelanddroid.runtime.RuntimeManager;
 import com.wastelanddroid.util.Files2;
+import com.wastelanddroid.util.Links;
 import com.wastelanddroid.util.Prefs;
 import com.wastelanddroid.util.Ui;
 
@@ -67,7 +68,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
 
         status = Ui.label(this, "Подготовка…");
-        status.setTextSize(18);
+        status.setTextSize(16);
+        status.setTypeface(Ui.mono(true));
+        status.setBackground(Ui.rounded(Ui.CARD, Ui.LINE, 14, this));
+        status.setPadding(Ui.dp(this, 22), Ui.dp(this, 14), Ui.dp(this, 22), Ui.dp(this, 14));
         root.addView(status, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         setContentView(root);
     }
@@ -97,6 +101,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 .setMessage(msg)
                 .setCancelable(false)
                 .setPositiveButton("Назад", (d, w) -> finish())
+                .setNeutralButton("Помощь в Telegram", (d, w) -> { Links.openTelegram(this); finish(); })
                 .show());
     }
 
@@ -163,6 +168,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 .setMessage("Сохранения скопированы перед запуском. Журналы: Android/data/com.wastelanddroid/files/logs")
                 .setPositiveButton("Перезапустить", (d, w) -> recreate())
                 .setNegativeButton("Выход", (d, w) -> finish())
+                .setNeutralButton("Сообщить в Telegram", (d, w) -> { Links.openTelegram(this); finish(); })
                 .setCancelable(false)
                 .show();
     }

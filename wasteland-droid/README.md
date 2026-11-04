@@ -1,5 +1,7 @@
 # Wasteland Droid
 
+📢 Telegram-канал: [@rommy_apps](https://t.me/rommy_apps) — новости и новые сборки.
+
 Лаунчер Fallout 3 (PC-версия) для Android: работает в горизонтальной ориентации,
 запускает **вашу собственную копию игры** через ARM64-рантайм
 (Box64 + Wine + DXVK + Mesa Turnip), держит стабильный лок **60 к/с** и

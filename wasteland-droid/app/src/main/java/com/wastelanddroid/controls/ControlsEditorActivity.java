@@ -37,7 +37,7 @@ public final class ControlsEditorActivity extends Activity {
         layout = ControlLayout.load(this);
 
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(28, 34, 28));
+        root.setBackground(Ui.screenBackground());
         overlay = new ControlsOverlay(this);
         overlay.setLayout(layout);
         overlay.setEditMode(true, this::onSelected);
@@ -45,7 +45,7 @@ public final class ControlsEditorActivity extends Activity {
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackgroundColor(Color.argb(220, 10, 14, 10));
+        panel.setBackground(Ui.rounded(Ui.CARD, Ui.LINE, 16, this));
         int pad = Ui.dp(this, 10);
         panel.setPadding(pad, pad, pad, pad);
 
@@ -75,9 +75,7 @@ public final class ControlsEditorActivity extends Activity {
         selPanel.addView(alphaV, Ui.weight());
         selKey = Ui.button(this, "Клавиша", v -> chooseKey());
         selPanel.addView(selKey);
-        selToggle = new CheckBox(this);
-        selToggle.setText("Фиксация");
-        selToggle.setTextColor(Ui.FG);
+        selToggle = Ui.check(this, "Фиксация", false);
         selToggle.setOnCheckedChangeListener((cb, on) -> { ControlButton s = overlay.getSelected(); if (s != null && !binding) s.toggle = on; });
         selPanel.addView(selToggle);
         selPanel.addView(Ui.button(this, "Удалить", v -> deleteSelected()));
@@ -85,8 +83,8 @@ public final class ControlsEditorActivity extends Activity {
         panel.addView(selPanel);
 
         LinearLayout actions = Ui.row(this);
-        actions.addView(Ui.button(this, "+ Кнопка", v -> addButton()));
-        actions.addView(Ui.button(this, "Сбросить", v -> {
+        actions.addView(Ui.ghostButton(this, "+ Кнопка", v -> addButton()));
+        actions.addView(Ui.ghostButton(this, "Сбросить", v -> {
             try { ControlLayout.defaults().save(this); } catch (IOException ignored) {}
             recreate();
         }));
@@ -97,7 +95,7 @@ public final class ControlsEditorActivity extends Activity {
         root.addView(panel, lp);
 
         // Панель можно свернуть, чтобы видеть нижние кнопки.
-        Button hide = Ui.button(this, "▼ панель", null);
+        Button hide = Ui.ghostButton(this, "▼ панель", null);
         hide.setOnClickListener(v -> {
             boolean vis = panel.getVisibility() == View.VISIBLE;
             panel.setVisibility(vis ? View.GONE : View.VISIBLE);
