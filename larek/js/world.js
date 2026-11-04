@@ -1,7 +1,7 @@
 // 3D-мир «Ларька»: город 90-х, ларёк с интерьером, игрок от первого лица, люди, машины, погода, сутки.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { Human, makeLook, splitStaticModel } from './npc.js';
+import { Human, makeLook, splitStaticModel, preparePeople } from './npc.js';
 import { createWeapon } from './weapon.js';
 
 const R = (a, b) => a + Math.random() * (b - a);
@@ -470,7 +470,7 @@ export function createWorld(ctx) {
   // ---------- загрузка моделей ----------
   const loader = new GLTFLoader();
   const ASSETS = {};
-  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker'];
+  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people'];
   const winMats = [];
   const crowns = { winter: [], summer: [] };
   const loading = Promise.all(toLoad.map(n => loader.loadAsync('assets/models/' + n + '.glb').then(g => { ASSETS[n] = g; loadedN++; ctx.onLoadProgress && ctx.onLoadProgress(loadedN / toLoad.length); }).catch(e => { console.warn('Не загрузилась модель', n, e); loadedN++; })));
@@ -478,7 +478,7 @@ export function createWorld(ctx) {
   function prepMats(root) { root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) if (m[k]) m[k].anisotropy = Q.aniso; }); } }); }
   function placeModel(g, x, z, rotY, scale = 1) { const o = g.scene.clone(true); o.position.set(x, 0, z); o.rotation.y = rotY; o.scale.setScalar(scale); scene.add(o); prepMats(o); o.updateMatrixWorld(true); return o; }
   function colFromBox(o, shrink = 0) { const b = new THREE.Box3().setFromObject(o); return addCol(b.min.x + shrink, b.max.x - shrink, b.min.z + shrink, b.max.z - shrink); }
-  let staticWorker = null;
+  let staticWorker = null, peopleModels = [];
   loading.then(() => {
     // дома
     if (ASSETS.apartment) {
@@ -520,6 +520,7 @@ export function createWorld(ctx) {
     // радио на полке
     if (ASSETS.radio) { const o = placeModel(ASSETS.radio, -KW + .17, -.62, Math.PI / 2, 1.0); o.position.y = 1.315; radioObj = o; o.traverse(m => { if (m.isMesh) m.userData.radio = true; }); }
     // модель рабочего — один из вариантов NPC
+    if (ASSETS.people) { try { peopleModels = preparePeople(ASSETS.people.scene); } catch (e) { console.warn('Модели людей', e); } }
     if (ASSETS.steelworker) { const m = meshesOf(ASSETS.steelworker)[0]; if (m) staticWorker = splitStaticModel(m.geometry.clone().applyMatrix4(m.matrixWorld)); }
     for (let i = 0; i < 3; i++) spawnVendor(i);
     season = -1;
@@ -618,8 +619,19 @@ export function createWorld(ctx) {
   const people = []; // { h: Human, role, state, path, ... }
   function newPerson(kind, role, nodeId, extra) {
     const look = makeLook(kind);
-    const useStatic = staticWorker && kind === 'worker' && Math.random() < .35;
-    const h = new Human(look, useStatic ? staticWorker : null);
+    // модели «Зимние люди» для всех, кроме милиции (у неё своя форма); сталевар — среди рабочих
+    let model = null;
+    if (kind !== 'police') {
+      if (staticWorker && kind === 'worker' && Math.random() < .2) model = staticWorker;
+      else if (peopleModels.length) {
+        const pool = peopleModels.filter(m => m.female === !look.male);
+        const used = new Set(people.map(q => q.modelName));
+        const fresh = (pool.length ? pool : peopleModels).filter(m => !used.has(m.name));
+        const pm = pick(fresh.length ? fresh : (pool.length ? pool : peopleModels)); model = pm.parts; extra = Object.assign({ modelName: pm.name }, extra || {});
+      }
+    }
+    if (model && kind === 'school') look.height = 1.45;
+    const h = new Human(look, model);
     const n = NODES[nodeId]; h.obj.position.set(n.x + R(-.3, .3), 0, n.z + R(-.3, .3)); scene.add(h.obj);
     const shadow = new THREE.Mesh(blobGeo, blobMat); shadow.rotation.x = -Math.PI / 2; shadow.position.y = .02; h.obj.add(shadow);
     const p = Object.assign({ h, role, state: 'idle', path: [], speed: look.walkSpeed, timer: 0, kind, fear: 0, id: Math.random() }, extra || {});

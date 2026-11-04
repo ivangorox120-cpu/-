@@ -113,21 +113,22 @@ export function buildHuman(L, staticModel) {
   const spine = pivot(hips, 0, .02, 0); R.spine = spine;
 
   if (staticModel) {
-    // рабочий из присланной модели: части меша закреплены на тех же шарнирах
-    const s = H / 1.93;
-    const P = staticModel; // { torso, head, armL, armR, legL, legR } (геометрии с центром в шарнире)
+    // персонаж из присланной модели: части меша закреплены на тех же шарнирах
+    const P = staticModel, C = P.cfg, s = H / C.height;
     root.userData.static = true;
-    const sm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9 });
-    hips.position.y = .95 * s; spine.position.y = 0;
-    part(P.torso, sm, s, s, s, 0, -0.95 * s, 0, spine, true);
-    R.neck = pivot(spine, 0, (1.55 - .95) * s, 0); R.head = pivot(R.neck, 0, 0, 0); part(P.head, sm, s, s, s, 0, 0, 0, R.head, true);
-    R.shL = pivot(spine, .2 * s, (1.45 - .95) * s, 0); R.shR = pivot(spine, -.2 * s, (1.45 - .95) * s, 0);
+    const tint = new THREE.Color().setRGB(rnd(.86, 1.08), rnd(.86, 1.08), rnd(.86, 1.08));
+    const sm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .88, color: tint });
+    hips.position.y = C.hipY * s; spine.position.y = 0;
+    part(P.torso, sm, s, s, s, 0, -C.hipY * s, 0, spine, true);
+    R.neck = pivot(spine, 0, (C.neckY - C.hipY) * s, 0); R.head = pivot(R.neck, 0, 0, 0); part(P.head, sm, s, s, s, 0, 0, 0, R.head, true);
+    R.shL = pivot(spine, C.shX * s, (C.shY - C.hipY) * s, 0); R.shR = pivot(spine, -C.shX * s, (C.shY - C.hipY) * s, 0);
     part(P.armL, sm, s, s, s, 0, 0, 0, R.shL, true); part(P.armR, sm, s, s, s, 0, 0, 0, R.shR, true);
     R.elL = pivot(R.shL, 0, -.3 * s, 0); R.elR = pivot(R.shR, 0, -.3 * s, 0);
-    R.thL = pivot(hips, .1 * s, 0, 0); R.thR = pivot(hips, -.1 * s, 0, 0);
+    R.thL = pivot(hips, C.legX * s, 0, 0); R.thR = pivot(hips, -C.legX * s, 0, 0);
     part(P.legL, sm, s, s, s, 0, 0, 0, R.thL, true); part(P.legR, sm, s, s, s, 0, 0, 0, R.thR, true);
     R.knL = pivot(R.thL, 0, -.45 * s, 0); R.knR = pivot(R.thR, 0, -.45 * s, 0);
-    R.face = null; R.legLen = .95 * s; R.stride = .65 * s;
+    R.face = null; R.legLen = C.hipY * s; R.stride = .68 * s * (C.hipY / .95);
+    R.rigidArms = !!C.posedArms; // у некоторых моделей руки уже в позе (машут, в карманах)
     return R;
   }
 
@@ -211,29 +212,63 @@ export function buildHuman(L, staticModel) {
 let _checker;
 function checkerTex() { if (_checker) return _checker; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#b03a2e' : '#2d4f86'; g.fillRect(i * 16, j * 16, 16, 16); } g.strokeStyle = '#eee'; g.lineWidth = 2; for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 16, 0); g.lineTo(i * 16, 64); g.stroke(); g.beginPath(); g.moveTo(0, i * 16); g.lineTo(64, i * 16); g.stroke(); } _checker = new THREE.CanvasTexture(c); _checker.colorSpace = THREE.SRGBColorSpace; return _checker; }
 
-// разрезаем статичную модель рабочего на части по положению треугольников
-export function splitStaticModel(geo) {
-  const pos = geo.attributes.position, nor = geo.attributes.normal, col = geo.attributes.color;
+// разрезаем статичную модель на части (голова, туловище, руки, ноги) по положению треугольников.
+// prims: [{ geo (неиндексированная, с position/normal/color), legsOK }] — legsOK: часть может относиться к ногам (не длинное пальто)
+const STEEL_CFG = { height: 1.93, hipY: .95, neckY: 1.55, headCut: 1.56, shY: 1.45, shX: .2, armCut: .21, armTop: 1.52, armBottom: 0, legCut: .93, legX: .1 };
+export const PEOPLE_CFG = { height: 1.86, hipY: .98, neckY: 1.47, headCut: 1.47, headHalfW: .2, shY: 1.42, shX: .2, armCut: .205, armTop: 2.2, armBottom: .75, legCut: .99, legX: .09 };
+export function splitParts(prims, cfg) {
   const parts = { torso: [], head: [], armL: [], armR: [], legL: [], legR: [] };
-  const n = pos.count;
-  for (let t = 0; t < n; t += 3) {
-    let cx = 0, cy = 0; for (let k = 0; k < 3; k++) { cx += pos.getX(t + k); cy += pos.getY(t + k); } cx /= 3; cy /= 3;
-    let p = 'torso';
-    if (cy > 1.56) p = 'head'; else if (cy < .93) p = cx > 0 ? 'legL' : 'legR'; else if (Math.abs(cx) > .21 && cy < 1.52) p = cx > 0 ? 'armL' : 'armR';
-    parts[p].push(t);
-  }
-  const PIV = { torso: [0, .95, 0], head: [0, 1.55, 0], armL: [.2, 1.45, 0], armR: [-.2, 1.45, 0], legL: [.1, .95, 0], legR: [-.1, .95, 0] };
-  const out = {};
-  for (const k in parts) {
-    const tris = parts[k], m = tris.length * 3, P = new Float32Array(m * 3), N = new Float32Array(m * 3), C = col ? new Float32Array(m * 3) : null;
-    let i = 0; const [px, py, pz] = k === 'torso' ? [0, 0, 0] : PIV[k];
-    for (const t of tris) for (let v = 0; v < 3; v++, i++) {
-      P[i * 3] = pos.getX(t + v) - px; P[i * 3 + 1] = pos.getY(t + v) - py; P[i * 3 + 2] = pos.getZ(t + v) - pz;
-      N[i * 3] = nor.getX(t + v); N[i * 3 + 1] = nor.getY(t + v); N[i * 3 + 2] = nor.getZ(t + v);
-      if (C) { C[i * 3] = col.getX(t + v); C[i * 3 + 1] = col.getY(t + v); C[i * 3 + 2] = col.getZ(t + v); }
+  for (const { geo, legsOK } of prims) {
+    const pos = geo.attributes.position;
+    for (let t = 0; t < pos.count; t += 3) {
+      let cx = 0, cy = 0; for (let k = 0; k < 3; k++) { cx += pos.getX(t + k); cy += pos.getY(t + k); } cx /= 3; cy /= 3;
+      let p = 'torso';
+      if (cy > cfg.headCut && Math.abs(cx) < (cfg.headHalfW || 9)) p = 'head';
+      else if (cy < cfg.legCut && legsOK !== false) p = cx > 0 ? 'legL' : 'legR';
+      else if (Math.abs(cx) > cfg.armCut && cy < cfg.armTop && cy > cfg.armBottom) p = cx > 0 ? 'armL' : 'armR';
+      parts[p].push([geo, t]);
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); if (C) g.setAttribute('color', new THREE.BufferAttribute(C, 3));
-    out[k] = g;
+  }
+  const PIV = { torso: [0, 0, 0], head: [0, cfg.neckY, 0], armL: [cfg.shX, cfg.shY, 0], armR: [-cfg.shX, cfg.shY, 0], legL: [cfg.legX, cfg.hipY, 0], legR: [-cfg.legX, cfg.hipY, 0] };
+  const out = { cfg };
+  for (const k in parts) {
+    const tris = parts[k], m = tris.length * 3, P = new Float32Array(m * 3), N = new Float32Array(m * 3), C = new Float32Array(m * 3);
+    let i = 0; const [px, py, pz] = PIV[k];
+    for (const [geo, t] of tris) { const pos = geo.attributes.position, nor = geo.attributes.normal, col = geo.attributes.color;
+      for (let v = 0; v < 3; v++, i++) {
+        P[i * 3] = pos.getX(t + v) - px; P[i * 3 + 1] = pos.getY(t + v) - py; P[i * 3 + 2] = pos.getZ(t + v) - pz;
+        N[i * 3] = nor.getX(t + v); N[i * 3 + 1] = nor.getY(t + v); N[i * 3 + 2] = nor.getZ(t + v);
+        if (col) { C[i * 3] = col.getX(t + v); C[i * 3 + 1] = col.getY(t + v); C[i * 3 + 2] = col.getZ(t + v); } else C[i * 3] = C[i * 3 + 1] = C[i * 3 + 2] = .8;
+      } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('color', new THREE.BufferAttribute(C, 3));
+    g.computeBoundingSphere(); out[k] = g;
+  }
+  return out;
+}
+export function splitStaticModel(geo) { return splitParts([{ geo, legsOK: true }], STEEL_CFG); }
+
+// набор «Зимние люди»: 10 персонажей из отдельных частей; цвет материала запекаем в вершины
+export const PEOPLE_FEMALE = ['Anna', 'Galina', 'Elena', 'Irina'];
+export function preparePeople(sceneRoot) {
+  const out = [];
+  for (const person of sceneRoot.children) {
+    const prims = [];
+    person.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(person.matrixWorld).invert();
+    person.traverse(m => {
+      if (!m.isMesh) return;
+      let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+      if (!g.attributes.normal) g.computeVertexNormals();
+      const c = m.material.color || new THREE.Color(1, 1, 1), n = g.attributes.position.count, C = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { C[i * 3] = c.r; C[i * 3 + 1] = c.g; C[i * 3 + 2] = c.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(C, 3));
+      g.computeBoundingBox();
+      prims.push({ geo: g, legsOK: g.boundingBox.max.y < 1.06 });
+    });
+    if (!prims.length) continue;
+    const parts = splitParts(prims, PEOPLE_CFG);
+    out.push({ name: person.name, female: PEOPLE_FEMALE.includes(person.name), parts });
   }
   return out;
 }
@@ -264,7 +299,7 @@ export class Human {
       const p = this.phase, run = a !== 'walk', amp = run ? .8 : .42 * (L.age > 60 ? .7 : 1);
       T.thL.x = Math.sin(p) * amp; T.thR.x = -Math.sin(p) * amp;
       T.knL.x = Math.max(0, -Math.cos(p)) * amp * (run ? 1.6 : 1.2) + .05; T.knR.x = Math.max(0, Math.cos(p)) * amp * (run ? 1.6 : 1.2) + .05;
-      const arm = (run ? .9 : .38) * (L.swagger > .5 ? 1.3 : 1);
+      const arm = (run ? .9 : .38) * (L.swagger > .5 ? 1.3 : 1) * (R.rigidArms ? .5 : 1);
       T.shL.x = -Math.sin(p) * arm; T.shR.x = Math.sin(p) * arm; T.elL.x = -(run ? 1.3 : .25); T.elR.x = -(run ? 1.3 : .25);
       T.shL.z = .08 + L.swagger * .12; T.shR.z = -.08 - L.swagger * .12;
       T.spine.y = Math.sin(p) * (.06 + L.swagger * .12);
