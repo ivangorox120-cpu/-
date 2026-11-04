@@ -662,17 +662,43 @@ export function createWorld(ctx) {
   }
 
   // ---------- машины ----------
+  // седан 90-х (угловатый «классический» силуэт): кузов — экструзия бокового профиля с арками, хром, круглые фары, грязь по низу
+  const CAR = { glass: new THREE.MeshStandardMaterial({ color: 0x1a232a, roughness: .06, metalness: .8, side: THREE.DoubleSide }), chrome: std({ color: 0xc8ccd0, roughness: .2, metalness: 1 }), mud: std({ color: 0x3a3530, roughness: 1, transparent: true, opacity: .7 }), tire: std({ color: 0x141414, roughness: .9 }), grille: std({ color: 0x0e0e0e, roughness: .5, metalness: .4 }), plate: std({ color: 0xe8e8e0, roughness: .6 }) };
+  const carGeo = (() => {
+    const sh = new THREE.Shape(); const W = .37;
+    sh.moveTo(2.08, .36); sh.lineTo(1.25 + W, .36); sh.absarc(1.25, .36, W, 0, Math.PI, false); sh.lineTo(-1.25 + W, .36); sh.absarc(-1.25, .36, W, 0, Math.PI, false);
+    sh.lineTo(-2.08, .36); sh.lineTo(-2.1, .8); sh.lineTo(-1.25, .84); sh.lineTo(-.95, .86); sh.lineTo(-.55, 1.31); sh.lineTo(.5, 1.33); sh.lineTo(1.0, .88); sh.lineTo(2.1, .8); sh.lineTo(2.08, .36);
+    const body = new THREE.ExtrudeGeometry(sh, { depth: 1.52, bevelEnabled: true, bevelSize: .04, bevelThickness: .04, bevelSegments: 2, curveSegments: 8 }); body.translate(0, 0, -.76);
+    const side = new THREE.Shape(); side.moveTo(-.86, .9); side.lineTo(-.53, 1.26); side.lineTo(.48, 1.28); side.lineTo(.93, .91); side.lineTo(-.86, .9);
+    const win = new THREE.ShapeGeometry(side);
+    const tire = new THREE.CylinderGeometry(.31, .31, .2, 16); tire.rotateX(Math.PI / 2); const hub = new THREE.CylinderGeometry(.17, .17, .22, 12); hub.rotateX(Math.PI / 2); const spoke = new THREE.BoxGeometry(.3, .05, .225);
+    return { body, win, tire, hub, spoke };
+  })();
+  function mergeByMat(g) { // статичные части машины → один меш на материал (меньше draw calls)
+    const by = new Map(); g.updateMatrixWorld(true);
+    for (const o of g.children.slice()) { if (!o.isMesh || o.userData.keep) continue; const geo = o.geometry.clone().applyMatrix4(o.matrix); const k = o.material; if (!by.has(k)) by.set(k, []); by.get(k).push(geo.index ? geo.toNonIndexed() : geo); g.remove(o); }
+    for (const [m, list] of by) { for (const ge of list) { for (const n of Object.keys(ge.attributes)) if (!['position', 'normal', 'uv'].includes(n)) ge.deleteAttribute(n); if (!ge.attributes.uv) ge.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(ge.attributes.position.count * 2), 2)); }
+      const mg = mergeGeometries(list, false); const mm = new THREE.Mesh(mg, m); mm.castShadow = m !== CAR.glass; mm.receiveShadow = true; if (m === MAT.snow) mm.userData.winter = true; g.add(mm); list.forEach(x => x.dispose()); }
+  }
   function carMesh(color) {
-    const g = new THREE.Group(); const body = std({ color, roughness: .35, metalness: .5 }), dark = std({ color: 0x151515, roughness: .6 });
-    box(4.0, .55, 1.62, body, 0, .58, 0, g); box(2.1, .5, 1.5, body, -.2, 1.1, 0, g);
-    box(2.0, .42, 1.52, new THREE.MeshStandardMaterial({ color: 0x1a2228, roughness: .08, metalness: .7 }), -.2, 1.11, 0, g);
-    box(.1, .16, 1.66, MAT.steel, 2.03, .45, 0, g); box(.1, .16, 1.66, MAT.steel, -2.03, .45, 0, g);
-    for (const [wx, wz] of [[-1.3, -.78], [1.3, -.78], [-1.3, .78], [1.3, .78]]) { const w_ = cyl(.31, .31, .2, dark, wx, .31, wz, 14, g); w_.rotation.x = Math.PI / 2; }
-    const hl = std({ color: 0xffffee, emissive: 0xfff2c0, emissiveIntensity: 0 }); box(.05, .14, .3, hl, 2.04, .65, -.55, g); box(.05, .14, .3, hl, 2.04, .65, .55, g);
-    const tl = std({ color: 0x8a1a12, emissive: 0xff2a10, emissiveIntensity: .3 }); box(.05, .12, .3, tl, -2.04, .65, -.55, g); box(.05, .12, .3, tl, -2.04, .65, .55, g);
-    box(2.1, .06, 1.5, MAT.snow, -.2, 1.38, 0, g, false).userData.winter = true;
+    const g = new THREE.Group(); const body = std({ color, roughness: .32, metalness: .55 });
+    const add = (geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+    add(carGeo.body, body);
+    for (const sz of [-.81, .81]) add(carGeo.win, CAR.glass, 0, 0, sz);
+    const ws = add(new THREE.PlaneGeometry(1.42, .62), CAR.glass, .76, 1.11, 0); ws.lookAt(.76 + Math.cos(.84), 1.11 + Math.sin(.84), 0);
+    const rw = add(new THREE.PlaneGeometry(1.38, .58), CAR.glass, -.74, 1.09, 0); rw.lookAt(-.74 - Math.cos(.84), 1.09 + Math.sin(.84), 0);
+    for (const x of [2.16, -2.16]) { add(new THREE.BoxGeometry(.1, .1, 1.72), CAR.chrome, x, .46, 0); add(new THREE.BoxGeometry(.02, .12, .34), CAR.plate, x + Math.sign(x) * .05, .6, 0); }
+    add(new THREE.BoxGeometry(.03, .2, .9), CAR.grille, 2.13, .64, 0);
+    const hl = std({ color: 0xffffee, emissive: 0xfff2c0, emissiveIntensity: 0 }), tl = std({ color: 0x8a1a12, emissive: 0xff2a10, emissiveIntensity: .3 });
+    for (const z of [-.6, -.4, .4, .6]) { const l = add(new THREE.CylinderGeometry(.075, .075, .04, 12), hl, 2.13, .66, z); l.rotation.z = Math.PI / 2; }
+    for (const z of [-.55, .55]) add(new THREE.BoxGeometry(.04, .14, .3), tl, -2.13, .66, z);
+    for (const sz of [-.8, .8]) { add(new THREE.BoxGeometry(4.1, .14, .03), CAR.mud, 0, .44, sz * 1.03); add(new THREE.BoxGeometry(1.3, .02, .02), CAR.chrome, 1.2 - 1.3, .8, sz * 1.03); }
+    add(new THREE.BoxGeometry(1.0, .07, 1.4), MAT.snow, -.02, 1.38, 0); add(new THREE.BoxGeometry(.9, .04, 1.4), MAT.snow, 1.5, .84, 0); add(new THREE.BoxGeometry(.7, .04, 1.4), MAT.snow, -1.6, .86, 0);
+    mergeByMat(g);
+    const wheels = [];
+    for (const [wx, wz] of [[-1.25, -.72], [1.25, -.72], [-1.25, .72], [1.25, .72]]) { const w = new THREE.Group(); w.position.set(wx, .31, wz); const t = new THREE.Mesh(carGeo.tire, CAR.tire), hb = new THREE.Mesh(carGeo.hub, CAR.chrome), sp = new THREE.Mesh(carGeo.spoke, CAR.grille); t.castShadow = true; w.add(t, hb, sp); g.add(w); wheels.push(w); }
     const blob = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.2), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .35, depthWrite: false })); blob.rotation.x = -Math.PI / 2; blob.position.y = .02; g.add(blob);
-    g.userData = { hl, tl, dyn: true }; scene.add(g); return g;
+    g.userData = { hl, tl, wheels, dyn: true }; scene.add(g); return g;
   }
   for (const [x, z, r, c] of [[18, -7, 0, 0xd8d4c8], [24.5, -7.3, .05, 0x7a2a22], [31, -9.5, Math.PI / 2, 0x3a5a3a], [-8, -2.6, 0, 0xc8b88a]]) { const m = carMesh(c); m.position.set(x, 0, z); m.rotation.y = r; const hx = Math.abs(Math.sin(r)) > .5 ? .9 : 2.1, hz = Math.abs(Math.sin(r)) > .5 ? 2.1 : .9; addCol(x - hx, x + hx, z - hz, z + hz); occ(m.children[0]); }
   // кольцевые маршруты (с поворотами за домами)
@@ -1301,7 +1327,7 @@ export function createWorld(ctx) {
       c.v += clamp(target - c.v, -9 * dt, 2.2 * dt); // торможение резче разгона
       c.s += c.v * dt;
       const h = Math.atan2(dirz, dirx); let dh = -h - c.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); c.heading += dh * Math.min(1, dt * 6);
-      c.m.position.set(x, 0, z); c.m.rotation.y = c.heading;
+      c.m.position.set(x, 0, z); c.m.rotation.y = c.heading; for (const w of c.m.userData.wheels) w.rotation.z -= c.v * dt / .31;
       c.m.userData.tl.emissiveIntensity = target < c.v - .5 ? 2 : (nightK > .3 ? .8 : .3);
       ctx.audio && ctx.audio.carState(c.id, x, z, c.v);
       // наезд на игрока
