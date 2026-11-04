@@ -16,10 +16,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 
 export const QUALITY = {
-  low:    { label: 'Низкое',       dpr: .8,  shadows: 0,    draw: 75,  light: 0, snow: 700,  npc: 8,  aniso: 1 },
-  medium: { label: 'Среднее',      dpr: 1.1, shadows: 1024, draw: 115, light: 1, snow: 1600, npc: 14, aniso: 2 },
-  high:   { label: 'Высокое',      dpr: 1.4, shadows: 2048, draw: 160, light: 2, snow: 3000, npc: 20, aniso: 4 },
-  max:    { label: 'Максимальное', dpr: 2,   shadows: 4096, draw: 230, light: 2, snow: 5000, npc: 28, aniso: 8 },
+  low:    { label: 'Низкое',       dpr: .8,  shadows: 0,    draw: 75,  light: 0, snow: 700,  npc: 12,  aniso: 1 },
+  medium: { label: 'Среднее',      dpr: 1.1, shadows: 1024, draw: 115, light: 1, snow: 1600, npc: 18, aniso: 2 },
+  high:   { label: 'Высокое',      dpr: 1.4, shadows: 2048, draw: 160, light: 2, snow: 3000, npc: 24, aniso: 4 },
+  max:    { label: 'Максимальное', dpr: 2,   shadows: 4096, draw: 230, light: 2, snow: 5000, npc: 32, aniso: 8 },
 };
 
 export function createWorld(ctx) {
@@ -35,6 +35,23 @@ export function createWorld(ctx) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(72, 1, .05, 400); camera.rotation.order = 'YXZ'; scene.add(camera);
   scene.fog = new THREE.Fog(0x9aa0a0, 20, 160);
+  // естественная дымка вместо линейного тумана: экспоненциальное нарастание с расстоянием, у земли гуще, с высотой реже (дома не «обрезаются» плоской стеной)
+  THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n varying float vFogDepth; varying vec3 vFogW;\n#endif';
+  THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n vFogDepth = - mvPosition.z; vFogW = transpose(mat3(viewMatrix)) * (mvPosition.xyz - viewMatrix[3].xyz);\n#endif';
+  THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\n uniform vec3 fogColor; varying float vFogDepth; varying vec3 vFogW;\n #ifdef FOG_EXP2\n uniform float fogDensity;\n #else\n uniform float fogNear; uniform float fogFar;\n #endif\n#endif';
+  THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+  #else
+    float fd = length(vFogW - cameraPosition), dens = 1.15 / max(fogFar, 1.0);
+    float hgt = exp(-max(vFogW.y, 0.0) * .05);                              // высотное ослабление
+    float near = smoothstep(fogNear * .25, fogNear * .25 + 4.0, fd);       // вблизи воздух чистый
+    float fogFactor = (1.0 - exp(-pow(fd * dens, 1.6))) * mix(.6, 1.0, hgt) * near;
+    float aer = smoothstep(0.0, 1.0, fogFactor);                          // воздушная перспектива: даль голубеет и светлеет
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * vec3(.93, .97, 1.04) + fogColor * .06, aer * .5);
+  #endif
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, clamp(fogFactor, 0.0, 1.0));
+#endif`;
 
   // ---------- пост-обработка ----------
   const gl2 = renderer.capabilities.isWebGL2;
@@ -168,20 +185,41 @@ export function createWorld(ctx) {
   // ---------- материалы ----------
   const std = o => new THREE.MeshStandardMaterial(Object.assign({ roughness: .85, metalness: 0 }, o));
   const repTex = (t, rx, ry) => { const c = t.clone(); c.needsUpdate = true; c.wrapS = c.wrapT = THREE.RepeatWrapping; c.repeat.set(rx, ry); allTex.push(c); return c; };
+  // ---------- HD-материалы (ambientCG, CC0): мировая проекция по доминирующей оси — масштаб в метрах, без растяжения на длинных деталях; цвет + нормали + шероховатость ----------
+  const hdT = (name, suf, srgb) => { const t = TL.load('assets/tex/hd/' + name + '_' + suf + '.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4; return t; };
+  let hdN_ = 0;
+  function hdMat(name, { scale = 1, color = 0xffffff, rough = 1, metal = 0, nrm = 1, rotY = 0 } = {}) {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+    const U = { tCol: { value: hdT(name, 'col', true) }, tNrm: { value: hdT(name, 'nrm') }, tRgh: { value: hdT(name, 'rgh') }, hdScale: { value: 1 / scale }, hdN: { value: nrm } };
+    m.userData.hdTex = [U.tCol.value, U.tNrm.value, U.tRgh.value];
+    m.onBeforeCompile = sh => { Object.assign(sh.uniforms, U);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vHW; varying vec3 vHN;').replace('#include <project_vertex>', '#include <project_vertex>\nvHW = (modelMatrix * vec4(transformed, 1.0)).xyz; vHN = normalize(mat3(modelMatrix) * objectNormal);');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vHW; varying vec3 vHN; uniform sampler2D tCol, tNrm, tRgh; uniform float hdScale, hdN;
+vec2 hdUV(out vec3 T, out vec3 B, out vec3 N){ vec3 a = abs(vHN);
+  if (a.y >= a.x && a.y >= a.z) { T = vec3(1,0,0); B = vec3(0,0,${rotY ? '-1' : '1'}); N = vec3(0, sign(vHN.y), 0); return ${rotY ? 'vHW.zx' : 'vHW.xz'} * hdScale; }
+  if (a.x >= a.z) { T = vec3(0,0,-sign(vHN.x)); B = vec3(0,1,0); N = vec3(sign(vHN.x),0,0); return vec2(-sign(vHN.x) * vHW.z, vHW.y) * hdScale; }
+  T = vec3(sign(vHN.z),0,0); B = vec3(0,1,0); N = vec3(0,0,sign(vHN.z)); return vec2(sign(vHN.z) * vHW.x, vHW.y) * hdScale; }`)
+        .replace('#include <map_fragment>', `vec3 hT, hB, hN; vec2 hUv = hdUV(hT, hB, hN); diffuseColor *= texture2D(tCol, hUv);`)
+        .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness * texture2D(tRgh, hUv).g;`)
+        .replace('#include <normal_fragment_maps>', `{ vec3 tn = texture2D(tNrm, hUv).xyz * 2.0 - 1.0; tn.xy *= hdN; vec3 nw = normalize(hT * tn.x + hB * tn.y + hN * tn.z); normal = normalize((viewMatrix * vec4(nw, 0.0)).xyz); }`);
+    };
+    const key = 'hd' + (++hdN_); m.customProgramCacheKey = () => key; return m; // у каждого свои uniform-текстуры — свой ключ программы
+  }
   const MAT = {
-    kiosk: std({ map: TX.kiosk, roughness: .6, metalness: .35 }),
+    kiosk: hdMat('kiosk', { scale: 1.6, rough: 1, metal: .45 }),
     wallpaper: std({ map: makeWallpaper(null), roughness: .92 }),
-    floor: std({ map: TX.floor, roughness: .65 }),
-    ceiling: std({ map: TX.ceiling, roughness: .95 }),
-    roofTin: std({ color: 0x5a5d5e, roughness: .5, metalness: .5 }),
-    wood: std({ color: 0x6b4f35, roughness: .7 }),
-    shelf: std({ map: TX.ply, roughness: .75 }),
-    counter: std({ color: 0x7a5a3c, roughness: .55 }),
+    floor: hdMat('floor', { scale: 1.4, rough: .9, rotY: 1 }),
+    ceiling: hdMat('plaster', { scale: 1.5, color: 0xe8e2d4 }),
+    roofTin: hdMat('metal', { scale: 1.2, metal: .6, color: 0xb0b0ac }),
+    wood: hdMat('panel', { scale: .9, color: 0xb59a80, rough: .9 }),
+    shelf: hdMat('dsp', { scale: .6, rough: .95 }),
+    counter: hdMat('counter', { scale: .8, rough: .6, nrm: .6 }),
     glass: new THREE.MeshStandardMaterial({ color: 0xaac4cc, transparent: true, opacity: .1, roughness: .05, metalness: .1, depthWrite: false }),
-    steel: std({ color: 0x8a8d8f, roughness: .35, metalness: .8 }),
-    dark: std({ color: 0x222426, roughness: .6 }),
+    steel: hdMat('metal', { scale: .5, metal: .85, rough: .8, color: 0xc8c8c4 }),
+    dark: hdMat('darkmetal', { scale: .5, metal: .4, rough: 1 }),
     rust: std({ map: TX.rust, roughness: .8, metalness: .25 }),
-    concrete: std({ color: 0x8b8880 }),
+    concrete: std({ color: 0x8b8880 }), bin: hdMat('bin', { scale: .9, metal: .5 }),
     lampHead: std({ color: 0x333, emissive: 0xffc070, emissiveIntensity: 0 }),
     bulb: std({ color: 0xfff2d0, emissive: 0xffd9a0, emissiveIntensity: 3 }),
     snow: std({ map: TX.snow, roughness: .95 }),
@@ -616,18 +654,72 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     addCol(gx - 2, gx + 2, gz - 3, gz + 3);
   }
   const wf = box(18, 2, .08, MAT.woodFence, 41, 1, -21, scene); addCol(32, 50, -21.1, -20.9);
-  for (const [x, z] of [[-6, -5], [-7.4, -5]]) { box(1.2, 1.1, .9, std({ color: 0x3a5a3a, roughness: .6, metalness: .4 }), x, .55, z); addCol(x - .6, x + .6, z - .45, z + .45); }
-  box(1.25, .08, .95, MAT.snow, -6, 1.13, -5, scene, false).userData.winter = true;
+  // ---------- мусорные контейнеры (советские 0,75 м³), урны, мусор вокруг ----------
+  const binGeo = (() => { const g = new THREE.CylinderGeometry(.86, .74, 1.05, 4, 1); g.rotateY(Math.PI / 4); g.scale(1, 1, .72); g.translate(0, .62, 0); return g; })();
+  const lidGeo = new THREE.BoxGeometry(.6, .03, .95);
+  const bagMat = std({ color: 0x141618, roughness: .35, metalness: .1 });
+  const cardTex = regTex(ctex(256, 256, (g, w, h) => { g.fillStyle = '#9a7a52'; g.fillRect(0, 0, w, h); for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${60 + Math.random() * 60},${45 + Math.random() * 40},25,${Math.random() * .25})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1); }
+    g.strokeStyle = 'rgba(60,40,20,.5)'; g.lineWidth = 3; g.strokeRect(10, 10, w - 20, h - 20); g.fillStyle = 'rgba(40,30,20,.7)'; g.font = '700 26px Arial'; g.fillText('ГОСТ 9142-84', 40, 120); g.font = '22px Arial'; g.fillText('НЕ КАНТОВАТЬ', 50, 160); g.fillStyle = 'rgba(70,50,30,.35)'; g.beginPath(); g.ellipse(170, 200, 50, 26, .3, 0, 7); g.fill(); }));
+  const cardMat = std({ map: cardTex, roughness: .95 });
+  const concreteMat = std({ ...pbrT('concrete', 1, 1), color: 0xb8b4ac, roughness: 1 });
+  function binGroup(x, z, n, ry = 0) {
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(n * 1.45 + .6, .12, 1.7), concreteMat); pad.position.y = .06; pad.receiveShadow = true; g.add(pad);
+    for (let i = 0; i < n; i++) { const bx = (i - (n - 1) / 2) * 1.45;
+      const b = new THREE.Mesh(binGeo, MAT.bin); b.position.set(bx, .12, 0); b.castShadow = b.receiveShadow = true; g.add(b);
+      for (const s_ of [-1, 1]) { const l = new THREE.Mesh(lidGeo, MAT.bin); l.position.set(bx + s_ * .31, 1.32, 0); l.rotation.z = s_ * (Math.random() < .5 ? R(.05, .5) : .04); l.castShadow = true; g.add(l); }
+      for (const s_ of [-1, 1]) { const h = cyl(.02, .02, .5, MAT.steel, bx + s_ * .8, .9, 0, 5, g); h.rotation.x = Math.PI / 2; }
+      const sn = new THREE.Mesh(new THREE.BoxGeometry(1.2, .07, .9), MAT.snow); sn.position.set(bx, 1.37, 0); sn.userData.winter = true; g.add(sn); }
+    for (let k = 0; k < n * 2 + 1; k++) { const t = Math.random(); // пакеты и коробки рядом с баками
+      if (t < .55) { const m = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), bagMat); m.scale.set(R(.9, 1.2), R(.6, .9), R(.8, 1.1)); m.position.set(R(-n * .8, n * .8), .2, R(.75, 1.2) * (Math.random() < .7 ? 1 : -1)); m.castShadow = true; g.add(m); }
+      else { const m = new THREE.Mesh(new THREE.BoxGeometry(R(.3, .6), R(.2, .45), R(.3, .5)), cardMat); m.position.set(R(-n * .8, n * .8), .15, R(.8, 1.2)); m.rotation.set(R(-.3, .3), R(0, 3), R(-.2, .2)); m.castShadow = true; g.add(m); } }
+    g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(pad); addCol(bb.min.x, bb.max.x, bb.min.z, bb.max.z); occ(pad);
+  }
+  binGroup(-6.8, -5.2, 2); binGroup(-13.5, -12.8, 3, .1); binGroup(14.5, -12.5, 2, -.15); binGroup(-24, 21.2, 3); binGroup(22, 21.4, 2); binGroup(-40, -24, 2, .3); binGroup(44, -26, 3, -.2);
+  // урны: бетонные «вазоны» с металлической вставкой — у ларька, на остановке, у лавок
+  { const urnGeo = new THREE.CylinderGeometry(.26, .2, .62, 10); urnGeo.translate(0, .31, 0); const insGeo = new THREE.CylinderGeometry(.21, .21, .04, 10); insGeo.translate(0, .6, 0);
+    for (const [x, z] of [[KW + .7, KD + .9], [5.8, 4.9], [11.2, 4.9], [-3.6, 5.4], [-21, -3.4], [26, 4.9], [-30, 4.9], [2, 17.6], [-18, 17.6]]) { const u = new THREE.Mesh(urnGeo, concreteMat); u.position.set(x, 0, z); u.castShadow = true; scene.add(u); const ins = new THREE.Mesh(insGeo, MAT.dark); ins.position.set(x, 0, z); scene.add(ins); addCol(x - .26, x + .26, z - .26, z + .26); } }
   const neons = [];
   const signs = [['ВИДЕОПРОКАТ', '#1a2a4a', '#e8d070', -32, 18.95], ['КОМИССИОННЫЙ', '#4a1a1a', '#f0e0c0', 14, 18.95], ['ГАСТРОНОМ', '#2a3a2a', '#e0d8b0', -14, 18.95], ['РЕМОНТ ОБУВИ', '#3a3a3a', '#f0e8d0', 30, 18.95]];
   for (const [t, bg, fg, x, z] of signs) { const tx = textTex(512, 96, t, bg, fg, '900 52px Arial'); const m = new THREE.Mesh(new THREE.PlaneGeometry(3.2, .6), std({ map: tx, emissive: 0xffffff, emissiveMap: tx, emissiveIntensity: 0 })); m.position.set(x, 3.4, z); scene.add(m); m.userData.neon = true; neons.push(m); }
 
+  // ---------- газеты на дороге и тротуарах (вымышленные городские газеты 1992 г.), часть носит ветром ----------
+  const paperTex = ['ВЕЧЕРНИЙ КУРЬЕР', 'ГОЛОС ТРУДА', 'ГОРОДСКИЕ ВЕСТИ'].map((title, vi) => regTex(ctex(512, 360, (g, w, h) => {
+    g.fillStyle = ['#e4dcc6', '#ddd5bd', '#e8e2d0'][vi]; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#1c1a18'; g.font = '900 40px "Times New Roman", serif'; g.textAlign = 'center'; g.fillText(title, w / 2, 46); g.font = '12px serif'; g.fillText('№ ' + (40 + vi * 17) + ' · ' + ['14 января', '3 марта', '22 октября'][vi] + ' 1992 г. · Цена 50 коп.', w / 2, 66);
+    g.fillRect(14, 72, w - 28, 2); g.fillRect(14, 76, w - 28, 1);
+    g.font = '900 24px Arial'; g.textAlign = 'left'; g.fillText(['ЦЕНЫ ОТПУЩЕНЫ', 'ВАУЧЕР — КАЖДОМУ', 'ЗИМА БЕЗ ОТОПЛЕНИЯ?'][vi], 18, 104);
+    g.fillStyle = '#6a6660'; g.fillRect(18 + (vi % 2) * 250, 118, 220, 120); for (let i = 0; i < 1200; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? 30 : 160},${Math.random() < .5 ? 30 : 160},${Math.random() < .5 ? 30 : 160},.25)`; g.fillRect(18 + (vi % 2) * 250 + Math.random() * 220, 118 + Math.random() * 120, 2, 2); } // фото
+    g.fillStyle = 'rgba(30,28,26,.75)'; const L = 'абвгдежзиклмнопрстуфхцчшэюя'; g.font = '9px serif';
+    for (let c = 0; c < 4; c++) for (let y = 120; y < h - 12; y += 10) { const x0 = 18 + c * 122; if (y < 242 && (vi % 2 ? x0 > 250 : x0 < 240)) continue; let t = ''; for (let k = 0; k < 26; k++) t += Math.random() < .17 ? ' ' : L[Math.floor(Math.random() * L.length)]; g.fillText(t, x0, y); }
+    for (let i = 0; i < 5; i++) { const gr = g.createRadialGradient(Math.random() * w, Math.random() * h, 5, Math.random() * w, Math.random() * h, 90); gr.addColorStop(0, 'rgba(120,100,60,.25)'); gr.addColorStop(1, 'rgba(120,100,60,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); } // подтёки, грязь
+    g.strokeStyle = 'rgba(80,70,50,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(w / 2, 0); g.lineTo(w / 2, h); g.stroke(); // сгиб
+  })));
+  const paperGeos = [0, 1, 2].map(v => { const g = new THREE.PlaneGeometry(.58, .41, 8, 6); g.rotateX(-Math.PI / 2); const P = g.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i); P.setY(i, .004 + Math.abs(Math.sin(x * 9 + v) * .012) + Math.max(0, Math.abs(x) - .22) * (.08 + v * .03) + Math.sin(z * 14 + x * 5 + v * 2) * .006); } g.computeVertexNormals(); return g; });
+  const paperMats = paperTex.map(t => std({ map: t, roughness: .95, side: THREE.DoubleSide }));
+  { const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), S4 = new THREE.Vector3();
+    for (let v = 0; v < 3; v++) { const pts = []; for (let i = 0; i < 24; i++) { const z = pick([R(6.6, 13.8), R(6.6, 13.8), R(1.6, 6), R(14.6, 18.2), R(-30, -4)]), x = R(-62, 66); if (Math.abs(x) < KW + .5 && Math.abs(z) < KD + .5) continue; pts.push([x, z]); }
+      const im = new THREE.InstancedMesh(paperGeos[v], paperMats[v], pts.length); pts.forEach(([x, z], i) => { const sc = Math.random() < .35 ? .55 : 1; im.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .012, z), Q4.setFromEuler(new THREE.Euler(0, R(0, 6.28), 0)), S4.set(sc, 1, sc))); }); im.receiveShadow = true; scene.add(im); } }
+  const flyPapers = []; for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(paperGeos[i % 3], paperMats[i % 3]); m.position.set(R(-20, 20), .02, R(2, 17)); m.userData = { vy: 0, spin: 0, air: 0, dyn: true }; m.castShadow = true; scene.add(m); flyPapers.push(m); }
+  function paperTick(dt) { // лист подхватывает порывом, крутит и опускает
+    for (const m of flyPapers) { const u = m.userData, w = windVec.length();
+      if (u.air <= 0 && w > 1.2 && Math.random() < dt * w * .25) { u.air = R(1, 3); u.vy = R(.6, 1.6); u.spin = R(-4, 4); }
+      if (u.air > 0) { u.air -= dt; m.position.x += windVec.x * dt * .9; m.position.z += windVec.y * dt * .9; m.position.y = Math.max(.02, m.position.y + u.vy * dt); u.vy -= dt * 1.6; m.rotation.x += u.spin * dt * .6; m.rotation.z += u.spin * dt; }
+      else { m.position.y = Math.max(.02, m.position.y - dt * .5); m.rotation.x *= .9; m.rotation.z *= .9; if (Math.random() < dt * w * .3) { m.position.x += windVec.x * dt * .4; m.position.z += windVec.y * dt * .4; m.rotation.y += dt * .5; } }
+      if (Math.hypot(m.position.x - P.x, m.position.z - P.z) > 30) m.position.set(P.x + R(-15, 15), .02, clamp(P.z + R(-10, 10), 1.5, 18)); }
+  }
+
   // ---------- фонари и провода ----------
-  const lampHeads = [], poles = [];
+  const lampHeads = [], poles = [], lampPools = [];
+  const poleMat = std({ color: 0x6a6c68, metalness: .4, roughness: .8 }); const lampBody = hdMat('darkmetal', { scale: .3, metal: .5, color: 0x8a8a84 });
+  const lampHeadGeo = (() => { const g = new THREE.SphereGeometry(.28, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2); g.scale(1.25, .45, .7); return g; })();
   for (let x = -66; x <= 74; x += 20) {
-    const p = cyl(.08, .12, 7.5, std({ color: 0x5a5c5e, metalness: .5, roughness: .6 }), x, 3.75, 5.95, 8); poles.push(new THREE.Vector3(x, 7.2, 5.95));
-    const arm = cyl(.035, .035, 1.6, MAT.steel, x, 7.1, 6.6, 6); arm.rotation.x = Math.PI / 2 - .25;
-    const hd = box(.55, .14, .3, MAT.lampHead, x, 7.15, 7.35); lampHeads.push(hd);
+    const p = cyl(.075, .11, 5.4, poleMat, x, 2.7, 5.95, 8); poles.push(new THREE.Vector3(x, 5.15, 5.95)); // опора ниже: ~5,4 м
+    cyl(.14, .16, .5, poleMat, x, .25, 5.95, 8); // бетонное основание/цоколь
+    const arm = cyl(.03, .03, 1.3, MAT.steel, x, 5.12, 6.5, 6); arm.rotation.x = Math.PI / 2 - .28;
+    const head = new THREE.Mesh(lampHeadGeo, lampBody); head.position.set(x, 5.2, 7.2); head.castShadow = true; scene.add(head);
+    const hd = box(.42, .025, .2, MAT.lampHead, x, 5.1, 7.22); lampHeads.push(hd); // рассеиватель снизу
+    lampPools.push([x, 7.2]);
     addCol(x - .14, x + .14, 5.82, 6.08);
   }
   const wireMat = new THREE.LineBasicMaterial({ color: 0x151515 });
@@ -636,7 +728,11 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (let k = 0; k <= 12; k++) { const t = k / 12; pts.push(new THREE.Vector3(lerp(a.x, b.x, t), a.y + dy - Math.sin(t * Math.PI) * .9, a.z)); }
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
   }
-  for (const x of [-6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 24, 1.6); pl.position.set(x, 6.8, 7.3); scene.add(pl); streetLights.push(pl); }
+  for (const x of [-6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 20, 1.6); pl.position.set(x, 4.9, 7.2); scene.add(pl); streetLights.push(pl); }
+  // световые пятна под всеми фонарями (дёшево вместо десятков источников света)
+  const poolTex = regTex(ctex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(255,190,110,.55)'); gr.addColorStop(.45, 'rgba(255,170,90,.22)'); gr.addColorStop(1, 'rgba(255,160,80,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }));
+  const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
+  { const g = new THREE.PlaneGeometry(9, 9); g.rotateX(-Math.PI / 2); const im = new THREE.InstancedMesh(g, poolMat, lampPools.length); lampPools.forEach(([x, z], i) => im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(x, .03, z - .6))); im.renderOrder = 2; scene.add(im); }
 
   // ---------- объединение статической геометрии по материалам (сотни мелких мешей → десятки вызовов отрисовки) ----------
   function batchStatic(root) {
@@ -1058,11 +1154,14 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const S = ctx.getS();
     const peds = people.filter(p => p.role === 'ped').length;
     const night = nightK > .6;
-    const want = Math.min(Q.npc - 6, night ? 3 : 7);
-    if (peds < want && Math.random() < dt * .4) {
+    const want = Math.min(Q.npc - 4, night ? 4 : 12);
+    if (peds < want && Math.random() < dt * .7) {
       const kind = night ? pick(['worker', 'youth', 'gopnik']) : pick(['babka', 'worker', 'worker', 'youth', 'school', 'neighbor']);
       const sp = pickSpawn({ x: R(-40, 40), z: R(-15, 10) });
       const p = newPerson(kind, 'ped', sp); wander(p);
+      // часть прохожих задерживается: ждёт автобус, курит у ларька, стоит у подъезда, болтает
+      if (Math.random() < .35) { const spot = pick([[6.5, 4.4, 'wait'], [9.2, 4.6, 'wait'], [3.2, 2.9, 'smoke'], [-3.4, 3.2, 'smoke'], [-24, 20.4, 'idle'], [20, 20.6, 'idle'], [-10, 16.6, 'talk'], [12, 16.8, 'idle']]);
+        goTo(p, spot[0] + R(-.6, .6), spot[1] + R(-.3, .3), () => { p.state = 'pause'; p.timer = R(30, 90); p.anim = spot[2]; }); }
     }
     // гопники
     if (S && !gopnikGroup && S.day >= 2 && Math.random() < dt * (night ? .012 : .004) * (S.rep.street >= 30 ? .4 : 1)) spawnGopniks();
@@ -1402,7 +1501,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     post.uniforms.exposure.value = 1.05 + nightK * .45;
     winU.night.value = nightK; winU.time.value = tAll; snowU.sparkle.value = 1 - nightK * .7;
     MAT.lampHead.emissiveIntensity = nightK > .35 ? 4 : 0;
-    streetLights.forEach(l => l.intensity = nightK > .35 ? 70 * nightK : 0);
+    streetLights.forEach(l => l.intensity = nightK > .35 ? 55 * nightK : 0); poolMat.opacity = nightK > .35 ? nightK : 0;
     sign.material.emissiveIntensity = nightK * .9; exS.material.emissiveIntensity = nightK * 1.2;
     neons.forEach(o => o.material.emissiveIntensity = nightK * .7);
     cars.forEach(c => { c.m.userData.hl.emissiveIntensity = nightK > .3 ? 3 : 0; });
@@ -1565,7 +1664,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // наведение ружья
     if (weapon.drawn) { const p = aimedPerson(weapon.aiming ? 35 : 12); if (p && (weapon.aiming || Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z) < 6)) threaten(p); }
     weapon.update(dt, { moving: Math.min(1, spd / 2), sprint: run, aspect: camera.aspect });
-    life.tick(dt); wallGunTick(dt); playgroundTick(dt);
+    life.tick(dt); wallGunTick(dt); playgroundTick(dt); paperTick(dt);
     { const wsp = weather.wind * 1.6 + weather.gust * 2.2 + stormK * 3; windVec.set(Math.cos(weather.ang) * wsp, Math.sin(weather.ang) * wsp); weather.windOff.addScaledVector(windVec, dt); weather.fallOff += dt * (1.1 + weather.gust * .4 + stormK); }
     stormMat.uniforms.time.value = tAll; stormMat.uniforms.col.value.copy(scene.fog.color);
     weapon.cam.fov = camera.fov; weapon.cam.updateProjectionMatrix();
