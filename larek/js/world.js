@@ -41,14 +41,16 @@ export function createWorld(ctx) {
   const halfOk = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
   const rt = new THREE.WebGLRenderTarget(4, 4, { type: halfOk ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: gl2 ? 4 : 0 });
   const post = new THREE.ShaderMaterial({
-    uniforms: { tDiffuse: { value: rt.texture }, time: { value: 0 }, exposure: { value: 1 }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 1 }, sat: { value: .72 }, hurt: { value: 0 }, blur: { value: 0 }, dbl: { value: 0 }, smoke: { value: 0 }, dbt: { value: 0 } },
+    uniforms: { tDiffuse: { value: rt.texture }, time: { value: 0 }, exposure: { value: 1 }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 1 }, sat: { value: .72 }, hurt: { value: 0 }, blur: { value: 0 }, dbl: { value: 0 }, smoke: { value: 0 }, dbt: { value: 0 }, retro: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
-    fragmentShader: `uniform sampler2D tDiffuse; uniform float time, exposure, vig, sat, hurt, blur, dbl, smoke, dbt; uniform vec2 res; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float time, exposure, vig, sat, hurt, blur, dbl, smoke, dbt, retro; uniform vec2 res; varying vec2 vUv;
       vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0., 1.); }
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
       void main(){
-        vec2 d = vUv - 0.5; float ca = (0.004 + hurt * 0.02) * dot(d, d) * 4.0;
-        vec3 col = vec3(texture2D(tDiffuse, vUv + d*ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - d*ca).b);
+        vec2 uv = vUv;
+        if (retro > .5) { float fr = floor(time * 18.0); uv += vec2(hash(vec2(fr, 1.3)) - .5, hash(vec2(fr, 7.1)) - .5) * vec2(.0012, .0018); } // «дрожание» кадра в проекторе
+        vec2 d = uv - 0.5; float ca = (0.004 + hurt * 0.02 + retro * .006) * dot(d, d) * 4.0;
+        vec3 col = vec3(texture2D(tDiffuse, uv + d*ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - d*ca).b);
         if (dbl > 0.001) { vec2 o = vec2(sin(dbt) , cos(dbt * .7)) * dbl; col = mix(col, texture2D(tDiffuse, vUv + o).rgb, .45); }
         if (blur > 0.001) { vec2 px = blur * 6.0 / res; vec3 b = vec3(0.); float w = 0.;
           for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) { float k = 1.0 / (1.0 + float(i*i + j*j)); b += texture2D(tDiffuse, vUv + vec2(float(i), float(j)) * px).rgb * k; w += k; }
@@ -62,6 +64,16 @@ export function createWorld(ctx) {
         col *= 1.0 - blur * .35;
         col = mix(col, vec3(0.55, 0.05, 0.03), hurt * smoothstep(0.1, 0.6, length(d)) * 0.8);
         col += (hash(vUv * res + fract(time) * 91.7) - 0.5) * (0.05 + smoke * .035);
+        if (retro > .5) { // кинематографичный ретро-эффект: плёночная цветокоррекция, крупное зерно, царапины, пыль, мерцание, виньетка и широкоэкранные поля
+          float fr = floor(time * 18.0), L = dot(col, vec3(.299, .587, .114));
+          col = mix(col, vec3(L) * vec3(1.08, .98, .82), .45); col = mix(col, col * vec3(1.05, .97, .86) + vec3(.02, .015, 0.), .6);
+          col = smoothstep(-.05, 1.08, col); col *= .94 + .06 * hash(vec2(fr, 3.3));
+          vec2 gp = floor(vUv * res / 2.2); col += (hash(gp + fr * 13.1) - .5) * .09;
+          float sx = hash(vec2(fr, 9.9)); if (sx > .55) { float xs = hash(vec2(fr, 5.5)); col *= 1.0 - .35 * smoothstep(.0012, 0., abs(vUv.x - xs)) * step(hash(vec2(fr, 2.2)) * .6, vUv.y); }
+          float dust = hash(floor(vUv * res / 3.0) + fr * 7.7); col = mix(col, vec3(.08), step(.9993, dust)); col = mix(col, vec3(.95), step(.99975, hash(floor(vUv * res / 4.0) + fr * 3.1)));
+          col *= 1.0 - .55 * pow(length(d * vec2(1.0, .8)) * 1.25, 2.6);
+          float bar = .075; col *= step(bar, vUv.y) * step(vUv.y, 1.0 - bar);
+        }
         gl_FragColor = vec4(clamp(col, 0., 1.), 1.0);
       }`,
     depthTest: false, depthWrite: false,
@@ -631,7 +643,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     root.updateMatrixWorld(true);
     const groups = new Map();
     root.traverse(o => {
-      if (!o.isMesh || o.isInstancedMesh || o.userData.keep) return;
+      if (!o.isMesh || o.isInstancedMesh || o.userData.keep || winterGround.includes(o) || summerGround.includes(o)) return; // сезонные поверхности не сливаем — их видимость переключается
       for (let p = o; p; p = p.parent) if (p.userData && p.userData.dyn) return;
       if (Array.isArray(o.material) || o.material.isShaderMaterial || o.material.transparent) return;
       const key = o.material.uuid + '|' + o.castShadow + '|' + (o.userData.winter ? 1 : 0);
@@ -1599,7 +1611,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   setClock(18.2); resize();
   return {
-    frame, updateShelves, goCounter, sit, stand, nearMarket, nearBooth, P, weapon, loading,
+    scene, frame, updateShelves, goCounter, sit, stand, nearMarket, nearBooth, P, weapon, loading,
     action: () => curAct, isNight: () => nightK > .45, canMove, inKiosk, toggleDoor, look, applyQuality, spawnCustomer, customerEvent,
     move(x, y) { input.mx = x; input.my = y; }, nearDoor() { return Math.hypot(P.x - .8, P.z + KD) < 2.2; }, setSprint(v) { P.sprint = v; }, toggleCrouch() { if (!P.seated) P.crouch = !P.crouch; }, get crouch() { return P.crouch; }, get sprint() { return P.sprint; },
     unlock() { P.locked = false; ctx.onCtl(); },
@@ -1613,6 +1625,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     putGunDown() { if (gunState() !== 'carried') return; const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); },
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
+    setRetro(v) { post.uniforms.retro.value = v ? 1 : 0; },
     debug: { TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
   };
 }

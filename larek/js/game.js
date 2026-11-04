@@ -1069,6 +1069,10 @@ function setHtml() {
       <label>Качество текстур ${sel('aniso', [[1, 'низкое'], [2, 'среднее'], [4, 'высокое'], [8, 'максимум']], cq.aniso)}</label>
       <label>Разрешение ${sel('dpr', [[.7, '70%'], [.9, '90%'], [1.1, '110%'], [1.4, '140%'], [2, '200%']], cq.dpr)}</label>
     </div>
+    <h3>Эффекты</h3>
+    <div class="card setgrid">
+      <label>Кинематографичный ретро-фильтр ${sel('retro', [[0, 'выключен'], [1, 'включён']], st.retro ? 1 : 0)}</label>
+    </div>
     <h3>Камера</h3>
     <div class="card setgrid">
       <label>Покачивание при ходьбе ${rng('bob', 0, 2, .1, st.bob, v => Math.round(v * 100) + '%')}</label>
@@ -1151,6 +1155,7 @@ document.addEventListener('input', e => {
   const k = e.target.dataset.set; if (!k) return;
   const v = +e.target.value; const sp = e.target.nextElementSibling;
   if (['bob', 'master', 'radio', 'ambience'].includes(k)) { SET[k] = v; if (k !== 'bob') audio.setVolume(k, v); if (sp) sp.textContent = Math.round(v * 100) + '%'; }
+  else if (k === 'retro') { SET.retro = v; W && W.setRetro(v); }
   else if (k === 'sens') { if (controls) controls.lookSens = v; if (sp) sp.textContent = v.toFixed(2); }
   else { SET.custom = Object.assign({}, QUALITY[SET.quality], SET.custom || {}, { [k]: v }); if (sp) sp.textContent = k === 'draw' ? v + ' м' : v; W && W.applyQuality(SET.custom); }
   saveSet();
@@ -1334,7 +1339,7 @@ function hiddenReact(c, k) {
 // ============================================================
 const SET_KEY = 'larek-settings-v1';
 const isMob = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-const SET = Object.assign({ quality: isMob ? 'medium' : 'high', custom: null, bob: 1, master: .9, radio: .7, ambience: .6 }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
+const SET = Object.assign({ quality: isMob ? 'medium' : 'high', custom: null, bob: 1, retro: 0, master: .9, radio: .7, ambience: .6 }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
 function saveSet() { try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) {} }
 const audio = createAudio();
 ['master', 'radio', 'ambience'].forEach(k => audio.setVolume(k, SET[k]));
@@ -1377,6 +1382,7 @@ const W = (() => { try { return createWorld({
   onLoadProgress(p) { loadP = p; const li = document.getElementById('loadInfo'); if (li) li.textContent = 'Загрузка города… ' + Math.round(p * 100) + '%'; },
   onLoaded() { worldReady = true; const li = document.getElementById('loadInfo'); if (li) li.textContent = ''; },
 }); } catch (e) { console.error('3D не запустился', e); return null; } })();
+if (W) W.setRetro(SET.retro); // ретро-фильтр — из настроек (по умолчанию выключен)
 if (W) {
   const hasCig = () => S && (S.cigs > 0 || qOf('cig') > 0 || (S.hidden.kontra || 0) > 0);
   const hasBottle = () => S && ((S.bottle && S.bottle.left > 0) || qOf('vodka') > 0 || qOf('beer') > 0 || (S.hidden.samogon || 0) > 0);
