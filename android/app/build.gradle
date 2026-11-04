@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.snakeboom.game'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.snakeboom.game'
+        minSdk 21
+        targetSdk 34
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '0'}"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // подписываем debug-ключом, чтобы APK ставился без лишней возни
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    sourceSets {
+        main.assets.srcDirs += "$buildDir/gameAssets"
+    }
+}
+
+// Кладём index.html из корня репозитория в assets приложения
+def copyGame = tasks.register('copyGame', Copy) {
+    from rootProject.file('../index.html')
+    into "$buildDir/gameAssets"
+}
+preBuild.dependsOn copyGame
