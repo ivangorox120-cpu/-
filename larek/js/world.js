@@ -178,7 +178,6 @@ export function createWorld(ctx) {
   TL.load('assets/tex/snow_ground.jpg', t => { // фотоснег пользователя: земля, тротуары, обочины; дорога — укатанная, с колеями, наледью и выбоинами
     const img = t.image; t.dispose();
     const mk = (w, h, draw, rx, ry) => { const tx = regTex(ctex(w, h, g => draw(g, w, h))); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(rx, ry); return tx; };
-    groundSnow.material.map = mk(1024, 512, (g, w, h) => g.drawImage(img, 0, 0, w, h), 45, 90); groundSnow.material.needsUpdate = true;
     walk.material.map = mk(1024, 512, (g, w, h) => { g.drawImage(img, 0, 0, w, h); g.fillStyle = 'rgba(70,65,60,.18)'; for (let i = 0; i < 40; i++) { g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 6, 12, Math.random(), 0, 7); g.fill(); } }, 22, 2.4); walk.material.color.set(0xd0d3d6); walk.material.needsUpdate = true;
     road.material.map = mk(1024, 512, (g, w, h) => {
       g.drawImage(img, 0, 0, w, h); g.fillStyle = 'rgba(40,40,42,.62)'; g.fillRect(0, 0, w, h);
@@ -188,6 +187,30 @@ export function createWorld(ctx) {
       for (let i = 0; i < 6; i++) { const x = Math.random() * w, y = h * (.1 + Math.random() * .8); g.fillStyle = 'rgba(200,215,230,.35)'; g.beginPath(); g.ellipse(x, y, 40 + Math.random() * 60, 10 + Math.random() * 15, 0, 0, 7); g.fill(); }
     }, 14, 1); road.material.roughness = .7; road.material.needsUpdate = true;
   }, undefined, () => {});
+  // ---------- снег PBR (ambientCG Snow004/Snow006, CC0): нормали, шероховатость, макро-вариация против повторов, искры ----------
+  const snowU = { sparkle: { value: 1 } };
+  function snowify(m, worldUV = 0) {
+    m.onBeforeCompile = sh => {
+      sh.uniforms.snowSparkle = snowU.sparkle;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vSW;').replace('#include <project_vertex>', '#include <project_vertex>\nvSW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      let f = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vSW; uniform float snowSparkle;
+float snh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(snh(i), snh(i+vec2(1,0)), f.x), mix(snh(i+vec2(0,1)), snh(i+vec2(1,1)), f.x), f.y); }`);
+      if (worldUV) f = f.replace('#include <map_fragment>', `#ifdef USE_MAP
+  vec3 snAbs = abs(normalize(cross(dFdx(vSW), dFdy(vSW)))); vec2 snUV = snAbs.y > .6 ? vSW.xz : (snAbs.x > snAbs.z ? vSW.zy : vSW.xy);
+  vec4 sampledDiffuseColor = texture2D(map, snUV * ${(1 / worldUV).toFixed(3)}); diffuseColor *= sampledDiffuseColor;
+#endif`);
+      f = f.replace('#include <color_fragment>', `#include <color_fragment>
+{ float mv = snn(vSW.xz * .07) * .6 + snn(vSW.xz * .23) * .4; diffuseColor.rgb *= mix(.84, 1.06, mv); diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(.92, .96, 1.05), snn(vSW.xz * .04 + 7.0)); }`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+{ vec3 cell = floor(vSW * 60.0); float h = fract(sin(dot(cell, vec3(12.9898, 78.233, 45.164))) * 43758.5453); vec3 vd = normalize(cameraPosition - vSW);
+  float tw = fract(h * 91.7 + dot(vd, vec3(3.1, 5.7, 2.3)) * 3.0); float fade = 1.0 - smoothstep(6.0, 22.0, length(cameraPosition - vSW));
+  totalEmissiveRadiance += vec3(.9, .95, 1.0) * step(.988, h) * smoothstep(.85, 1.0, tw) * snowSparkle * fade * 1.8; }`);
+      sh.fragmentShader = f;
+    };
+    m.customProgramCacheKey = () => 'snowify' + worldUV; m.needsUpdate = true;
+  }
   TL.load('assets/tex/paper.jpg', img => { MAT.wallpaper.map = makeWallpaper(img.image); MAT.wallpaper.needsUpdate = true; }, undefined, () => {});
 
   // ---------- свет ----------
@@ -246,9 +269,30 @@ export function createWorld(ctx) {
   for (let x = -78; x < 84; x += 6) plane(3, .14, lineMat, x, .016, 10.2);
   for (let i = 0; i < 6; i++) plane(.5, 7.6, std({ color: 0xc9c4b0, roughness: .9, transparent: true, opacity: .75 }), -4.5 + i * 1, .017, 10.2); // «зебра»
 
+  // ---------- сугробы: валы вдоль дороги после грейдера, наносы у стен ----------
+  const driftMat = std({ color: 0xf4f6f9, roughness: .95 }); const driftGeos = [];
+  function drift(x1, z1, x2, z2, w, h, seed = 0) { // вытянутый холм с неровным гребнем
+    const L = Math.hypot(x2 - x1, z2 - z1); if (L < .6) return; const nx = Math.max(4, Math.round(L / .8)), g = new THREE.PlaneGeometry(L, w, nx, 6); g.rotateX(-Math.PI / 2);
+    const P = g.attributes.position; for (let i = 0; i < P.count; i++) { const u = P.getX(i) / L + .5, v = P.getZ(i) / w * 2; const ends = clamp(Math.min(u, 1 - u) * L / (w * .9), 0, 1); const n = .75 + .25 * Math.sin(u * L * 1.3 + seed) * Math.sin(u * L * .37 + seed * 2.1);
+      P.setY(i, Math.max(0, h * Math.pow(Math.max(0, 1 - v * v), .8) * Math.pow(ends, .6) * n)); P.setZ(i, P.getZ(i) * (1 + .15 * Math.sin(u * L * .9 + seed))); }
+    g.computeVertexNormals(); g.rotateY(-Math.atan2(z2 - z1, x2 - x1)); g.translate((x1 + x2) / 2, .01, (z1 + z2) / 2); driftGeos.push(g); }
+  function flushDrifts() { if (!driftGeos.length) return; const m = new THREE.Mesh(mergeGeometries(driftGeos.map(g => { g.deleteAttribute('uv'); return g; })), driftMat); m.receiveShadow = true; m.castShadow = true; scene.add(m); winterGround.push(m); driftGeos.length = 0; return m; }
+  { const gaps = [[-6, 2], [3, 13.5]]; // «зебра», остановка
+    let x = -80; while (x < 86) { const L = R(9, 18); let a = x, b = Math.min(86, x + L); const gp = gaps.find(([g1, g2]) => b > g1 && a < g2); if (gp) { if (a < gp[0]) drift(a, 5.85, gp[0] - .4, 5.85, 1.1, .38, x); x = gp[1] + .4; continue; } drift(a, 5.85 + R(-.1, .1), b, 5.85 + R(-.1, .1), R(.9, 1.2), R(.3, .45), x); x = b + R(.8, 2.5); }
+    x = -80; while (x < 86) { const L = R(10, 22); const a = x, b = Math.min(86, x + L); if (!(b > -6 && a < 2)) drift(a, 14.6 + R(-.1, .1), b, 14.6 + R(-.1, .1), R(1, 1.4), R(.35, .55), x + 3); x = b + R(1, 3); }
+  }
+  flushDrifts();
+  { const ld = (f, srgb, rx = 1, ry = 1) => { const t = TL.load('assets/tex/snow/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = Q.aniso || 4; return regTex(t); };
+    const gm = groundSnow.material; gm.map = ld('snow_col.jpg', true, 90, 90); gm.normalMap = ld('snow_nrm.jpg', false, 90, 90); gm.roughnessMap = ld('snow_rgh.jpg', false, 90, 90); gm.normalScale.set(1.3, 1.3); gm.roughness = 1; gm.color.set(0xf2f4f7); snowify(gm);
+    const wm = walk.material; wm.normalMap = ld('packed_nrm.jpg', false, 42, 1.2); wm.normalScale.set(.9, .9); snowify(wm);
+    MAT.snow.map = ld('snow_col.jpg', true); MAT.snow.normalMap = null; MAT.snow.color.set(0xf4f6f9); snowify(MAT.snow, 3.5);
+    driftMat.map = ld('snow_col.jpg', true); snowify(driftMat, 3.5);
+  }
+
   // ---------- ЛАРЁК ----------
   const K = new THREE.Group(); scene.add(K);
   const KW = 1.5, KD = 1.2, KH = 2.5, T_ = .06;
+  drift(KW + .45, -KD + .3, KW + .45, KD - .3, .9, .42, 1); drift(-KW - .45, -KD + .3, -KW - .45, KD - .3, .9, .38, 2); flushDrifts(); // наносы у боковых стен ларька
   const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : MAT.kiosk);
   const kioskWalls = [];
   const kw = (...a) => { const m = box(...a); kioskWalls.push(m); occ(m); return m; };
@@ -565,7 +609,7 @@ export function createWorld(ctx) {
   // ---------- загрузка моделей ----------
   const loader = new GLTFLoader();
   const ASSETS = {};
-  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'phone'];
+  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'snowtrees', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'phone', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   function windowShader(m) { // у каждого окна (ячейка мира) своё расписание света и свой оттенок
     m.emissiveIntensity = 1.5;
@@ -585,6 +629,8 @@ export function createWorld(ctx) {
   function colFromBox(o, shrink = 0) { const b = new THREE.Box3().setFromObject(o); return addCol(b.min.x + shrink, b.max.x - shrink, b.min.z + shrink, b.max.z - shrink); }
   let staticWorker = null, peopleModels = [];
   loading.then(() => {
+    // машины: заменить процедурные на модели
+    if (ASSETS.vaz2101 || ASSETS.vaz2107) for (const g of carGroups) { const keep = { ...g.userData }; for (const ch of g.children.slice()) g.remove(ch); g.userData = { color: keep.color, parked: keep.parked, dyn: true }; realCar(g); }
     // дома
     if (ASSETS.apartment) {
       const A = ASSETS.apartment;
@@ -596,7 +642,9 @@ export function createWorld(ctx) {
       A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
       for (const [x, z, r] of [[-32, 27, Math.PI / 2], [30, 27, Math.PI / 2], [0, -36, -Math.PI / 2], [-66, -10, 0], [70, -6, Math.PI]]) {
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o);
+        { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
       }
+      flushDrifts();
     } else fallbackBuildings();
     // остановка
     if (ASSETS.busstop) { // открытая сторона модели смотрит в +X локально → поворот −90°, к дороге (+Z)
@@ -680,8 +728,78 @@ export function createWorld(ctx) {
     for (const [m, list] of by) { for (const ge of list) { for (const n of Object.keys(ge.attributes)) if (!['position', 'normal', 'uv'].includes(n)) ge.deleteAttribute(n); if (!ge.attributes.uv) ge.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(ge.attributes.position.count * 2), 2)); }
       const mg = mergeGeometries(list, false); const mm = new THREE.Mesh(mg, m); mm.castShadow = m !== CAR.glass; mm.receiveShadow = true; if (m === MAT.snow) mm.userData.winter = true; g.add(mm); list.forEach(x => x.dispose()); }
   }
-  function carMesh(color) {
-    const g = new THREE.Group(); const body = std({ color, roughness: .32, metalness: .55 });
+  // ---------- машины: модели ВАЗ-2101 / ВАЗ-2107 (GitHub, CC-BY), процедурная — пока модели грузятся ----------
+  const carGroups = [];
+  function carMesh(color, parked = false) {
+    const g = new THREE.Group(); g.userData = { color, parked, dyn: true }; carGroups.push(g); scene.add(g);
+    if (ASSETS.vaz2101 || ASSETS.vaz2107) realCar(g); else procCar(g, color);
+    return g;
+  }
+  // иней на стёклах: боковые/задние — сплошь, лобовое у едущих — две дуги, расчищенные дворниками
+  const FROST = (() => {
+    const W = 512, H = 256;
+    const frost = (g, a0 = 1) => { const im = g.createImageData(W, H), d = im.data; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4, n = Math.random(); const v = 200 + n * 45; d[i] = v; d[i + 1] = v + 6; d[i + 2] = v + 14; d[i + 3] = (175 + n * 70) * a0; } g.putImageData(im, 0, 0);
+      g.strokeStyle = 'rgba(255,255,255,.55)'; for (let k = 0; k < 140; k++) { let x = Math.random() * W, y = Math.random() * H, a = Math.random() * 6.28; g.lineWidth = Math.random() * 1.4 + .3; g.beginPath(); g.moveTo(x, y); for (let j = 0; j < 7; j++) { a += (Math.random() - .5) * 1.1; x += Math.cos(a) * 9; y += Math.sin(a) * 9; g.lineTo(x, y); if (Math.random() < .3) { g.moveTo(x, y); g.lineTo(x + Math.cos(a + 1) * 6, y + Math.sin(a + 1) * 6); g.moveTo(x, y); } } g.stroke(); }
+      const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, 'rgba(255,255,255,.25)'); gr.addColorStop(.5, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,.35)'); g.fillStyle = gr; g.fillRect(0, 0, W, H); };
+    const mk = draw => { const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); draw(g); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; regTex(t); return t; };
+    const full = mk(g => frost(g));
+    const wiper = mk(g => { frost(g);
+      for (const px of [.27, .66]) { // дуга дворника: стекло почти чистое, по краю — валик снега
+        const cx = px * W, cy = H * 1.0, r1 = H * .16, r2 = H * .93, a1 = Math.PI * 1.08, a2 = Math.PI * 1.92;
+        g.save(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(cx, cy, r2, a1, a2); g.arc(cx, cy, r1, a2, a1, true); g.closePath(); g.fillStyle = 'rgba(0,0,0,.9)'; g.fill(); g.restore();
+        g.strokeStyle = 'rgba(245,248,255,.95)'; g.lineWidth = 7; g.beginPath(); g.arc(cx, cy, r2 + 2, a1, a2); g.stroke(); g.lineWidth = 3; g.beginPath(); g.moveTo(cx + Math.cos(a1) * r1, cy + Math.sin(a1) * r1); g.lineTo(cx + Math.cos(a1) * r2, cy + Math.sin(a1) * r2); g.stroke(); g.beginPath(); g.moveTo(cx + Math.cos(a2) * r1, cy + Math.sin(a2) * r1); g.lineTo(cx + Math.cos(a2) * r2, cy + Math.sin(a2) * r2); g.stroke();
+        g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 1; for (let k = 0; k < 10; k++) { const rr = r1 + (r2 - r1) * Math.random(); g.beginPath(); g.arc(cx, cy, rr, a1, a2); g.stroke(); } // разводы
+      } });
+    const m = map => new THREE.MeshStandardMaterial({ map, transparent: true, roughness: .55, metalness: .1, color: 0xffffff, depthWrite: false, side: THREE.DoubleSide });
+    return { side: m(full), full: m(full), wiper: m(wiper) };
+  })();
+  const CARCFG = { vaz2101: { front: ['material_5', 'material_6'], rear: ['material_10', 'material_0'] }, vaz2107: { front: ['lampglass'], rear: ['lampglass', 'red light'] } };
+  const carPrep = {};
+  function prepCar(asset) { // один раз на модель: деление фар на передние/задние, размеры для снежных шапок
+    if (carPrep[asset]) return carPrep[asset]; const A = ASSETS[asset]; if (!A) return null; const cfg = CARCFG[asset.replace('_lod', '')], root = A.scene; root.updateMatrixWorld(true);
+    const lampSplit = [];
+    root.traverse(o => { if (!o.isMesh) return; const mn = (o.material.name || '').trim(); if (cfg.front.includes(mn) || cfg.rear.includes(mn)) lampSplit.push([o, mn]); });
+    for (const [o, mn] of lampSplit) { const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry, P = g.attributes.position; const parts = { f: [], r: [] };
+      for (let i = 0; i < P.count; i += 3) { const cx = (P.getX(i) + P.getX(i + 1) + P.getX(i + 2)) / 3; const side = cx > 0 ? 'f' : 'r'; if ((side === 'f' && !cfg.front.includes(mn)) || (side === 'r' && !cfg.rear.includes(mn))) continue; for (let k = 0; k < 3; k++) parts[side].push(P.getX(i + k), P.getY(i + k), P.getZ(i + k)); }
+      for (const sd of ['f', 'r']) if (parts[sd].length) { const ng = new THREE.BufferGeometry(); ng.setAttribute('position', new THREE.Float32BufferAttribute(parts[sd], 3)); ng.computeVertexNormals(); const m = new THREE.Mesh(ng, o.material); m.userData.lamp = sd; m.position.copy(o.position); m.quaternion.copy(o.quaternion); o.parent.add(m); }
+      o.parent.remove(o); }
+    let top = 0, roofX = 0, nT = 0, hood = 0, trunk = 0; const v = new THREE.Vector3();
+    root.traverse(o => { if (!o.isMesh || (o.material.name || '') !== 'paint') return; const P = o.geometry.attributes.position; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); top = Math.max(top, v.y); if (v.x > 1.1 && v.x < 1.6 && Math.abs(v.z) < .3) hood = Math.max(hood, v.y); if (v.x < -1.3 && v.x > -1.8 && Math.abs(v.z) < .3) trunk = Math.max(trunk, v.y); } });
+    root.traverse(o => { if (!o.isMesh || (o.material.name || '') !== 'paint') return; const P = o.geometry.attributes.position; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); if (v.y > top * .97) { roofX += v.x; nT++; } } });
+    // снежный слой по форме кузова: верхние грани краски, приподнятые на толщину снега (шум по позиции — без щелей)
+    const shell = full => { const pos = [], a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+      const th = (x, z) => .025 + .035 * (.5 + .5 * Math.sin(x * 7.1 + z * 3.3) * Math.cos(z * 9.7 - x * 2.1));
+      root.traverse(o => { if (!o.isMesh || (o.material.name || '') !== 'paint') return; const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry, P = g.attributes.position;
+        for (let i = 0; i < P.count; i += 3) { a.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); b.fromBufferAttribute(P, i + 1).applyMatrix4(o.matrixWorld); c.fromBufferAttribute(P, i + 2).applyMatrix4(o.matrixWorld);
+          n.subVectors(b, a).cross(c.clone().sub(a)).normalize(); if (n.y < .55) continue; const cx = (a.x + b.x + c.x) / 3;
+          if (!full && Math.min(a.y, b.y, c.y) < top * .9) continue; // у едущих — только крыша
+          for (const v of [a, b, c]) pos.push(v.x, v.y + th(v.x, v.z) * (full ? 1.6 : 1), v.z); } });
+      if (!pos.length) return null; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+      const uv = new Float32Array(pos.length / 3 * 2); for (let i = 0; i < pos.length / 3; i++) { uv[i * 2] = pos[i * 3] * .5; uv[i * 2 + 1] = pos[i * 3 + 2] * .5; } g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return g; };
+    return carPrep[asset] = { top, roofX: roofX / Math.max(1, nT), hood, trunk, snowFull: shell(true), snowRoof: shell(false) };
+  }
+  const carBlobGeo = new THREE.PlaneGeometry(5.2, 2.6), carBlobMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, map: regTex(ctex(128, 64, (g, w, h) => { const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(.55, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.setTransform(1, 0, 0, h / w * 1.9, 0, -h * .45); g.fillStyle = gr; g.fillRect(0, 0, w, h * 2); })) }); // мягкая тень-подложка
+  const snowCapGeo = new THREE.SphereGeometry(1, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+  function realCar(g) {
+    const { color, parked } = g.userData; const kinds = ['vaz2101', 'vaz2107'].filter(k => ASSETS[k]); const kind = kinds[(carGroups.indexOf(g) + (parked ? 1 : 0)) % kinds.length];
+    const pr = prepCar(kind); const lod = new THREE.LOD(); g.add(lod);
+    const levels = [[kind, 0], [kind + '_lod', 14]].filter(([a]) => ASSETS[a]); levels.forEach(([a]) => prepCar(a));
+    const paint = std({ color, roughness: parked ? .55 : .3, metalness: .45 }), hl = std({ color: 0xffffee, emissive: 0xfff2c0, emissiveIntensity: 0, roughness: .2 }), tl = std({ color: 0x8a1a12, emissive: 0xff2a10, emissiveIntensity: .3 });
+    const wheels = [];
+    for (const [a, dist] of levels) { const o = ASSETS[a].scene.clone(true); lod.addLevel(o, dist);
+    o.traverse(m => { if (/^wheel\d$/.test(m.name)) wheels.push(m);
+      if (!m.isMesh) return; m.castShadow = true; m.receiveShadow = true; const mn = (m.material.name || '').trim();
+      if (mn === 'paint') m.material = paint;
+      else if (m.name === 'glass_front') { m.material = parked ? FROST.full : FROST.wiper; m.castShadow = false; m.renderOrder = 2; }
+      else if (m.name === 'glass_side' || m.name === 'glass_rear') { m.material = FROST.side; m.castShadow = false; m.renderOrder = 2; }
+      if (m.userData.lamp === 'f') m.material = hl; else if (m.userData.lamp === 'r') m.material = tl; }); }
+    // снег: шапка на крыше у всех, у стоящих — ещё на капоте и багажнике
+    { const sg = parked ? pr.snowFull : pr.snowRoof; if (sg) { const c = new THREE.Mesh(sg, MAT.snow); c.castShadow = true; c.receiveShadow = true; c.userData.winter = true; g.add(c); } }
+    const blob = new THREE.Mesh(carBlobGeo, carBlobMat); blob.rotation.x = -Math.PI / 2; blob.position.y = .02; blob.renderOrder = 1; g.add(blob);
+    Object.assign(g.userData, { hl, tl, wheels, kind, wheelR: kind === 'vaz2107' ? .3 : .28 });
+  }
+  function procCar(g, color) {
+    const body = std({ color, roughness: .32, metalness: .55 });
     const add = (geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
     add(carGeo.body, body);
     for (const sz of [-.81, .81]) add(carGeo.win, CAR.glass, 0, 0, sz);
@@ -698,9 +816,9 @@ export function createWorld(ctx) {
     const wheels = [];
     for (const [wx, wz] of [[-1.25, -.72], [1.25, -.72], [-1.25, .72], [1.25, .72]]) { const w = new THREE.Group(); w.position.set(wx, .31, wz); const t = new THREE.Mesh(carGeo.tire, CAR.tire), hb = new THREE.Mesh(carGeo.hub, CAR.chrome), sp = new THREE.Mesh(carGeo.spoke, CAR.grille); t.castShadow = true; w.add(t, hb, sp); g.add(w); wheels.push(w); }
     const blob = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.2), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .35, depthWrite: false })); blob.rotation.x = -Math.PI / 2; blob.position.y = .02; g.add(blob);
-    g.userData = { hl, tl, wheels, dyn: true }; scene.add(g); return g;
+    Object.assign(g.userData, { hl, tl, wheels, wheelR: .31 });
   }
-  for (const [x, z, r, c] of [[18, -7, 0, 0xd8d4c8], [24.5, -7.3, .05, 0x7a2a22], [31, -9.5, Math.PI / 2, 0x3a5a3a], [-8, -2.6, 0, 0xc8b88a]]) { const m = carMesh(c); m.position.set(x, 0, z); m.rotation.y = r; const hx = Math.abs(Math.sin(r)) > .5 ? .9 : 2.1, hz = Math.abs(Math.sin(r)) > .5 ? 2.1 : .9; addCol(x - hx, x + hx, z - hz, z + hz); occ(m.children[0]); }
+  for (const [x, z, r, c] of [[18, -7, 0, 0xd8d4c8], [24.5, -7.3, .05, 0x7a2a22], [31, -9.5, Math.PI / 2, 0x3a5a3a], [-8, -2.6, 0, 0xc8b88a]]) { const m = carMesh(c, true); m.position.set(x, 0, z); m.rotation.y = r; const hx = Math.abs(Math.sin(r)) > .5 ? .9 : 2.1, hz = Math.abs(Math.sin(r)) > .5 ? 2.1 : .9; addCol(x - hx, x + hx, z - hz, z + hz); occ(m.children[0]); }
   // кольцевые маршруты (с поворотами за домами)
   const ROUTES = [
     [[-82, 12], [86, 12], [92, 18], [92, 46], [86, 52], [-84, 52], [-90, 46], [-90, 18]],
@@ -1123,7 +1241,7 @@ export function createWorld(ctx) {
     hemi.intensity = .14 + dayAmt * (1.05 - over * .2); hemi.color.copy(topC).lerp(cA.set('#ffffff'), .5); hemi.groundColor.set(winter ? '#9aa0a6' : '#4a4636').multiplyScalar(.5 + dayAmt * .5);
     if (dayAmt < .2) { hemi.color.lerp(cA.set('#5a6a8a'), .6); }
     post.uniforms.exposure.value = 1.05 + nightK * .45;
-    winU.night.value = nightK; winU.time.value = tAll;
+    winU.night.value = nightK; winU.time.value = tAll; snowU.sparkle.value = 1 - nightK * .7;
     MAT.lampHead.emissiveIntensity = nightK > .35 ? 4 : 0;
     streetLights.forEach(l => l.intensity = nightK > .35 ? 70 * nightK : 0);
     sign.material.emissiveIntensity = nightK * .9; exS.material.emissiveIntensity = nightK * 1.2;
@@ -1213,6 +1331,7 @@ export function createWorld(ctx) {
     // часы
     if (!S) setClock(18.2);
     else { const ph = S.phase; if (ph === 'trade' && T) setClock(9 + 12 * clamp(T.t / T.len, 0, 1)); else if (ph === 'evening') setClock(21); else if (ph === 'night') setClock(Math.min(29, hour + dt / 30 + (hour < 21 ? 21 - hour : 0))); else setClock(Math.min(9, Math.max(8, hour < 7.9 || hour > 9.5 ? 8 : hour + dt / 60))); }
+    if (window.__larekHour != null) setClock(window.__larekHour); // только для автотестов
     setSeason();
     // погода
     weather.snow += (weather.target - weather.snow) * dt * .05; weather.wind += (weather.windT - weather.wind) * dt * .1;
@@ -1327,7 +1446,7 @@ export function createWorld(ctx) {
       c.v += clamp(target - c.v, -9 * dt, 2.2 * dt); // торможение резче разгона
       c.s += c.v * dt;
       const h = Math.atan2(dirz, dirx); let dh = -h - c.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); c.heading += dh * Math.min(1, dt * 6);
-      c.m.position.set(x, 0, z); c.m.rotation.y = c.heading; for (const w of c.m.userData.wheels) w.rotation.z -= c.v * dt / .31;
+      c.m.position.set(x, 0, z); c.m.rotation.y = c.heading; for (const w of c.m.userData.wheels) w.rotation.z -= c.v * dt / c.m.userData.wheelR;
       c.m.userData.tl.emissiveIntensity = target < c.v - .5 ? 2 : (nightK > .3 ? .8 : .3);
       ctx.audio && ctx.audio.carState(c.id, x, z, c.v);
       // наезд на игрока
@@ -1371,6 +1490,6 @@ export function createWorld(ctx) {
     putGunDown() { if (gunState() !== 'carried') return; const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); },
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
-    debug: { TIM, people, cars, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
+    debug: { TIM, people, cars, carGroups, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
   };
 }

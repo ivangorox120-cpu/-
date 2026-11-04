@@ -1,0 +1,96 @@
+<!doctype html><script type="importmap">{"imports":{"three":"./three/package/build/three.module.js","three/addons/":"./three/package/examples/jsm/"}}</script>
+<script type="module">
+// Конвертер машин: выравнивание (длина по X, перед в +X, низ колёс на y=0), отделение колёс (вращаются отдельно),
+// классификация стёкол (лобовое / заднее / боковые) с планарными UV для лобового, слияние по материалам, упрощение.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MeshoptSimplifier } from './mo/package/meshopt_simplifier.module.js';
+await MeshoptSimplifier.ready;
+const CFG = {
+  vaz2101: { url: 'cars/vaz2101/scene.gltf', paint: ['material'], glass: ['material_3'], tire: ['gum.001'], wheelX: [-1.01, 1.42], drop: [], length: 4.07, budget: 16000 },
+  vaz2107: { url: 'cars/vaz2107/scene.gltf', paint: ['Body'], glass: ['glass'], tire: ['tire'], drop: ['Interior_01', 'Interior_02'], flip: true, length: 4.13, budget: 16000 },
+};
+const name = new URLSearchParams(location.search).get('car'), C = CFG[name]; { const bb = +new URLSearchParams(location.search).get('b'); if (bb) C.budget = bb; } window.INFO = {};
+const gltf = await new GLTFLoader().loadAsync(C.url); const root = gltf.scene; root.updateMatrixWorld(true);
+// 1) все треугольники в мировых координатах, по материалам
+const soups = new Map(); // matName -> {mat, pos:[], uv:[]}
+root.traverse(o => { if (!o.isMesh) return; const ms = Array.isArray(o.material) ? o.material : [o.material]; const g = o.geometry, P = g.attributes.position, U = g.attributes.uv, I = g.index; const v = new THREE.Vector3();
+  const groups = g.groups.length ? g.groups : [{ start: 0, count: I ? I.count : P.count, materialIndex: 0 }];
+  for (const gr of groups) { const m = ms[gr.materialIndex] || ms[0]; if (C.drop.includes(m.name)) continue; let s = soups.get(m.name); if (!s) soups.set(m.name, s = { mat: m, pos: [], uv: [] });
+    for (let k = gr.start; k < gr.start + gr.count; k++) { const i = I ? I.getX(k) : k; v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); s.pos.push(v.x, v.y, v.z); s.uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0); } } });
+// 2) выравнивание
+const box = new THREE.Box3(); for (const s of soups.values()) for (let i = 0; i < s.pos.length; i += 3) box.expandByPoint(new THREE.Vector3(s.pos[i], s.pos[i + 1], s.pos[i + 2]));
+const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+const swap = size.z > size.x; const L = Math.max(size.x, size.z), sc = C.length / L;
+const tf = (x, y, z) => { x -= ctr.x; z -= ctr.z; y -= box.min.y; if (swap) [x, z] = [z, -x]; return [x * sc, y * sc, z * sc]; };
+for (const s of soups.values()) for (let i = 0; i < s.pos.length; i += 3) { const r = tf(s.pos[i], s.pos[i + 1], s.pos[i + 2]); s.pos[i] = r[0]; s.pos[i + 1] = r[1]; s.pos[i + 2] = r[2]; }
+// перед: крыша смещена к заду (капот длиннее багажника)
+let ymax = 0; for (const s of soups.values()) for (let i = 1; i < s.pos.length; i += 3) ymax = Math.max(ymax, s.pos[i]);
+let sx = 0, n = 0; for (const s of soups.values()) for (let i = 0; i < s.pos.length; i += 3) if (s.pos[i + 1] > ymax * .93) { sx += s.pos[i]; n++; }
+if ((sx / n > 0) !== !!C.flip) for (const s of soups.values()) for (let i = 0; i < s.pos.length; i += 3) { s.pos[i] *= -1; s.pos[i + 2] *= -1; }
+// 3) колёса: кластеры вершин шин по четвертям
+const wheels = [0, 1, 2, 3].map(() => ({ min: new THREE.Vector3(1e9, 1e9, 1e9), max: new THREE.Vector3(-1e9, -1e9, -1e9) }));
+const q = (x, z) => (x > 0 ? 1 : 0) + (z > 0 ? 2 : 0);
+for (const t of C.tire) { const s = soups.get(t); if (!s) continue; for (let i = 0; i < s.pos.length; i += 3) { if (C.wheelX && Math.min(...C.wheelX.map(x => Math.abs(s.pos[i] - x))) > .34) continue; const w = wheels[q(s.pos[i], s.pos[i + 2])], v = new THREE.Vector3(s.pos[i], s.pos[i + 1], s.pos[i + 2]); w.min.min(v); w.max.max(v); } }
+wheels.forEach(w => { w.c = w.min.clone().add(w.max).multiplyScalar(.5); w.r = (w.max.y - w.min.y) / 2; w.hw = (w.max.z - w.min.z) / 2; });
+const inWheel = (x, y, z) => { const w = wheels[q(x, z)]; return Math.hypot(x - w.c.x, y - w.c.y) < w.r * 1.04 && Math.abs(z - w.c.z) < w.hw + .07; };
+const inWheelC = (x, y, z) => { const w = wheels[q(x, z)]; return Math.hypot(x - w.c.x, y - w.c.y) < w.r * 1.02 && Math.abs(z - w.c.z) < w.hw + .12; };
+// 4) раскладка треугольников по выходным мешам
+const out = new Map(); // key -> {mat, pos, uv}
+const put = (key, mat, p, u) => { let o = out.get(key); if (!o) out.set(key, o = { mat, pos: [], uv: [] }); o.pos.push(...p); o.uv.push(...u); };
+const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), nrm = new THREE.Vector3();
+let gl = { ymin: 1e9, ymax: -1e9, zmin: 1e9, zmax: -1e9 };
+for (const [mn, s] of soups) {
+  const isPaint = C.paint.includes(mn), isGlass = C.glass.includes(mn);
+  for (let i = 0; i < s.pos.length; i += 9) {
+    const p = s.pos.slice(i, i + 9), u = s.uv.slice(i / 3 * 2, i / 3 * 2 + 6);
+    a.fromArray(p, 0); b.fromArray(p, 3); c.fromArray(p, 6);
+    if (!isPaint && !isGlass && inWheelC((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, (a.z + b.z + c.z) / 3)) { const wi = q((a.x + b.x + c.x) / 3, (a.z + b.z + c.z) / 3); put('wheel' + wi + '|' + mn, s.mat, p, u); continue; }
+    if (isGlass && Math.min(a.y, b.y, c.y) > ymax * .52) { nrm.subVectors(b, a).cross(c.clone().sub(a)).normalize(); const front = (a.x + b.x + c.x) / 3 > 0;
+      const kind = Math.abs(nrm.x) > .45 ? (front ? 'glass_front' : 'glass_rear') : 'glass_side';
+      if (kind === 'glass_front') for (const v of [a, b, c]) { gl.ymin = Math.min(gl.ymin, v.y); gl.ymax = Math.max(gl.ymax, v.y); gl.zmin = Math.min(gl.zmin, v.z); gl.zmax = Math.max(gl.zmax, v.z); }
+      put(kind, s.mat, p, u); continue; }
+    put(isPaint ? 'paint' : isGlass ? 'lampglass' : mn, s.mat, p, u);
+  }
+}
+// планарные UV лобового: u — поперёк машины, v — по высоте
+{ const o = out.get('glass_front'); if (o) for (let i = 0, j = 0; i < o.pos.length; i += 3, j += 2) { o.uv[j] = (o.pos[i + 2] - gl.zmin) / (gl.zmax - gl.zmin); o.uv[j + 1] = (o.pos[i + 1] - gl.ymin) / (gl.ymax - gl.ymin); } }
+// 5) упрощение: бюджет делится пропорционально, стекло и колёса — свои доли
+let total = 0; for (const o of out.values()) total += o.pos.length / 9;
+function build(o, ratio, keepUV) {
+  let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(o.pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(o.mat.map || o === out.get('glass_front') ? o.uv : new Array(o.uv.length).fill(0), 2)); // без текстуры UV не нужны — сварка по позиции даёт упрощению свободу
+  g = mergeVertices(g, 1e-4); let idx = new Uint32Array(g.index.array);
+  if (C.budget < 12000 && o !== out.get('paint') && !String([...out.entries()].find(e => e[1] === o)[0]).startsWith('glass')) { // LOD: мелкие отдельные детали не видны издалека
+    const thr = C.budget < 5000 ? .16 : .07, P = g.attributes.position.array, nv = P.length / 3, par = new Int32Array(nv).map((_, i) => i);
+    const f = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+    for (let i = 0; i < idx.length; i += 3) { const a = f(idx[i]), b = f(idx[i + 1]), c = f(idx[i + 2]); par[a] = c; par[b] = c; }
+    const bb = new Map(); for (let v = 0; v < nv; v++) { const r = f(v); let e = bb.get(r); if (!e) bb.set(r, e = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9]); for (let k = 0; k < 3; k++) { e[k] = Math.min(e[k], P[v * 3 + k]); e[k + 3] = Math.max(e[k + 3], P[v * 3 + k]); } }
+    const keepT = []; for (let i = 0; i < idx.length; i += 3) { const e = bb.get(f(idx[i])); if (Math.hypot(e[3] - e[0], e[4] - e[1], e[5] - e[2]) >= thr) keepT.push(idx[i], idx[i + 1], idx[i + 2]); }
+    if (keepT.length) idx = new Uint32Array(keepT);
+  }
+  let res = idx; if (ratio < 1) { const target = Math.min(idx.length, Math.max(12, Math.floor(idx.length * ratio / 3) * 3)); [res] = MeshoptSimplifier.simplify(idx, g.attributes.position.array, 3, target, C.budget < 5000 ? .2 : C.budget < 12000 ? .06 : .02, []); }
+  const map = new Map(), keep = [], ni = new Uint32Array(res.length);
+  for (let i = 0; i < res.length; i++) { let v = map.get(res[i]); if (v === undefined) { v = keep.length; map.set(res[i], v); keep.push(res[i]); } ni[i] = v; }
+  const o2 = new THREE.BufferGeometry(); for (const [k, at] of Object.entries(g.attributes)) { const arr = new Float32Array(keep.length * at.itemSize); keep.forEach((src, j) => { for (let cc = 0; cc < at.itemSize; cc++) arr[j * at.itemSize + cc] = at.array[src * at.itemSize + cc]; }); o2.setAttribute(k, new THREE.BufferAttribute(arr, at.itemSize)); }
+  o2.setIndex(new THREE.BufferAttribute(ni, 1)); o2.computeVertexNormals(); return o2;
+}
+const scene = new THREE.Scene(); const car = new THREE.Group(); car.name = name; scene.add(car);
+const body = new THREE.Group(); body.name = 'body'; car.add(body);
+const wg = wheels.map((w, i) => { const g = new THREE.Group(); g.name = 'wheel' + i; g.position.copy(w.c); car.add(g); return g; });
+const ratio = Math.min(1, C.budget / total); let after = 0;
+for (const [k, o] of out) {
+  const isWheel = k.startsWith('wheel'); const r = Math.min(1, (k.startsWith('glass') ? (C.budget < 12000 ? Math.min(1, ratio * 4) : 1) : ratio * (isWheel ? .8 : 1)));
+  if (isWheel) { const w = wheels[+k[5]]; for (let i = 0; i < o.pos.length; i += 3) { o.pos[i] -= w.c.x; o.pos[i + 1] -= w.c.y; o.pos[i + 2] -= w.c.z; } }
+  const g = build(o, r); after += g.index.count / 3;
+  const m = o.mat.clone(); m.name = k.includes('|') ? k.split('|')[1] : k; if (k === 'paint') { m.color.set(0xffffff); }
+  if (m.map) { const im = m.map.image, cv = document.createElement('canvas'); cv.width = cv.height = 256; cv.getContext('2d').drawImage(im, 0, 0, 256, 256); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.flipY = m.map.flipY; t.userData.mimeType = 'image/png'; m.map = t; }
+  const mesh = new THREE.Mesh(g, m); mesh.name = k.replace('|', '_');
+  (isWheel ? wg[+k[5]] : body).add(mesh);
+}
+window.INFO = { total, after, wheels: wheels.map(w => [w.c.x.toFixed(2), w.c.y.toFixed(2), w.c.z.toFixed(2), w.r.toFixed(2)]), meshes: [...out.keys()], front: gl };
+const glb = await new GLTFExporter().parseAsync(scene, { binary: true });
+let s = ''; const u8 = new Uint8Array(glb); for (let i = 0; i < u8.length; i += 32768) s += String.fromCharCode.apply(null, u8.subarray(i, i + 32768));
+window.OUT = btoa(s); window.DONE = true;
+</script>
