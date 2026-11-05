@@ -246,10 +246,10 @@ public final class MainActivity extends Activity {
         Anim.stagger(row, 150, 140);
         col.addView(Ui.hint(this, "Совет: удерживайте обложку, чтобы вернуть стандартную."), Ui.matchWrap(this, 4));
 
-        LinearLayout rt = Ui.card(this, "Движок | Proton Experimental");
+        LinearLayout rt = Ui.card(this, "Движок | Proton");
         runtimeStatus = Ui.column(this);
         rt.addView(runtimeStatus);
-        rt.addView(Ui.ghostButton(this, R.drawable.ic_settings, "Движок: рантайм, Proton, драйверы", v -> FalloutEngine.openEngine(this)));
+        rt.addView(Ui.ghostButton(this, R.drawable.ic_settings, "Подготовка к игре", v -> open(new Intent(this, com.wastelanddroid.engine.EngineSetupActivity.class))));
         col.addView(rt, Ui.matchWrap(this, 10));
         return col;
     }
@@ -267,13 +267,9 @@ public final class MainActivity extends Activity {
         if (launching) return;
         String dir = d.gameDir(this);
         if (dir == null) { Toast.makeText(this, "Сначала выберите папку игры", Toast.LENGTH_SHORT).show(); return; }
-        if (!FalloutEngine.runtimeInstalled(this)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Нужен движок")
-                    .setMessage("Для запуска нужен рантайм (около 3 ГБ) и Proton. Откроется экран движка: установите рантайм, "
-                            + "затем войдите в Steam, чтобы скачать Proton Experimental. После этого вернитесь и нажмите \"Играть\".")
-                    .setPositiveButton("Открыть", (x, y) -> FalloutEngine.openEngine(this))
-                    .setNegativeButton("Отмена", null).show();
+        if (!FalloutEngine.ready(this)) {
+            Toast.makeText(this, "Сначала завершите подготовку к игре", Toast.LENGTH_SHORT).show();
+            open(new Intent(this, com.wastelanddroid.engine.EngineSetupActivity.class));
             return;
         }
         launching = true;
@@ -298,8 +294,8 @@ public final class MainActivity extends Activity {
                 launching = false;
                 if (fr instanceof FalloutEngine.Prepared.Ok) {
                     FalloutEngine.Prepared.Ok ok = (FalloutEngine.Prepared.Ok) fr;
-                    if (ok.getProton() == null) Toast.makeText(this, "Proton Experimental не найден — используется Proton движка", Toast.LENGTH_LONG).show();
-                    FalloutEngine.launch(this, ok.getLink());
+                    if (ok.getProton() == null) Toast.makeText(this, "Proton не скачан — используется Proton движка", Toast.LENGTH_LONG).show();
+                    FalloutEngine.launch(this, ok);
                 } else {
                     new AlertDialog.Builder(this).setTitle("Не удалось запустить")
                             .setMessage(((FalloutEngine.Prepared.Error) fr).getMessage())
@@ -555,16 +551,17 @@ public final class MainActivity extends Activity {
 
     private void refresh() {
         boolean engineOk = FalloutEngine.runtimeInstalled(this);
-        String miss = engineOk ? null : "рантайм";
         runtimeStatus.removeAllViews();
+        if (FalloutEngine.childLimitBlocks(this))
+            runtimeStatus.addView(status(R.drawable.ic_warning, "Отключите ограничение дочерних процессов", Ui.AMBER));
         runtimeStatus.addView(engineOk
-                ? status(R.drawable.ic_check, "Рантайм установлен", Ui.FG)
-                : status(R.drawable.ic_cross, "Рантайм не установлен — откройте движок", Ui.RED));
+                ? status(R.drawable.ic_check, "Linux-среда установлена", Ui.FG)
+                : status(R.drawable.ic_cross, "Linux-среда не установлена", Ui.RED));
         if (engineOk) {
             com.droiddeck.launcher.session.ComponentsManager.Proton p = FalloutEngine.preferredProton(this);
             runtimeStatus.addView(p != null
                     ? status(R.drawable.ic_check, p.getName(), Ui.FG)
-                    : status(R.drawable.ic_warning, "Proton Experimental не установлен (будет Proton движка)", Ui.AMBER));
+                    : status(R.drawable.ic_warning, "Proton не скачан (будет Proton движка)", Ui.AMBER));
         }
 
         for (GameCard c : cards.values()) {

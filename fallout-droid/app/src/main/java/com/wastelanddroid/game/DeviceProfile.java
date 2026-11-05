@@ -29,7 +29,7 @@ public final class DeviceProfile {
         String soc = socModel().toLowerCase(Locale.ROOT);
         long ram = totalRamMb(ctx);
         // SM8650/SM8750 (8 Gen 3 / 8 Elite) и аналоги — high; SM8450..SM8550 — medium; SD865/870/888 — low.
-        if (soc.matches(".*sm8(6|7)\\d0.*") || soc.contains("8 elite")) return ram >= 11000 ? Quality.HIGH : Quality.MEDIUM;
+        if (soc.matches(".*sm8[6-9]\\d0.*") || soc.contains("8 elite")) return ram >= 11000 ? Quality.HIGH : Quality.MEDIUM;
         if (soc.matches(".*sm8(4|5)\\d0.*")) return Quality.MEDIUM;
         return Quality.LOW;
     }
