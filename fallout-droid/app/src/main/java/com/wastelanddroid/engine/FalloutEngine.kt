@@ -99,8 +99,21 @@ object FalloutEngine {
     /** Человекочитаемое имя Proton без названия движка. */
     @JvmStatic fun protonLabel(name: String): String = name.replace("DroidDeck-Proton", "Proton FD", ignoreCase = true)
 
+    /** Есть ли в Linux-среде хоть один Proton, которым скрипт запуска сможет запустить игру. */
+    @JvmStatic fun anyProton(context: Context): Boolean = runCatching { ComponentsManager.protons(context).isNotEmpty() }.getOrDefault(false)
+
     /** Готово ли всё для запуска (кроме выбора папки игры). */
-    @JvmStatic fun ready(context: Context): Boolean = runtimeInstalled(context) && !childLimitBlocks(context)
+    @JvmStatic fun ready(context: Context): Boolean = runtimeInstalled(context) && !childLimitBlocks(context) && anyProton(context)
+
+    /** Архив логов последней игровой сессии (для отправки разработчику) или null. Не из UI-потока. */
+    @JvmStatic fun lastSessionLogs(context: Context): File? = runCatching {
+        com.droiddeck.launcher.session.SessionLogShare.latest(context)?.let {
+            com.droiddeck.launcher.session.SessionLogShare.zipFolder(context, it, null)
+        }
+    }.getOrNull()
+
+    @JvmStatic fun shareLogsIntent(context: Context, zip: File): Intent =
+        com.droiddeck.launcher.session.SessionLogShare.shareIntent(context, zip)
 
     // ───── запуск ─────
 

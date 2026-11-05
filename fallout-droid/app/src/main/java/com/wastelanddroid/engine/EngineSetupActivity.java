@@ -50,7 +50,10 @@ public final class EngineSetupActivity extends Activity {
         finish = Ui.button(this, R.drawable.ic_play, "В меню", v -> finish());
         header.addView(finish);
         page.addView(header);
-        page.addView(Ui.hint(this, "Нужно один раз: после этих шагов кнопка \"Играть\" сразу запускает игру."));
+        LinearLayout sub = Ui.row(this);
+        sub.addView(Ui.hint(this, "Нужно один раз: после этих шагов кнопка \"Играть\" сразу запускает игру."), Ui.weight());
+        sub.addView(Ui.ghostButton(this, R.drawable.ic_upload, "Логи последнего запуска", v -> shareLogs()));
+        page.addView(sub);
 
         LinearLayout cols = Ui.row(this);
         cols.setGravity(Gravity.TOP);
@@ -209,10 +212,12 @@ public final class EngineSetupActivity extends Activity {
         boolean runtime = FalloutEngine.runtimeInstalled(this);
         com.droiddeck.launcher.session.ComponentsManager.Proton exp = runtime ? FalloutEngine.protonExperimental(this) : null;
         String arm = runtime ? FalloutEngine.armProtonInstalled(this) : null;
+        boolean any = runtime && FalloutEngine.anyProton(this);
         if (exp != null) status(stepProton, true, "Proton Experimental установлен — будет использоваться он");
         else if (arm != null) status(stepProton, true, FalloutEngine.protonLabel(arm) + " установлен");
-        else status(stepProton, false, runtime ? "Proton не установлен" : "Сначала установите Linux-среду");
-        if (!runtime || exp != null || arm != null) return;
+        else if (any) status(stepProton, true, "Proton установлен");
+        else status(stepProton, false, runtime ? "Proton не установлен — без него игра не запустится" : "Сначала установите Linux-среду");
+        if (!runtime || exp != null || arm != null || any) return;
         stepProton.addView(Ui.hint(this, "Сборка Proton для ARM64: работает без Steam и без аккаунта, около 300 МБ."));
         stepProton.addView(Ui.button(this, R.drawable.ic_download, "Установить Proton", v -> installGe()));
     }
@@ -241,6 +246,17 @@ public final class EngineSetupActivity extends Activity {
                 }
             });
         }, "fd-proton-install").start();
+    }
+
+    private void shareLogs() {
+        Toast.makeText(this, "Собираю логи...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            java.io.File zip = FalloutEngine.lastSessionLogs(this);
+            runOnUiThread(() -> {
+                if (zip == null) { Toast.makeText(this, "Логов пока нет — сначала нажмите \"Играть\"", Toast.LENGTH_LONG).show(); return; }
+                startActivity(Intent.createChooser(FalloutEngine.shareLogsIntent(this, zip), "Отправить логи"));
+            });
+        }, "fd-logs").start();
     }
 
     @Override

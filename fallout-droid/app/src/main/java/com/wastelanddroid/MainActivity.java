@@ -273,7 +273,8 @@ public final class MainActivity extends Activity {
         String dir = d.gameDir(this);
         if (dir == null) { Toast.makeText(this, "Сначала выберите папку игры", Toast.LENGTH_SHORT).show(); return; }
         if (!FalloutEngine.ready(this)) {
-            Toast.makeText(this, "Сначала завершите подготовку к игре", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, FalloutEngine.runtimeInstalled(this) && !FalloutEngine.anyProton(this)
+                    ? "Установите Proton — без него игра не запустится" : "Сначала завершите подготовку к игре", Toast.LENGTH_LONG).show();
             open(new Intent(this, com.wastelanddroid.engine.EngineSetupActivity.class));
             return;
         }
