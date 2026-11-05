@@ -165,7 +165,10 @@ fun LoadingOverlay(
         if (at > reached) reached = at
     }
     val active = reached.coerceAtMost(stages.lastIndex)
-    val detail = if (percent >= 0 || readable) step.replaceFirstChar { it.uppercase() } else stringResource(stages[active].detail)
+    // Fallout Droid: показываем реальный шаг движка (а не общую фразу этапа) и время с начала запуска
+    val stageText = stringResource(stages[active].detail)
+    val detail = (if (step.isNotBlank()) step.replaceFirstChar { it.uppercase() } else stageText) +
+        (if (elapsed.isNotBlank()) "  |  $elapsed" else "")
     val context = LocalContext.current
     val games by produceState(emptyList<Library.SteamGame>()) {
         value = withContext(Dispatchers.IO) { runCatching { Library.steamGames(context).sortedByDescending { it.lastPlayed } }.getOrDefault(emptyList()) }
