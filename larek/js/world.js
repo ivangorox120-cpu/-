@@ -337,7 +337,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     gi.receiveShadow = true; scene.add(gi, ii); drainSpots.push(...pos); }
   const lineMat = std({ color: 0xc9c4b0, roughness: .9 });
   for (let x = -78; x < 84; x += 6) plane(3, .14, lineMat, x, .016, 10.2);
-  for (let i = 0; i < 6; i++) plane(.5, 7.6, std({ color: 0xc9c4b0, roughness: .9, transparent: true, opacity: .75 }), -4.5 + i * 1, .017, 10.2); // «зебра»
+  { const zm = std({ color: 0xc9c4b0, roughness: .9, transparent: true, opacity: .75 }); for (let i = 0; i < 8; i++) plane(4, .5, zm, -2, .017, 6.75 + i * 1); } // «зебра»: полосы вдоль движения машин, чередуются поперёк дороги
 
   // ---------- сугробы: валы вдоль дороги после грейдера, наносы у стен ----------
   const driftMat = std({ color: 0xf4f6f9, roughness: .95 }); const driftGeos = [];
@@ -541,7 +541,6 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const t = ctex(160, 80, (g, w, h) => { g.fillStyle = '#f3efe2'; g.fillRect(0, 0, w, h); g.strokeStyle = '#b03a2e'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); g.fillStyle = '#1a1a1a'; g.font = '700 22px Arial'; g.textAlign = 'center'; g.fillText(ctx.GOODS[id].short, w / 2, 28); g.fillStyle = '#b03a2e'; g.font = '900 30px Arial'; g.fillText(ctx.fmt(price) + ' р', w / 2, 62); if (!q) { g.fillStyle = '#0009'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = '900 26px Arial'; g.fillText('НЕТ', w / 2, 50); } });
     return new THREE.Mesh(new THREE.PlaneGeometry(.13, .065), std({ map: t, roughness: .9 }));
   }
-  const storeGroup = new THREE.Group(); K.add(storeGroup); storeGroup.userData.dyn = true;
   let shelfSig = '';
   function updateShelves() {
     const S = ctx.getS(); if (!S) return;
@@ -627,7 +626,6 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const bs = new THREE.Mesh(new THREE.BoxGeometry(1.6, .04, .4), MAT.snow); bs.position.y = .49; bs.userData.winter = true; b.add(bs);
     benches.push({ x: PG.x + bx, z: PG.z + bz, ry }); addCol(PG.x + bx - .8, PG.x + bx + .8, PG.z + bz - .3, PG.z + bz + .3); }
   const vendorSpots = [{ x: 4.6, z: 4.0, rot: 0 }, { x: 13.4, z: -.05, rot: Math.PI / 2 }]; // уличные продавцы: семечки у остановки, у обменника
-  { const crate = box(.5, .45, .4, std({ color: 0x7a5a3a, roughness: .9 }), 4.6, .22, 4.55); addCol(4.3, 4.9, 4.3, 4.8); }
   let swingRide = null, benchSit = null;
   env2Extra = () => {
     if (swingRide || benchSit) return { label: 'Встать', icon: 'sit', fn: () => { swingRide = null; benchSit = null; P.locked = false; ctx.onCtl(); } };
@@ -670,8 +668,8 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       for (const s_ of [-1, 1]) { const h = cyl(.02, .02, .5, MAT.steel, bx + s_ * .8, .9, 0, 5, g); h.rotation.x = Math.PI / 2; }
       if (!usable) { const sn = new THREE.Mesh(new THREE.BoxGeometry(1.2, .07, .9), MAT.snow); sn.position.set(bx, 1.37, 0); sn.userData.winter = true; g.add(sn); } }
     for (let k = 0; k < (usable ? 0 : n * 2 + 1); k++) { const t = Math.random(); // пакеты и коробки рядом с баками
-      if (t < .55) { const m = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), bagMat); m.scale.set(R(.9, 1.2), R(.6, .9), R(.8, 1.1)); m.position.set(R(-n * .8, n * .8), .2, R(.75, 1.2) * (Math.random() < .7 ? 1 : -1)); m.castShadow = true; g.add(m); }
-      else { const m = new THREE.Mesh(new THREE.BoxGeometry(R(.3, .6), R(.2, .45), R(.3, .5)), cardMat); m.position.set(R(-n * .8, n * .8), .15, R(.8, 1.2)); m.rotation.set(R(-.3, .3), R(0, 3), R(-.2, .2)); m.castShadow = true; g.add(m); } }
+      { /* только мешки — коробок у баков нет */ const m = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), bagMat); m.scale.set(R(.9, 1.2), R(.6, .9), R(.8, 1.1)); m.position.set(R(-n * .8, n * .8), .2, R(.75, 1.2) * (Math.random() < .7 ? 1 : -1)); m.castShadow = true; g.add(m); }
+    }
     g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(pad); addCol(bb.min.x, bb.max.x, bb.min.z, bb.max.z); occ(pad);
   }
   // бак через дорогу напротив ларька: крышки откинуты, в него можно выбросить любой предмет из рук
@@ -857,7 +855,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       const g = big.geometry.clone().applyMatrix4(big.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox, c = bb.getCenter(new THREE.Vector3()); g.translate(-c.x, -bb.min.y, -c.z); const sc = .55 / (bb.max.y - bb.min.y); g.scale(sc, sc, sc);
       const m = new THREE.Mesh(g, big.material); m.position.set(-.35, 1.25, -KD + .04); m.rotation.y = Math.abs(bb.max.x - bb.min.x) < Math.abs(bb.max.z - bb.min.z) ? Math.PI / 2 : 0; scene.add(m); }
     if (ASSETS.stew) { const sm = meshesOf(ASSETS.stew)[0]; if (sm) { const f = FOOD.find(q => q.id === 'tushonka'); const g = sm.geometry.clone().applyMatrix4(sm.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox; g.translate(0, -(bb.min.y + bb.max.y) / 2, 0); f.geo = g; f.model = sm.material; buildFood(); } }
-    if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = gm.geometry.clone().applyMatrix4(gm.matrixWorld); gunMat = gm.material; weapon.setModel(gunWorldMesh(), life.makeHand); buildWallGun(); }
+    if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld)); gunMat = gm.material; weapon.setModel(gunHoldMesh(), life.makeHand); buildWallGun(); }
     spawnMarat();
     for (let i = 0; i < vendorSpots.length; i++) spawnVendor(i);
     season = -1;
@@ -1114,7 +1112,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // модели «Зимние люди» для всех, кроме милиции (у неё своя форма); сталевар — среди рабочих
     let model = null;
     if (kind !== 'police') {
-      if (staticWorker && kind === 'worker' && Math.random() < .2) model = staticWorker;
+      if (staticWorker && kind === 'worker' && outfitNow() === 'summer' && Math.random() < .2) model = staticWorker; // рабочий в майке — только летом
       else if (peopleModels.length) {
         const peopleModels = peopleByOutfit[outfitNow()] || peopleByOutfit.winter; // одежда по сезону
         const pool = peopleModels.filter(m => m.female === !look.male);
@@ -1132,14 +1130,17 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   const blobGeo = new THREE.CircleGeometry(.32, 16), blobMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .32, depthWrite: false });
   function removePerson(p) { scene.remove(p.h.obj); const i = people.indexOf(p); if (i >= 0) people.splice(i, 1); }
-  function goTo(p, x, z, then) {
+  function goTo(p, x, z, then, viaGraph = false) {
     if (p.dead) return;
+    // цель внутри препятствия (бак, машина, ограждение) — сдвигаем к ближайшему свободному месту
+    if (p.role === 'ped' && npcBlocked(x, z)) { let f = null; for (let r = .3; r < 3 && !f; r += .3) for (let a = 0; a < 6.28; a += .5) { const tx = x + Math.cos(a) * r, tz = z + Math.sin(a) * r; if (!npcBlocked(tx, tz)) { f = [tx, tz]; break; } } if (f) [x, z] = f; }
     const o = p.h.obj.position, a = nearestNode(o.x, o.z), b = nearestNode(x, z); const pt = path(a, b); pt.push({ x, z });
     // не возвращаться к узлу, который уже позади
     while (pt.length > 1 && Math.hypot(pt[1].x - o.x, pt[1].z - o.z) <= Math.hypot(pt[1].x - pt[0].x, pt[1].z - pt[0].z) + .2) pt.shift();
-    if (Math.hypot(x - o.x, z - o.z) < 6) pt.splice(0, pt.length - 1); // рядом — напрямую
+    if (!viaGraph && Math.hypot(x - o.x, z - o.z) < 6 && !segBlocked(o.x, o.z, x, z)) pt.splice(0, pt.length - 1); // рядом и путь свободен — напрямую
     p.path = pt; p.then = then; p.state = 'walk';
   }
+  function segBlocked(x1, z1, x2, z2) { const d = Math.hypot(x2 - x1, z2 - z1), n = Math.ceil(d / .3); for (let i = 1; i <= n; i++) { const t = i / n; if (npcBlocked(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t)) return true; } return false; }
   function leaveWorld(p) { if (p.dead) return; const target = NODES[pickSpawn(p.h.obj.position)]; goTo(p, target.x, target.z, () => removePerson(p)); p.leaving = true; }
   function spawnVendor(i) { const s = vendorSpots[i % vendorSpots.length]; if (!s) return; const p = newPerson(i === 0 ? 'babka' : 'vendor', 'vendor', 'm2'); p.h.obj.position.set(s.x, 0, s.z); p.h.obj.rotation.y = s.rot; p.state = 'stand'; p.anim = 'idle'; }
   const lineFor = {
@@ -1248,16 +1249,32 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (const q of people) { if (q === p) continue; const qx = q.h.obj.position.x - o.x, qz = q.h.obj.position.z - o.z, qd = Math.hypot(qx, qz); if (qd < .55 && qd > .001) { mx -= qx / qd * (.55 - qd) * .5; mz -= qz / qd * (.55 - qd) * .5; } }
     const ppx = P.x - o.x, ppz = P.z - o.z, pd = Math.hypot(ppx, ppz); if (pd < .6 && pd > .001) { mx -= ppx / pd * (.6 - pd) * .6; mz -= ppz / pd * (.6 - pd) * .6; }
     // стены, машины, ограждения: обход по сторонам, при застревании — новый путь
-    if (npcBlocked(o.x + mx, o.z + mz)) {
+    if (npcBlocked(o.x, o.z)) { // уже внутри препятствия (затолкали, заехала машина) — выбираемся в ближайшую свободную сторону
+      const a0 = Math.atan2(dx, dz); let best = null;
+      for (let r = .35; r <= 1.6 && !best; r += .35) for (const da of [0, .6, -.6, 1.2, -1.2, 1.8, -1.8, 2.5, -2.5, 3.14]) { const a = a0 + da; if (!npcBlocked(o.x + Math.sin(a) * r, o.z + Math.cos(a) * r)) { best = a; break; } }
+      if (best !== null) { const v = Math.max(st, spd * dt); mx = Math.sin(best) * v; mz = Math.cos(best) * v; }
+    } else if (npcBlocked(o.x + mx, o.z + mz)) {
       const len = Math.hypot(mx, mz) || st, a0 = Math.atan2(mx, mz); let ok = false;
       for (const da of [.5, -.5, 1, -1, 1.5, -1.5, 2.1, -2.1]) { const a = a0 + da * (p.side || 1), nx = Math.sin(a) * len, nz = Math.cos(a) * len; if (!npcBlocked(o.x + nx, o.z + nz)) { mx = nx; mz = nz; ok = true; break; } }
       if (!ok) { mx = mz = 0; }
       p.stuck = (p.stuck || 0) + dt;
-      if (p.stuck > 1.6) { p.stuck = 0; p.side = -(p.side || 1); if (p.path && p.path.length) { const fin = p.path[p.path.length - 1], then = p.then; goTo(p, fin.x, fin.z, then); } }
-    } else p.stuck = Math.max(0, (p.stuck || 0) - dt);
+      if (p.stuck > 1.6) { p.stuck = 0; p.side = -(p.side || 1); p.stuckN = (p.stuckN || 0) + 1;
+        if (p.stuckN >= 4) unstick(p); // обход не помог несколько раз подряд
+        else if (p.path && p.path.length) { const fin = p.path[p.path.length - 1], then = p.then; goTo(p, fin.x, fin.z, then, true); } }
+    } else { p.stuck = Math.max(0, (p.stuck || 0) - dt); if (!p.stuck) p.stuckN = 0; }
     o.x += mx; o.z += mz;
     faceTo(p, Math.atan2(mx || dx, mz || dz), dt);
     return Math.hypot(mx, mz);
+  }
+  // крайний случай: человек так и не смог обойти препятствие. Если игрок не видит — переставляем на свободное место
+  // рядом со следующей точкой пути; если видит — бросает цель и уходит другой дорогой.
+  function unstick(p) {
+    p.stuckN = 0; const o = p.h.obj.position, nx = p.path && p.path[0];
+    if (nx && !visibleFromPlayer(o.x, o.z)) {
+      for (let r = 0; r < 3; r += .4) for (let a = 0; a < 6.28; a += .7) { const x = nx.x + Math.cos(a) * r, z = nx.z + Math.sin(a) * r; if (!npcBlocked(x, z) && !visibleFromPlayer(x, z)) { o.x = x; o.z = z; return; } }
+    }
+    if (p.role === 'ped' && !p.leaving) leaveWorld(p);
+    else if (p.path && p.path.length) { const fin = p.path[p.path.length - 1]; goTo(p, fin.x, fin.z, p.then, true); }
   }
   function npcBlocked(x, z) {
     { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca; if (Math.abs(x - o.x) < hx + .2 && Math.abs(z - o.z) < hz + .2) return true; }
@@ -1289,7 +1306,10 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       if (p.state === 'walk' && p.path.length) {
         const tg = p.path[0], spd = p.flee ? 3.8 : p.speed * (p.role === 'cust' && p.path.length > 2 ? 1.1 : 1);
         dist = moveToward(p, tg.x, tg.z, dt, spd);
-        if (Math.hypot(tg.x - p.h.obj.position.x, tg.z - p.h.obj.position.z) < .25) { p.path.shift(); if (!p.path.length) { p.state = 'arrived'; const f = p.then; p.then = null; f && f(); } }
+        const dTg = Math.hypot(tg.x - p.h.obj.position.x, tg.z - p.h.obj.position.z);
+        // точку заняли другие люди и толкаются — засчитываем приход, если уже рядом и почти не продвигаемся
+        p.crowd = p.role === 'ped' && dTg < 1.3 && dist < spd * dt * .25 ? (p.crowd || 0) + dt : 0;
+        if (dTg < .25 || p.crowd > 1.2) { p.crowd = 0; p.path.shift(); if (!p.path.length) { p.state = 'arrived'; const f = p.then; p.then = null; f && f(); } }
         p.h.setAnim(p.flee ? 'flee' : spd > 2.5 ? 'run' : 'walk');
       } else if (p.state === 'pause') { p.timer -= dt; p.h.setAnim(p.anim || 'idle'); if (p.timer <= 0) wander(p); }
       else if (p.state === 'step') { p.h.setAnim('walk'); dist = .9 * dt; }
@@ -1327,18 +1347,49 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const busCol = addCol(999, 999, 999, 999, 'bus');
   // ---------- ружьё как физический предмет: на стене / в руках / лежит в мире ----------
   let gunGeo = null, gunMat = null;
-  function gunWorldMesh() { const g = new THREE.Group(); if (gunGeo) { const m = new THREE.Mesh(gunGeo, gunMat); m.rotation.x = -Math.PI / 2; m.position.set(0, .04, .55); m.castShadow = true; g.add(m); } else { const m = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, 1.1), MAT.dark); m.position.y = .03; g.add(m); } return g; }
-  const RACK = { x: KW - .07, y: 1.92, z: -.05 };
+  // Модель ружья приводим к одной системе координат, как бы ни был повёрнут исходный файл:
+  // длинная ось — Z, приклад (торец) в z = 0, стволы уходят в −Z, высота — Y, ширина — X, центр по X/Y в нуле.
+  let gunLen = 1.1, gunW = .06;
+  function normGun(g) {
+    const pos = g.attributes.position, n = pos.count, c = new THREE.Vector3();
+    for (let i = 0; i < n; i++) c.add(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i))); c.multiplyScalar(1 / n); g.translate(-c.x, -c.y, -c.z);
+    // главные оси облака вершин (ковариация + степенной метод): скан лежит в файле по диагонали
+    const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (let i = 0; i < n; i++) { const v = [pos.getX(i), pos.getY(i), pos.getZ(i)]; for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) C[r][q] += v[r] * v[q]; }
+    const mul = v => new THREE.Vector3(C[0][0] * v.x + C[0][1] * v.y + C[0][2] * v.z, C[1][0] * v.x + C[1][1] * v.y + C[1][2] * v.z, C[2][0] * v.x + C[2][1] * v.y + C[2][2] * v.z);
+    const eig = (v, ortho) => { for (let k = 0; k < 80; k++) { v = mul(v); for (const o of ortho) v.addScaledVector(o, -v.dot(o)); v.normalize(); } return v; };
+    const e1 = eig(new THREE.Vector3(.3, .5, .8), []), e2 = eig(new THREE.Vector3(.7, -.2, .4), [e1]), e3 = new THREE.Vector3().crossVectors(e1, e2);
+    // e1 — длина (Z), e2 — высота (Y), e3 — ширина (X)
+    g.applyMatrix4(new THREE.Matrix4().makeBasis(e3, e2, e1).invert());
+    g.computeBoundingBox(); const z0 = g.boundingBox.min.z, z1 = g.boundingBox.max.z, L = z1 - z0;
+    // приклад — самый «высокий» по сечению конец
+    const ext = (lo, hi) => { let a = 1e9, b = -1e9; for (let i = 0; i < n; i++) { const z = pos.getZ(i); if (z >= lo && z <= hi) { const y = pos.getY(i); a = Math.min(a, y); b = Math.max(b, y); } } return b - a; };
+    const hNeg = ext(z0, z0 + L * .2), hPos = ext(z1 - L * .2, z1);
+    if (hNeg > hPos) g.rotateY(Math.PI); // приклад → +Z
+    // носок приклада и спусковая скоба — снизу: у приклада больше массы ниже оси стволов (стволы — верх)
+    g.computeBoundingBox(); const zs = g.boundingBox.max.z - L * .5; let lo = 0, hi = 0;
+    for (let i = 0; i < n; i++) if (pos.getZ(i) < zs) { const y = pos.getY(i); if (y < 0) lo++; else hi++; } // на стволах точек больше со стороны, где стволы
+    // у ствольной половины ось стволов выше центра, т. е. там больше точек сверху
+    if (hi > lo) g.rotateZ(Math.PI);
+    g.computeBoundingBox(); g.translate(0, 0, -g.boundingBox.max.z); g.computeBoundingBox(); g.computeVertexNormals();
+    gunLen = L; gunW = g.boundingBox.max.x - g.boundingBox.min.x; window.__gunDbg = { hNeg, hPos, lo, hi, L, W: gunW, H: g.boundingBox.max.y - g.boundingBox.min.y }; return g;
+  }
+  // в руках и на стене: приклад в начале координат, ствол в −Z
+  function gunHoldMesh() { const g = new THREE.Group(); if (gunGeo) { const m = new THREE.Mesh(gunGeo, gunMat); m.castShadow = true; g.add(m); } else { const m = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, 1.1), MAT.dark); m.position.z = -.55; g.add(m); } g.userData.len = gunLen; return g; }
+  // предмет на полу: лежит на боку, длиной по X, с центром в начале координат
+  function gunWorldMesh() { const g = new THREE.Group(), r = new THREE.Group(); r.rotation.y = Math.PI / 2; g.add(r); const m = gunHoldMesh(); m.rotation.z = Math.PI / 2; m.position.set(0, gunW / 2 + .005, gunLen / 2); r.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g; }
+  const RACK = { x: KW - .11, y: 1.9, z: -.05 };
   let wallGun = null, wallRope = null;
   const hookM = std({ color: 0x5a5a5a, metalness: .7, roughness: .4 });
-  for (const dz of [-.32, .3]) { const h = box(.06, .03, .03, hookM, RACK.x + .02, RACK.y - .05, RACK.z + dz, K); h.userData.keep = true; }
-  function buildWallGun() { if (wallGun) scene.remove(wallGun); wallGun = gunWorldMesh(); scene.add(wallGun); if (!wallRope) wallRope = new Rope(scene, { n: 12, length: .9, width: .028 }); }
+  // два крюка из стены, ружьё лежит на них: шейка приклада и цевьё
+  for (const dz of [-.3, .28]) { const h = box(.13, .025, .025, hookM, KW - .075, RACK.y - .06, RACK.z + dz, K); h.userData.keep = true; const t = box(.025, .05, .025, hookM, KW - .14, RACK.y - .04, RACK.z + dz, K); t.userData.keep = true; }
+  function buildWallGun() { if (wallGun) scene.remove(wallGun); wallGun = gunHoldMesh(); scene.add(wallGun); if (!wallRope) wallRope = new Rope(scene, { n: 12, length: .9, width: .028 }); }
   const rackBox = new THREE.Box3(new THREE.Vector3(RACK.x - .2, RACK.y - .25, RACK.z - .65), new THREE.Vector3(RACK.x + .05, RACK.y + .2, RACK.z + .65));
   const gunState = () => { const S = ctx.getS(); return S ? (S.gunState || 'wall') : 'wall'; };
   function setGunState(st) { const S = ctx.getS(); if (!S) return; S.gunState = st; S.gun = st === 'carried'; if (st !== 'carried' && weapon.drawn) weapon.holster(); ctx.onCtl(); }
   function wallGunTick(dt) {
     const on = gunState() === 'wall'; if (wallGun) wallGun.visible = on; if (!wallRope) return; wallRope.visible = on && !!wallGun;
-    if (on && wallGun) { wallGun.position.set(RACK.x - .03, RACK.y, RACK.z + .55); wallGun.rotation.set(0, -Math.PI / 2, -Math.PI / 2 + .06); wallGun.updateMatrixWorld(true); const a = wallGun.localToWorld(tmpV.set(0, -.03, -.25)).clone(), b = wallGun.localToWorld(tmpV2.set(0, -.03, .7)).clone(); wallRope.update(a, b, dt, .02); }
+    if (on && wallGun) { const L = wallGun.userData.len || 1.1; wallGun.position.set(RACK.x, RACK.y, RACK.z + L * .48); wallGun.rotation.set(0, 0, 0); wallGun.updateMatrixWorld(true); const a = wallGun.localToWorld(tmpV.set(0, -.045, -L * .72)).clone(), b = wallGun.localToWorld(tmpV2.set(0, -.07, -.06)).clone(); wallRope.update(a, b, dt, .02); }
   }
   const windVec = new THREE.Vector2();
   const life = createLife({ scene, camera, P, ctx, KW, KD, std, colliders, addCol, audio: ctx.audio, onCtl: () => ctx.onCtl(), overlayScene: weapon.scene,

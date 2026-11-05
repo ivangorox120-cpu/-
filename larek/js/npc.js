@@ -218,12 +218,13 @@ const STEEL_CFG = { height: 1.93, hipY: .95, neckY: 1.55, headCut: 1.56, shY: 1.
 export const PEOPLE_CFG = { height: 1.86, hipY: .98, neckY: 1.47, headCut: 1.47, headHalfW: .2, shY: 1.42, shX: .2, armCut: .205, armTop: 2.2, armBottom: .75, legCut: .99, legX: .09 };
 export function splitParts(prims, cfg) {
   const parts = { torso: [], head: [], armL: [], armR: [], legL: [], legR: [] };
-  for (const { geo, legsOK } of prims) {
+  for (const { geo, legsOK, force } of prims) {
     const pos = geo.attributes.position;
     for (let t = 0; t < pos.count; t += 3) {
       let cx = 0, cy = 0; for (let k = 0; k < 3; k++) { cx += pos.getX(t + k); cy += pos.getY(t + k); } cx /= 3; cy /= 3;
       let p = 'torso';
-      if (cy > cfg.headCut && Math.abs(cx) < (cfg.headHalfW || 9)) p = 'head';
+      if (force) p = force;
+      else if (cy > cfg.headCut && Math.abs(cx) < (cfg.headHalfW || 9)) p = 'head';
       else if (cy < cfg.legCut && legsOK !== false) p = cx > 0 ? 'legL' : 'legR';
       else if (Math.abs(cx) > cfg.armCut && cy < cfg.armTop && cy > cfg.armBottom) p = cx > 0 ? 'armL' : 'armR';
       parts[p].push([geo, t]);
@@ -254,6 +255,14 @@ const OUTFIT = {
   summer: { skip: [9, 10, 11, 12], shirt: ['#e8e4dc', '#9fc0d8', '#d8c8a0', '#c8d8c0', '#e0b8b0', '#f0f0ea', '#7a96b0'], pants: ['#4a5260', '#8a7a62', '#3a3f48', '#6a6f78', '#2e3440'], shoes: ['#3a2a1e', '#1e1a18', '#5a4632'] },
   mid: { skip: [10], coat: ['#6b5a44', '#4a4f55', '#7a3b2e', '#3c4a3a', '#8a7a5e', '#2f3640', '#5a4a3a'] },
 };
+const PEOPLE_DROP = new Set(['Viktor_7']);
+function dropTris(g, test) { // убрать треугольники, нижняя точка которых удовлетворяет test(y)
+  const P = g.attributes.position, N = g.attributes.normal, keep = [];
+  for (let t = 0; t < P.count; t += 3) { const cy = Math.min(P.getY(t), P.getY(t + 1), P.getY(t + 2)); if (!test(cy)) keep.push(t); }
+  const out = new THREE.BufferGeometry(), np = new Float32Array(keep.length * 9), nn = N ? new Float32Array(keep.length * 9) : null;
+  keep.forEach((t, i) => { for (let v = 0; v < 3; v++) { np[i * 9 + v * 3] = P.getX(t + v); np[i * 9 + v * 3 + 1] = P.getY(t + v); np[i * 9 + v * 3 + 2] = P.getZ(t + v); if (nn) { nn[i * 9 + v * 3] = N.getX(t + v); nn[i * 9 + v * 3 + 1] = N.getY(t + v); nn[i * 9 + v * 3 + 2] = N.getZ(t + v); } } });
+  out.setAttribute('position', new THREE.BufferAttribute(np, 3)); if (nn) out.setAttribute('normal', new THREE.BufferAttribute(nn, 3)); return out;
+}
 const hstr = s => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 export function preparePeople(sceneRoot, outfit = 'winter') {
   const out = [];
@@ -265,8 +274,14 @@ export function preparePeople(sceneRoot, outfit = 'winter') {
     const skip = new Set(O ? O.skip : []); if (outfit === 'mid') { if (H % 2) skip.add(9); if (H % 3 === 0) { skip.add(11); skip.add(12); } }
     person.traverse(m => {
       if (!m.isMesh) return; k++; if (skip.has(k)) return;
+      if (PEOPLE_DROP.has(m.name)) return; // предмет, «прилипший» к позе модели (термос у рта) — без настоящей руки он висит в воздухе
       let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
       g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+      { // свисающие концы шарфа: в модели они торчат перед грудью и сбоку выглядят отдельной палкой — оставляем только шарф на шее
+        g.computeBoundingBox(); const b0 = g.boundingBox, hc = PEOPLE_CFG.headCut, w0 = b0.max.x - b0.min.x, h0 = b0.max.y - b0.min.y;
+        if (w0 < .3 && b0.max.y < hc - .12 && b0.min.y > 1.1 && h0 < .2) return; // отдельный кончик / кисточка шарфа на груди
+        if (w0 < .3 && b0.min.y < hc - .15 && b0.max.y > hc - .05 && b0.max.y < hc + .15) g = dropTris(g, cy => cy < hc - .1);
+      }
       if (!g.attributes.normal) g.computeVertexNormals();
       let c = (m.material.color || new THREE.Color(1, 1, 1)).clone(); const n = g.attributes.position.count, C = new Float32Array(n * 3);
       if (outfit === 'summer') { if (k === 2 || k === 3) c.set(O.shirt[H % O.shirt.length]); else if (k === 4) c.set(O.shirt[H % O.shirt.length]).multiplyScalar(.85); else if (k === 0) c.set(O.pants[(H >> 3) % O.pants.length]); else if (k === 1) c.set(O.shoes[(H >> 5) % O.shoes.length]); }
@@ -274,10 +289,20 @@ export function preparePeople(sceneRoot, outfit = 'winter') {
       for (let i = 0; i < n; i++) { C[i * 3] = c.r; C[i * 3 + 1] = c.g; C[i * 3 + 2] = c.b; }
       g.setAttribute('color', new THREE.BufferAttribute(C, 3));
       g.computeBoundingBox();
-      prims.push({ geo: g, legsOK: g.boundingBox.max.y < 1.06 });
+      // Детали крепим целиком к одной части тела, а не по треугольникам: иначе края шапки, термос у рта, пояс или конец шарфа
+      // уезжают с рукой/корпусом и «летают» рядом с человеком. Порядок слоёв у персонажей разный, поэтому решаем по форме.
+      const bb = g.boundingBox, sx = bb.max.x - bb.min.x, sy = bb.max.y - bb.min.y, sz = bb.max.z - bb.min.z, C_ = PEOPLE_CFG;
+      let force = null;
+      if (bb.min.y > C_.headCut - .08) force = 'head'; // шапка, помпон, волосы, лицо, предметы у лица
+      else if (bb.max.y < C_.headCut + .1 && bb.min.y > C_.legCut - .2 && sy < .25) force = 'torso'; // пояс, низ куртки, сумка на поясе
+      else if (Math.max(sx, sy, sz) < .32) { const cy = (bb.min.y + bb.max.y) / 2, cx = (bb.min.x + bb.max.x) / 2; force = cy > C_.headCut ? 'head' : cy < C_.legCut ? null : 'torso'; } // ниже бёдер (обувь) — по треугольникам на две ноги // шарф и мелочь
+      prims.push({ geo: g, legsOK: bb.max.y < 1.06, force });
     });
     if (!prims.length) continue;
     const parts = splitParts(prims, PEOPLE_CFG);
+    // рука модели навсегда поднята (машет) — в походке она торчит над головой «палкой»; такого персонажа не используем
+    const raised = ['armL', 'armR'].some(k => { const g = parts[k]; if (!g || !g.attributes.position.count) return false; g.computeBoundingBox(); return g.boundingBox.max.y > .25; });
+    if (raised) continue;
     out.push({ name: person.name, female: PEOPLE_FEMALE.includes(person.name), parts, outfit });
   }
   return out;

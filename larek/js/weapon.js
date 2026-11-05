@@ -140,7 +140,7 @@ export function createWeapon({ audio, onShot }) {
   function setModel(model, makeHand) {
     // процедурный корпус прячем, шарнир (для анимации перезарядки) оставляем
     gun.traverse(o => { if (o.isMesh && !chamberShells.some(c => c === o || c.children.includes(o))) o.visible = false; });
-    const holder = new THREE.Group(); holder.rotation.x = -Math.PI / 2; holder.position.set(0, -.035, .36); gun.add(holder); holder.add(model);
+    const holder = new THREE.Group(); holder.position.set(0, -.03, .38); gun.add(holder); holder.add(model); // модель: приклад в 0, ствол в −Z
     model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
     if (makeHand) {
       const r = makeHand(1); r.position.set(.03, -.06, .1); r.rotation.set(.35, .15, .25); r.curl(.75); gun.add(r);
