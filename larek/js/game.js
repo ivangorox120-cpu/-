@@ -1201,30 +1201,36 @@ function notepadHtml() {
   const lines = Object.entries(S.order.lines).filter(([, q]) => q).map(([k, q]) => `<div class="np-ln"><span>${lineInfo(k).name.replace(/«|»/g, '')}</span><span>${q} шт</span><span>${fmt(lineInfo(k).unit * q)}</span><button data-np="del" data-id="${k}">×</button></div>`).join('') || '<div class="np-ln np-dim">пока пусто…</div>';
   const pend = (S.deliveries || []).length;
   return `<div class="np-book">
-    <div class="np-page np-left">
-      <div class="np-h">Заказ на базу «Оптторг»</div>
+    <div class="np-cover"></div><div class="np-stack"></div>
+    <div class="np-sheet"><div class="np-page ${hid ? 'np-pencilpage' : ''}">
+      <div class="np-label">ЗАКАЗЫ · 1992</div>
       <div class="np-cats">${CATS.map(([n], i) => `<button data-np="cat" data-i="${i}" class="${i === npCat ? 'on' : ''} ${n.startsWith('Карандаш') ? 'pencil' : ''}">${n}</button>`).join('')}</div>
-      <div class="np-h2">Список:</div>${lines}
-      <div class="np-sum"><div>товар: <b>${fmt(o.sum)} р.</b></div><div>доставка (прим.): <b>${fmt(o.deliv)} р.</b></div><div class="np-tot">итого: ${fmt(o.total)} р.</div></div>
-      ${oh.n ? `<div class="np-pencil">Вове: ${oh.n} шт на ${fmt(oh.total)} р.</div>` : ''}
-      <div class="np-note">${o.n || oh.n ? '→ позвонить с телефона на стене, подтвердить' : ''}${pend ? `<br>везут: ${pend} заказ(а)` : ''}</div>
-      <div class="np-cash">в кассе: ${fmt(S.money)} р.</div>
-    </div>
-    <div class="np-page np-right ${hid ? 'np-pencilpage' : ''}">
-      <div class="np-h">${cname}</div>
-      ${hid ? '<div class="np-dim">для своих. Вова с вокзала, звонить вечером.</div>' : ''}
-      ${ids.map(id => { const li = lineInfo(id); if (!li.avail) return ''; const q = ordQty(id);
-        return `<div class="np-item"><div class="np-nm">${li.name}</div><div class="np-pr">${fmt(li.unit)} р.${li.pack > 1 ? '/шт' : ''}</div>
-          <div class="np-q"><button data-np="q" data-id="${id}" data-d="-${li.pack}">−</button><span>${q}</span><button data-np="q" data-id="${id}" data-d="${li.pack}">+</button></div></div>`; }).join('')}
-    </div>
-    <div class="np-flip"></div>
+      <div class="np-cols">
+        <div class="np-colL">
+          <div class="np-h">${cname}</div>
+          ${hid ? '<div class="np-dim">для своих. Вова с вокзала, звонить вечером.</div>' : ''}
+          ${ids.map(id => { const li = lineInfo(id); if (!li.avail) return ''; const q = ordQty(id);
+            return `<div class="np-item"><div class="np-nm">${li.name}</div><div class="np-pr">${fmt(li.unit)} р.${li.pack > 1 ? '/шт' : ''}</div>
+              <div class="np-q"><button data-np="q" data-id="${id}" data-d="-${li.pack}">−</button><span>${q}</span><button data-np="q" data-id="${id}" data-d="${li.pack}">+</button></div></div>`; }).join('')}
+        </div>
+        <div class="np-colR">
+          <div class="np-h">Заказ на базу «Оптторг»</div>
+          ${lines}
+          <div class="np-sum"><div>товар: <b>${fmt(o.sum)} р.</b></div><div>доставка (прим.): <b>${fmt(o.deliv)} р.</b></div><div class="np-tot">итого: ${fmt(o.total)} р.</div></div>
+          ${oh.n ? `<div class="np-pencil">Вове: ${oh.n} шт на ${fmt(oh.total)} р.</div>` : ''}
+          <div class="np-note">${o.n || oh.n ? '→ позвонить с телефона на прилавке, подтвердить' : ''}${pend ? `<br>везут: ${pend} заказ(а)` : ''}</div>
+          <div class="np-dim">в кассе: ${fmt(S.money)} р.</div>
+        </div>
+      </div>
+    </div><div class="np-flip"></div></div>
+    <div class="np-rings">${'<i></i>'.repeat(16)}</div>
   </div>
   <div class="np-bar"><button data-np="clear">Очистить заказ</button><button data-np="close" class="np-close">Убрать блокнот</button></div>`;
 }
 function renderNotepad() { const el = $('#notepad'); if (!el) return; el.innerHTML = notepadHtml(); }
 function openOrders() {
   if (npOpen || npBusy || !W) return; npBusy = true; sfx.click();
-  W.openNotepadAnim(() => { npBusy = false; npOpen = true; const el = $('#notepad'); renderNotepad(); el.classList.add('on'); renderControls(); });
+  W.openNotepadAnim(() => { npBusy = false; npOpen = true; const el = $('#notepad'); renderNotepad(); el.classList.add('on', 'enter'); setTimeout(() => el.classList.remove('enter'), 450); renderControls(); });
   renderControls();
 }
 function closeOrders() {

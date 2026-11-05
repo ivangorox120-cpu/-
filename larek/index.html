@@ -188,14 +188,23 @@
   @font-face { font-family:'Kosmos'; src:url('assets/fonts/kosmos.ttf') format('truetype'); font-display:swap; }
   #notepad { position:absolute; inset:0; z-index:14; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; opacity:0; transition:opacity .25s; perspective:1400px; }
   #notepad.on { opacity:1; pointer-events:auto; }
-  .np-book { position:relative; display:flex; width:min(900px, 96vw); height:min(560px, 80vh); transform:rotateX(8deg) rotateZ(-1deg); transform-style:preserve-3d; filter:drop-shadow(0 18px 24px #000a); animation: npIn .35s ease-out; }
-  @keyframes npIn { from { transform:rotateX(35deg) translateY(60px) scale(.85); opacity:0 } }
-  .np-page { flex:1; position:relative; overflow:auto; padding:22px 18px 16px 34px; font-family:'Kosmos', 'Comic Sans MS', cursive; color:#1d2f7a; font-size:clamp(14px, 2.1vh, 19px); line-height:28px;
-    background-color:#f3eddc; background-image: linear-gradient(90deg, transparent 26px, #e08a8a 26px, #e08a8a 28px, transparent 28px), repeating-linear-gradient(0deg, transparent 0 27px, #a9c3dc 27px 28px), radial-gradient(ellipse at 30% 20%, #fffaf0 0, transparent 60%), radial-gradient(ellipse at 80% 90%, #e2d6b8 0, transparent 50%);
-    background-attachment: local; box-shadow: inset 0 0 40px #b8a07055; -webkit-user-select:none; user-select:none; touch-action:pan-y; }
-  .np-left { border-radius:6px 0 0 6px; box-shadow: inset -18px 0 24px -16px #6a5030aa, inset 0 0 40px #b8a07055; transform:rotate(-.4deg); }
-  .np-right { border-radius:0 6px 6px 0; box-shadow: inset 18px 0 24px -16px #6a5030aa, inset 0 0 40px #b8a07055; transform:rotate(.3deg); }
-  .np-book::after { content:""; position:absolute; left:50%; top:4px; bottom:4px; width:14px; margin-left:-7px; background:repeating-linear-gradient(0deg, #555 0 3px, #222 3px 14px); border-radius:6px; opacity:.85; }
+  /* блокнот на спирали (как на референсе): спираль сверху, светлая линованная бумага, тёмная обложка снизу, шапка с двойной линией */
+  .np-book { position:relative; width:min(640px, 94vw, 118vh); height:min(74vh, 640px); margin-top:26px; transform:rotateX(9deg) rotateZ(-1.6deg); transform-style:preserve-3d; filter:drop-shadow(0 22px 26px #000b) drop-shadow(0 4px 6px #0007); }
+  #notepad.enter .np-book { animation: npIn .4s cubic-bezier(.2,.8,.3,1); } /* только при доставании, не при каждом нажатии */
+  @keyframes npIn { from { transform:rotateX(55deg) translateY(90px) scale(.7); opacity:0 } }
+  .np-cover { position:absolute; left:10px; right:-10px; top:6px; bottom:-12px; background:linear-gradient(160deg, #2c2c2e, #19191b); border-radius:4px 6px 10px 8px; box-shadow:inset 0 0 0 1px #000, inset 0 -3px 0 #3a3a3c; }
+  .np-stack { position:absolute; inset:0; background:#cfcfcd; border-radius:3px; box-shadow:2px 3px 0 #dcdcda, 4px 6px 0 #c9c9c7, 5px 8px 0 #bdbdbb; }
+  .np-sheet { position:absolute; inset:0; border-radius:3px; overflow:hidden; }
+  .np-page { position:absolute; inset:0; overflow:auto; padding:62px 26px 18px 30px; font-family:'Kosmos', 'Comic Sans MS', cursive; color:#1d2f7a; font-size:clamp(14px, 2.15vh, 19px); line-height:26px;
+    background-color:#e9e9e6; background-image: repeating-linear-gradient(180deg, transparent 0 25px, #8fa8d6aa 25px 26px), radial-gradient(ellipse at 25% 15%, #f7f7f4 0, transparent 55%), radial-gradient(ellipse at 85% 95%, #d2d2ce 0, transparent 50%);
+    background-position: 0 62px, 0 0, 0 0; background-attachment: local; box-shadow: inset 0 0 50px #9a9a9622; -webkit-user-select:none; user-select:none; touch-action:pan-y; }
+  .np-page::before { content:""; position:absolute; left:22px; right:22px; top:40px; height:9px; border-top:3px solid #3a3a3c; border-bottom:2px solid #3a3a3c; }
+  .np-label { position:absolute; right:24px; top:20px; font:900 13px Arial, sans-serif; letter-spacing:1.5px; color:#3a3a3c; }
+  .np-rings { position:absolute; left:16px; right:16px; top:-22px; height:44px; display:flex; justify-content:space-between; pointer-events:none; z-index:3; }
+  .np-rings i { position:relative; width:14px; height:40px; border:4px solid #1b1b1c; border-radius:9px; box-shadow: inset 2px 0 0 #55555a, 1px 1px 0 #000; transform:rotate(8deg); }
+  .np-rings i::after { content:""; position:absolute; width:9px; height:9px; border-radius:50%; background:#8a8a86; box-shadow:inset 1px 1px 2px #000a; left:-1px; top:24px; }
+  .np-cols { display:grid; grid-template-columns: 1.15fr .85fr; gap:18px; }
+  .np-colR { border-left:1px dashed #1d2f7a44; padding-left:14px; }
   .np-h { font-size:1.35em; color:#7a1a1a; transform:rotate(-1.2deg); margin-bottom:4px; }
   .np-h2 { margin-top:6px; text-decoration:underline; }
   .np-cats { display:flex; flex-wrap:wrap; gap:2px 10px; }
@@ -210,16 +219,16 @@
   .np-tot { font-size:1.2em; color:#7a1a1a; }
   .np-note { color:#a32a2a; transform:rotate(-1deg); margin-top:6px; }
   .np-cash { position:absolute; right:14px; bottom:6px; color:#3a4a2a; }
-  .np-item { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; border-bottom:1px dashed #1d2f7a33; }
+  .np-item { display:grid; grid-template-columns:1fr auto auto; gap:8px; } .np-pr { white-space:nowrap; } .np-item { align-items:center; border-bottom:1px dashed #1d2f7a33; }
   .np-q { display:flex; align-items:center; gap:4px; } .np-q span { min-width:28px; text-align:center; }
   .np-q button { font-size:1.3em; line-height:1; width:30px; height:30px; border:1px solid #1d2f7a66 !important; border-radius:50%; }
-  .np-flip { position:absolute; right:0; top:0; bottom:0; width:50%; background:#efe7d2; transform-origin:left center; backface-visibility:hidden; border-radius:0 6px 6px 0; opacity:0; pointer-events:none; box-shadow:-8px 0 20px #0005; }
+  .np-flip { position:absolute; inset:0; background:#e9e9e6 repeating-linear-gradient(180deg, transparent 0 25px, #8fa8d6aa 25px 26px); transform-origin:center top; backface-visibility:hidden; border-radius:3px; opacity:0; pointer-events:none; box-shadow:0 10px 24px #0005; z-index:2; }
   .np-flip.go { animation: npFlip .55s ease-in-out; }
-  @keyframes npFlip { 0% { opacity:1; transform:rotateY(0deg) } 100% { opacity:1; transform:rotateY(-178deg) } }
-  .np-bar { display:flex; gap:10px; margin-top:12px; }
+  @keyframes npFlip { 0% { opacity:1; transform:rotateX(0deg) } 100% { opacity:1; transform:rotateX(178deg) } }
+  .np-bar { display:flex; gap:10px; margin-top:22px; }
   .np-bar button { background:var(--panel); border:1px solid var(--line2); color:var(--text); padding:9px 14px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; font-size:12px; }
   .np-bar .np-close { border-color:var(--acc); }
-  @media (orientation: portrait) { .np-book { flex-direction:column; height:84vh; } .np-book::after { display:none; } .np-flip { width:100%; top:50%; } }
+  @media (orientation: portrait) { .np-book { width:92vw; height:78vh; } .np-cols { grid-template-columns:1fr; } .np-colR { border-left:none; padding-left:0; border-top:1px dashed #1d2f7a44; } }
 </style>
 </head>
 <body>
