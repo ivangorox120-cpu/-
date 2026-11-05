@@ -1359,7 +1359,13 @@ function showDialog({ name, text, options }) {
   const tx = el.querySelector('.dlg-text'); let i = 0; clearInterval(dlgTimer);
   dlgTimer = setInterval(() => { i += 2; tx.textContent = '«' + text.slice(0, i) + (i < text.length ? '' : '»'); if (i >= text.length) clearInterval(dlgTimer); }, 28);
   tx.onclick = () => { clearInterval(dlgTimer); tx.textContent = '«' + text + '»'; };
-  el.querySelectorAll('[data-dlg]').forEach(b => b.onclick = () => { sfx.click(); options[+b.dataset.dlg].fn(); });
+  // защита от «сквозного» касания: кнопка, открывшая диалог, срабатывает по pointerdown, и отпускание пальца
+  // иначе засчитывается варианту под ним. Вариант выбирается, только если нажатие на нём же и началось.
+  const t0 = performance.now();
+  el.querySelectorAll('[data-dlg]').forEach(b => {
+    b.onpointerdown = () => { b._armed = performance.now() - t0 > 120; };
+    b.onclick = e => { const ok = b._armed || (e.detail === 0 && performance.now() - t0 > 300); b._armed = false; if (!ok) return; sfx.click(); options[+b.dataset.dlg].fn(); };
+  });
   renderControls();
 }
 function closeDialog() { dialogOpen = false; clearInterval(dlgTimer); const el = $('#dialog'); el.classList.remove('on'); setTimeout(() => { if (!dialogOpen) el.innerHTML = ''; }, 250); renderControls(); }
