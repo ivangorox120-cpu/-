@@ -554,9 +554,6 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       for (let k = 0; k < n; k++) { const m = itemMesh(id); m.position.set(x + (k - (n - 1) / 2) * .11, y + .01, KD - .12 + (k % 2) * .05); m.rotation.y = R(-.2, .2); shelfGroup.add(m); }
       const tag = priceTag(id, ctx.sellPrice(id), q); tag.position.set(x, y - .035, KD - .275); tag.rotation.y = Math.PI; tag.rotation.x = -.15; shelfGroup.add(tag);
     });
-    storeGroup.children.slice().forEach(c => { storeGroup.remove(c); c.geometry.dispose(); });
-    const nBox = Math.min(10, Math.ceil(ctx.stockTotal() / 10)), bm = std({ color: 0x8a6a45, roughness: .9 });
-    for (let i = 0; i < nBox; i++) box(R(.28, .4), R(.2, .3), R(.25, .32), bm, R(-.2, .5), .12 + Math.floor(i / 5) * .28, -.55 + (i % 5) * .02, storeGroup).rotation.y = R(-.3, .3);
     drawCalendar(); drawRateBoard();
   }
   function drawCalendar() {
@@ -662,19 +659,23 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     g.strokeStyle = 'rgba(60,40,20,.5)'; g.lineWidth = 3; g.strokeRect(10, 10, w - 20, h - 20); g.fillStyle = 'rgba(40,30,20,.7)'; g.font = '700 26px Arial'; g.fillText('ГОСТ 9142-84', 40, 120); g.font = '22px Arial'; g.fillText('НЕ КАНТОВАТЬ', 50, 160); g.fillStyle = 'rgba(70,50,30,.35)'; g.beginPath(); g.ellipse(170, 200, 50, 26, .3, 0, 7); g.fill(); }));
   const cardMat = std({ map: cardTex, roughness: .95 });
   const concreteMat = std({ ...pbrT('concrete', 1, 1), color: 0xb8b4ac, roughness: 1 });
-  function binGroup(x, z, n, ry = 0) {
+  function binGroup(x, z, n, ry = 0, usable = false) {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
     const pad = new THREE.Mesh(new THREE.BoxGeometry(n * 1.45 + .6, .12, 1.7), concreteMat); pad.position.y = .06; pad.receiveShadow = true; g.add(pad);
     for (let i = 0; i < n; i++) { const bx = (i - (n - 1) / 2) * 1.45;
       const b = new THREE.Mesh(binGeo, MAT.bin); b.position.set(bx, .12, 0); b.castShadow = b.receiveShadow = true; g.add(b);
-      for (const s_ of [-1, 1]) { const l = new THREE.Mesh(lidGeo, MAT.bin); l.position.set(bx + s_ * .31, 1.32, 0); l.rotation.z = s_ * (Math.random() < .5 ? R(.05, .5) : .04); l.castShadow = true; g.add(l); }
+      for (const s_ of [-1, 1]) { const l = new THREE.Mesh(lidGeo, MAT.bin); l.position.set(bx + s_ * .31, 1.32, 0); l.rotation.z = s_ * (Math.random() < .5 ? R(.05, .5) : .04); if (usable) { l.position.set(bx + s_ * .62, 1.5, 0); l.rotation.z = s_ * 1.25; } l.castShadow = true; g.add(l); }
+      if (usable) { const inner = new THREE.Mesh(new THREE.PlaneGeometry(1.15, .8), std({ color: 0x0c0b0a, roughness: 1 })); inner.rotation.x = -Math.PI / 2; inner.position.set(bx, 1.05, 0); g.add(inner); // тёмный зев открытого бака с мусором
+        for (let k = 0; k < 5; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.2, 7, 5), k % 2 ? bagMat : cardMat); m.scale.set(1, .6, 1); m.position.set(bx + R(-.4, .4), 1.06, R(-.22, .22)); g.add(m); } }
       for (const s_ of [-1, 1]) { const h = cyl(.02, .02, .5, MAT.steel, bx + s_ * .8, .9, 0, 5, g); h.rotation.x = Math.PI / 2; }
-      const sn = new THREE.Mesh(new THREE.BoxGeometry(1.2, .07, .9), MAT.snow); sn.position.set(bx, 1.37, 0); sn.userData.winter = true; g.add(sn); }
-    for (let k = 0; k < n * 2 + 1; k++) { const t = Math.random(); // пакеты и коробки рядом с баками
+      if (!usable) { const sn = new THREE.Mesh(new THREE.BoxGeometry(1.2, .07, .9), MAT.snow); sn.position.set(bx, 1.37, 0); sn.userData.winter = true; g.add(sn); } }
+    for (let k = 0; k < (usable ? 0 : n * 2 + 1); k++) { const t = Math.random(); // пакеты и коробки рядом с баками
       if (t < .55) { const m = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), bagMat); m.scale.set(R(.9, 1.2), R(.6, .9), R(.8, 1.1)); m.position.set(R(-n * .8, n * .8), .2, R(.75, 1.2) * (Math.random() < .7 ? 1 : -1)); m.castShadow = true; g.add(m); }
       else { const m = new THREE.Mesh(new THREE.BoxGeometry(R(.3, .6), R(.2, .45), R(.3, .5)), cardMat); m.position.set(R(-n * .8, n * .8), .15, R(.8, 1.2)); m.rotation.set(R(-.3, .3), R(0, 3), R(-.2, .2)); m.castShadow = true; g.add(m); } }
     g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(pad); addCol(bb.min.x, bb.max.x, bb.min.z, bb.max.z); occ(pad);
   }
+  // бак через дорогу напротив ларька: крышки откинуты, в него можно выбросить любой предмет из рук
+  const TRASH = { x: 4.8, z: 17.55 }; binGroup(TRASH.x, TRASH.z, 1, 0, true);
   binGroup(-6.8, -5.2, 2); binGroup(-13.5, -12.8, 3, .1); binGroup(14.5, -12.5, 2, -.15); binGroup(-24, 21.2, 3); binGroup(22, 21.4, 2); binGroup(-40, -24, 2, .3); binGroup(44, -26, 3, -.2);
   // урны: бетонные «вазоны» с металлической вставкой — у ларька, на остановке, у лавок
   { const urnGeo = new THREE.CylinderGeometry(.26, .2, .62, 10); urnGeo.translate(0, .31, 0); const insGeo = new THREE.CylinderGeometry(.21, .21, .04, 10); insGeo.translate(0, .6, 0);
@@ -1537,11 +1538,21 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function lookingAt(objs, maxD) { ray.setFromCamera(new THREE.Vector2(0, 0), camera); ray.far = maxD; const h = ray.intersectObjects(objs, true)[0]; return h ? h : null; }
   const nearMarket = () => false; // рынка больше нет: товар — заказом по телефону
   const nearBooth = () => !inKiosk() && Math.hypot(P.x - BOOTH.x, P.z - BOOTH.z - 1.6) < 2.6;
+  function trashIt() {
+    if (life.held && life.held.kind === 'gun') setGunState('gone'); // сразу, чтобы сохранение посреди анимации не «воскресило» ружьё
+    life.trashHeld({ x: TRASH.x, y: 1.25, z: TRASH.z }, it => {
+      if (it.kind === 'gun') { ctx.toast && ctx.toast('Ружьё выброшено в мусорный бак.', 'bad'); }
+      else ctx.toast && ctx.toast(it.data.contents ? 'Коробка с товаром ушла в мусор.' : 'Пустая коробка выброшена.', it.data.contents ? 'bad' : 'good');
+    });
+  }
   function action() {
     const S = ctx.getS(); if (!S || fadeBusy || ctx.cardOpen() || P.stun > 0 || life.notepadState !== 'rest' || life.calling) return null;
     const hb = life.habit;
     if (hb.busy === 'smoke') return hb.canFinish ? (life.lookingAtAshtray() ? { label: 'Потушить в пепельнице', icon: 'smoke', fn: () => hb.finishHabit('ashtray') } : { label: 'Выбросить окурок', icon: 'smoke', fn: () => hb.finishHabit('throw') }) : null;
     if (hb.busy) return null;
+    const nearTrash = !inKiosk() && Math.hypot(P.x - TRASH.x, P.z - TRASH.z) < 2.4;
+    if (life.held && nearTrash) { const h = life.held; return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } }; }
+    if (!life.held && gunState() === 'carried' && nearTrash && !weapon.aiming) return { label: 'Выбросить ружьё в бак', icon: 'drop', fn: () => { const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); trashIt(); } };
     if (life.held) return { label: life.canPlace() ? 'Поставить' : 'Бросить', icon: life.canPlace() ? 'place' : 'drop', fn: () => { if (!life.placeHeld()) life.dropHeld(); }, alt: { label: 'Повернуть', icon: 'rotate', fn: () => life.rotateHeld() } };
     if (gunState() === 'wall' && inKiosk() && lookingAtBox(rackBox, 2)) return { label: 'Снять ружьё со стены', icon: 'weapon', fn: () => { setGunState('carried'); ctx.audio.reloadClose(); weapon.draw(); } };
     if (gunState() === 'carried' && inKiosk() && lookingAtBox(rackBox, 2) && !weapon.aiming) return { label: 'Повесить ружьё на стену', icon: 'weapon', fn: () => { setGunState('wall'); ctx.audio.click(900, .5, 0, .06); } };
@@ -1549,7 +1560,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (transport.canBoard()) return { label: 'Сесть в автобус №7', icon: 'bus', fn: () => transport.board() };
     const li = life.lookItem(2.2);
     if (li && li.kind === 'gun') return { label: 'Поднять ружьё', icon: 'weapon', fn: () => { life.removeItem(li); setGunState('carried'); weapon.draw(); } };
-    if (li && li.kind === 'box') return { label: 'Поднять коробку', icon: 'box', fn: () => life.pick(li),
+    if (li && li.kind === 'box') return { label: li.data.opened ? 'Поднять пустую коробку' : 'Поднять коробку', icon: 'box', fn: () => life.pick(li),
       alt: li.data.contents && inKiosk(li.obj.position.x, li.obj.position.z) ? { label: 'Распаковать', icon: 'box', fn: () => life.unpack(li) } : null };
     if (inKiosk() && life.lookingAtPhone()) return { label: 'Позвонить', icon: 'phone', fn: () => ctx.phoneCall() };
     if (inKiosk() && life.lookingAtNotepad()) return { label: 'Открыть блокнот заказов', icon: 'notepad', fn: () => ctx.openOrders() };

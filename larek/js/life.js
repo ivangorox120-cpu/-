@@ -43,11 +43,34 @@ export function createLife(env) {
     g.fillStyle = '#c9b48a'; g.fillRect(112, 0, 32, 256); g.fillStyle = '#5a3a1a'; g.font = '900 30px Arial'; g.textAlign = 'center'; g.fillText('ОПТТОРГ', 128, 90); g.font = '700 18px Arial'; g.fillText('ОСТОРОЖНО · НЕ КАНТОВАТЬ', 128, 120);
     g.strokeStyle = '#7a2a1a'; g.lineWidth = 4; g.beginPath(); g.arc(70, 190, 30, 0, 7); g.stroke(); g.font = '700 14px Arial'; g.fillStyle = '#7a2a1a'; g.fillText('ОТК', 70, 195);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
-  const boxMat = std({ map: boxTex, roughness: .9 }), boxOpenMat = std({ color: 0x8a6a42, roughness: .95, side: THREE.DoubleSide });
+  const boxMat = std({ map: boxTex, roughness: .9 });
+  // изнанка гофрокартона: светлее и чище снаружи, с волокнами, полосами гофры и следами клея
+  const kraftTex = (inner) => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+    g.fillStyle = inner ? '#b39268' : '#a6845a'; g.fillRect(0, 0, 256, 256);
+    for (let x = 0; x < 256; x += 6) { g.fillStyle = `rgba(${inner ? '90,64,34' : '70,50,28'},${.05 + Math.random() * .04})`; g.fillRect(x, 0, 3, 256); } // гофра просвечивает
+    for (let i = 0; i < 3500; i++) { const v = Math.random(); g.fillStyle = v < .5 ? 'rgba(120,90,55,.35)' : 'rgba(210,185,140,.3)'; g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 3, 1); }
+    if (inner) { g.fillStyle = 'rgba(80,55,30,.18)'; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 256, 20 + Math.random() * 40, 8 + Math.random() * 20, Math.random() * 3, 0, 7); g.fill(); } // пятна от товара
+      g.fillStyle = 'rgba(60,40,20,.5)'; g.font = '700 14px Arial'; g.fillText('ГОСТ 9142-84', 14, 240); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const inMat = std({ map: kraftTex(true), roughness: .95 }), flapOutMat = std({ map: kraftTex(false), roughness: .92 }), floorInMat = std({ map: kraftTex(true), color: 0xcdbca2, roughness: .97 });
+  // открытая коробка: дно и 4 стенки из тонких листов картона (снаружи — печать «Оптторг», внутри — изнанка), 4 отогнутых клапана
+  function makeOpenBox(w, h, d) {
+    const g = new THREE.Group(), t = .008, I = inMat, O = boxMat;
+    const slab = (sx, sy, sz, x, y, z, mats, parent = g) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mats); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; parent.add(m); return m; };
+    slab(w, t, d, 0, t / 2, 0, floorInMat);
+    slab(w, h, t, 0, h / 2, d / 2 - t / 2, [I, I, I, I, O, I]); slab(w, h, t, 0, h / 2, -d / 2 + t / 2, [I, I, I, I, I, O]);
+    slab(t, h, d - 2 * t, w / 2 - t / 2, h / 2, 0, [O, I, I, I, I, I]); slab(t, h, d - 2 * t, -w / 2 + t / 2, h / 2, 0, [I, O, I, I, I, I]);
+    const FM = [I, I, I, flapOutMat, I, I]; // сверху у отогнутого клапана — изнанка
+    for (const s of [-1, 1]) { // длинные клапаны (по стенкам ±z) и короткие (по ±x)
+      const pz = new THREE.Group(); pz.position.set(0, h, s * d / 2); g.add(pz); slab(w - .01, t, d * .48, 0, 0, s * d * .24, FM, pz); pz.rotation.x = s * (.18 + Math.random() * .35);
+      const px = new THREE.Group(); px.position.set(s * w / 2, h, 0); g.add(px); slab(w * .3, t, d - .02, s * w * .15, 0, 0, FM, px); px.rotation.z = -s * (.25 + Math.random() * .4);
+    }
+    return g;
+  }
   function makeBoxMesh(w, h, d, open) {
+    if (open) return makeOpenBox(w, h, d);
     const g = new THREE.Group();
-    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), open ? [boxMat, boxMat, boxOpenMat, boxMat, boxMat, boxMat] : boxMat); b.position.y = h / 2; b.castShadow = b.receiveShadow = true; g.add(b);
-    if (open) { for (const s of [-1, 1]) { const f = new THREE.Mesh(new THREE.PlaneGeometry(w, d * .5), boxOpenMat); f.position.set(0, h, s * d * .5); f.rotation.x = -Math.PI / 2 + s * 1.1; g.add(f); } b.material[2] = new THREE.MeshStandardMaterial({ color: 0x3a2a18, side: THREE.BackSide }); }
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), boxMat); b.position.y = h / 2; b.castShadow = b.receiveShadow = true; g.add(b);
     return g;
   }
   function addItem(rec) { // rec: { kind, x, y, z, ry, data }
@@ -66,7 +89,7 @@ export function createLife(env) {
   function loadItems() { items.slice().forEach(i => { scene.remove(i.obj); if (i.col) colliders.splice(colliders.indexOf(i.col), 1); }); items.length = 0; held = null; const s = S(); (s && s.items || []).forEach(addItem); }
   function lookItem(maxD = 2.2) {
     ray.setFromCamera(new THREE.Vector2(0, 0), camera); ray.far = maxD;
-    const objs = items.filter(i => i !== held).map(i => i.obj); const h = ray.intersectObjects(objs, true)[0];
+    const objs = items.filter(i => i !== held && i.state !== 'trash' && i.state !== 'sink').map(i => i.obj); const h = ray.intersectObjects(objs, true)[0];
     return h ? h.object.userData.item : null;
   }
   function pick(it) { held = it; it.state = 'held'; heldYaw = it.obj.rotation.y - P.yaw; heldYawT = heldYaw; syncCol(it); env.audio && env.audio.click(700, .4, 0, .05); env.onCtl(); }
@@ -78,6 +101,10 @@ export function createLife(env) {
   }
   function dropHeld() { if (!held) return; const it = held; held = null; it.state = 'fall'; it.vy = 0; env.onCtl(); }
   function rotateHeld() { if (held) heldYawT += Math.PI / 2; }
+  // выбросить предмет в мусорный бак: подлетает к проёму бака и проваливается внутрь, затем удаляется
+  function trashHeld(bin, done) {
+    if (!held) return false; const it = held; held = null; it.state = 'trash'; it.from = it.obj.position.clone(); it.to = new THREE.Vector3(bin.x, bin.y, bin.z); it.pt = 0; it.done = done; env.onCtl(); return true;
+  }
   function itemsTick(dt) {
     for (const it of items) {
       if (it === held) {
@@ -88,6 +115,12 @@ export function createLife(env) {
       } else if (it.state === 'place') {
         it.pt += dt * 3.5; const k = ease(Math.min(1, it.pt)); it.obj.position.lerpVectors(it.from, it.to, k); it.obj.position.y += Math.sin(k * Math.PI) * .12;
         if (it.pt >= 1) { it.state = 'rest'; it.obj.position.copy(it.to); env.audio && env.audio.thud(.25 + it.mass * .02); syncCol(it); persist(); }
+      } else if (it.state === 'trash') {
+        it.pt += dt * 2.6; const k = ease(Math.min(1, it.pt)); it.obj.position.lerpVectors(it.from, it.to, k); it.obj.position.y += Math.sin(k * Math.PI) * .35; it.obj.rotation.x = k * .5;
+        if (it.pt >= 1) { it.state = 'sink'; it.vy = 0; }
+      } else if (it.state === 'sink') {
+        it.vy -= 9.8 * dt; it.obj.position.y += it.vy * dt;
+        if (it.obj.position.y < it.to.y - .7) { env.audio && env.audio.thud(.5 + it.mass * .03); const d = it.done; removeItem(it); d && d(it); return; }
       } else if (it.state === 'fall') {
         it.vy -= 9.8 * dt; it.obj.position.y += it.vy * dt; const fl = surfaceBelow(it.obj.position.x, it.obj.position.z, it.obj.position.y + .05);
         if (it.obj.position.y <= fl) { it.obj.position.y = fl; if (it.vy < -2.5) { it.vy *= -.25; env.audio && env.audio.thud(.4 + it.mass * .03); } else { it.vy = 0; it.state = 'rest'; syncCol(it); persist(); } }
@@ -258,7 +291,7 @@ export function createLife(env) {
   const habit = { get busy() { return hab.busy; }, get canFinish() { return hab.busy === 'smoke' && hab.doneAsk; }, startSmoke, startDrink, finishHabit };
 
   return {
-    makeHand, items, addItem, removeItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, rotateHeld, unpack, get held() { return held; },
+    makeHand, items, addItem, removeItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, rotateHeld, trashHeld, unpack, get held() { return held; },
     canPlace: () => !!(held && rayPlace(2.4, held)),
     lookingAtPhone: () => { ray.setFromCamera(new THREE.Vector2(0, 0), camera); const h = ray.ray.intersectBox(phoneBox, tmp); return h && h.distanceTo(camera.position) < 1.8; },
     lookingAtNotepad: () => { const b = noteBox(); if (!b) return false; ray.setFromCamera(new THREE.Vector2(0, 0), camera); const h = ray.ray.intersectBox(b, tmp); return h && h.distanceTo(camera.position) < 1.6; },
