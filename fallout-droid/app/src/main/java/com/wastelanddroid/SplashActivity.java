@@ -106,7 +106,13 @@ public final class SplashActivity extends Activity {
 
     /** Игра для автозапуска: последняя запущенная, если всё для неё готово. */
     private GameDef autostartGame() {
+        if (Prefs.get(this).getBoolean(Prefs.LAUNCH_PENDING, false)) {
+            // прошлый запуск не дошёл до игры (вылет) — не повторяем его автоматически
+            Prefs.get(this).edit().putBoolean(Prefs.LAUNCH_PENDING, false).putBoolean(Prefs.AUTOSTART_BLOCKED, true).putBoolean(Prefs.CRASH_NOTICE, true).apply();
+            return null;
+        }
         if (!Prefs.get(this).getBoolean(Prefs.AUTOSTART, true)) return null;
+        if (Prefs.get(this).getBoolean(Prefs.AUTOSTART_BLOCKED, false)) return null;
         String last = Prefs.get(this).getString(Prefs.LAST_GAME, null);
         if (last == null) return null;
         GameDef d = GameDef.byId(last);

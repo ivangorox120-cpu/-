@@ -152,7 +152,12 @@ public final class MainActivity extends Activity {
         setContentView(frame);
         Anim.enterFromTop(page.getChildAt(0), 0);
         ensureStoragePermission();
-        String auto = getIntent().getStringExtra(EXTRA_AUTOSTART);
+        String crash = com.wastelanddroid.util.CrashLog.takeUnseen(this);
+        boolean notice = prefs.getBoolean(Prefs.CRASH_NOTICE, false);
+        prefs.edit().putBoolean(Prefs.CRASH_NOTICE, false).apply();
+        if (crash != null) frame.post(() -> showCrash(crash));
+        else if (notice) frame.post(this::offerSessionLogs);
+        String auto = crash == null ? getIntent().getStringExtra(EXTRA_AUTOSTART) : null;
         if (auto != null) frame.post(() -> startGame(GameDef.byId(auto)));
     }
 
@@ -278,6 +283,7 @@ public final class MainActivity extends Activity {
         if (fse != null && prefs.getBoolean(Prefs.USE_FOSE, true)) exe = fse;
         File target = exe;
         Toast.makeText(this, "Подготовка " + d.title + "...", Toast.LENGTH_SHORT).show();
+        prefs.edit().putBoolean(Prefs.LAUNCH_PENDING, true).commit();
         new Thread(() -> {
             FalloutEngine.Prepared r;
             try {
@@ -286,7 +292,8 @@ public final class MainActivity extends Activity {
                 new com.wastelanddroid.mods.ModManager(this, d, new File(dir)).saveOrder(
                         new com.wastelanddroid.mods.ModManager(this, d, new File(dir)).loadPlugins());
                 r = FalloutEngine.prepare(this, target);
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                com.wastelanddroid.util.CrashLog.write(this, "prepare", e);
                 r = new FalloutEngine.Prepared.Error(e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             FalloutEngine.Prepared fr = r;
@@ -295,14 +302,59 @@ public final class MainActivity extends Activity {
                 if (fr instanceof FalloutEngine.Prepared.Ok) {
                     FalloutEngine.Prepared.Ok ok = (FalloutEngine.Prepared.Ok) fr;
                     if (ok.getProton() == null) Toast.makeText(this, "Proton не скачан — используется Proton движка", Toast.LENGTH_LONG).show();
-                    FalloutEngine.launch(this, ok);
+                    try {
+                        FalloutEngine.launch(this, ok);
+                    } catch (Throwable e) {
+                        com.wastelanddroid.util.CrashLog.write(this, "launch", e);
+                        prefs.edit().putBoolean(Prefs.LAUNCH_PENDING, false).apply();
+                        showCrash(android.util.Log.getStackTraceString(e));
+                    }
                 } else {
+                    prefs.edit().putBoolean(Prefs.LAUNCH_PENDING, false).apply();
                     new AlertDialog.Builder(this).setTitle("Не удалось запустить")
                             .setMessage(((FalloutEngine.Prepared.Error) fr).getMessage())
                             .setPositiveButton("OK", null).show();
                 }
             });
         }, "fd-prepare").start();
+    }
+
+    /** Вылет без Java-отчёта (в нативной части движка): предлагаем отправить логи сессии. */
+    private void offerSessionLogs() {
+        new AlertDialog.Builder(this)
+                .setTitle("Игра завершилась аварийно")
+                .setMessage("Автозапуск отключён. Отправьте логи последней сессии — по ним можно найти причину.")
+                .setPositiveButton("Отправить логи", (d, w) -> new Thread(() -> {
+                    java.io.File zip = null;
+                    try {
+                        java.io.File last = com.droiddeck.launcher.session.SessionLogShare.INSTANCE.latest(this);
+                        if (last != null) zip = com.droiddeck.launcher.session.SessionLogShare.INSTANCE.zipFolder(this, last, null);
+                    } catch (Throwable ignored) { }
+                    java.io.File fz = zip;
+                    runOnUiThread(() -> {
+                        if (fz == null) { Toast.makeText(this, "Логи сессии не найдены", Toast.LENGTH_LONG).show(); return; }
+                        startActivity(Intent.createChooser(
+                                com.droiddeck.launcher.session.SessionLogShare.INSTANCE.shareIntent(this, fz), "Отправить логи"));
+                    });
+                }, "fd-logs").start())
+                .setNegativeButton("Закрыть", null)
+                .show();
+    }
+
+    /** Отчёт о вылете с возможностью отправить его разработчику. */
+    private void showCrash(String text) {
+        new AlertDialog.Builder(this)
+                .setTitle("Прошлый запуск завершился ошибкой")
+                .setMessage("Автозапуск отключён до следующего успешного запуска.\n\n"
+                        + (text.length() > 1500 ? text.substring(0, 1500) + "..." : text))
+                .setPositiveButton("Отправить отчёт", (d, w) -> {
+                    Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_SUBJECT, "Fallout Droid: отчёт о вылете")
+                            .putExtra(Intent.EXTRA_TEXT, text);
+                    startActivity(Intent.createChooser(send, "Отправить отчёт"));
+                })
+                .setNegativeButton("Закрыть", null)
+                .show();
     }
 
     private File coverFile(GameDef d) { return new File(new File(getFilesDir(), "covers"), d.id); }
@@ -421,6 +473,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (!launching && prefs.getBoolean(Prefs.LAUNCH_PENDING, false)) {
+            // вернулись из игры без вылета — автозапуск снова разрешён
+            prefs.edit().putBoolean(Prefs.LAUNCH_PENDING, false).putBoolean(Prefs.AUTOSTART_BLOCKED, false).apply();
+        }
         refresh();
         if (headerTitle != null) loops.add(Anim.flicker(headerTitle));
         if (backdrop != null) {
@@ -560,7 +616,7 @@ public final class MainActivity extends Activity {
         if (engineOk) {
             com.droiddeck.launcher.session.ComponentsManager.Proton p = FalloutEngine.preferredProton(this);
             runtimeStatus.addView(p != null
-                    ? status(R.drawable.ic_check, p.getName(), Ui.FG)
+                    ? status(R.drawable.ic_check, FalloutEngine.protonLabel(p.getName()), Ui.FG)
                     : status(R.drawable.ic_warning, "Proton не скачан (будет Proton движка)", Ui.AMBER));
         }
 

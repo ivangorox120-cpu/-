@@ -63,13 +63,24 @@ object FalloutEngine {
 
     // ───── Proton ─────
 
-    private fun ge(): ProtonExtras.Tool = ProtonExtras.tools.first { it.id == "ge" }
+    /** ARM64-сборки Proton, которые ставятся без Steam: собственная сборка движка, затем proton-cachyos. */
+    private fun tool(id: String): ProtonExtras.Tool = ProtonExtras.tools.first { it.id == id }
+    private val ARM_TOOLS = listOf("droiddeck", "cachyos")
 
-    @JvmStatic fun geInstalled(context: Context): String? = runCatching { ProtonExtras.installed(context, ge()) }.getOrNull()
+    /** Имя установленной ARM64-сборки Proton или null. */
+    @JvmStatic fun armProtonInstalled(context: Context): String? = runCatching {
+        ARM_TOOLS.firstNotNullOfOrNull { ProtonExtras.installed(context, tool(it)) }
+    }.getOrNull()
 
-    /** Скачивает GE-Proton (ARM64). Возвращает текст ошибки или null при успехе. */
-    @JvmStatic fun installGe(context: Context, progress: Progress): String? =
-        ProtonExtras.install(context.applicationContext, ge()) { stage, percent -> progress.on(stage, percent) }
+    /** Скачивает ARM64 Proton: сначала сборку движка, при неудаче — proton-cachyos. Возвращает ошибку или null. */
+    @JvmStatic fun installArmProton(context: Context, progress: Progress): String? {
+        var last: String? = null
+        for (id in ARM_TOOLS) {
+            last = ProtonExtras.install(context.applicationContext, tool(id)) { stage, percent -> progress.on(stage, percent) }
+            if (last == null) return null
+        }
+        return last
+    }
 
     @JvmStatic fun protonExperimental(context: Context): ComponentsManager.Proton? = runCatching {
         ComponentsManager.protons(context).firstOrNull {
@@ -77,12 +88,16 @@ object FalloutEngine {
         }
     }.getOrNull()
 
-    /** Proton для игры: Experimental (если скачан через Steam), иначе GE-Proton, иначе Proton движка. */
+    /** Proton для игры: Experimental (если есть), иначе ARM64-сборка движка, иначе proton-cachyos. */
     @JvmStatic fun preferredProton(context: Context): ComponentsManager.Proton? = runCatching {
-        protonExperimental(context) ?: ComponentsManager.protons(context).lastOrNull {
-            it.dir.name.startsWith("GE-Proton", ignoreCase = true)
-        }
+        val all = ComponentsManager.protons(context)
+        protonExperimental(context)
+            ?: all.lastOrNull { it.dir.name.startsWith("DroidDeck-Proton", ignoreCase = true) }
+            ?: all.lastOrNull { it.dir.name.startsWith("proton-cachyos", ignoreCase = true) }
     }.getOrNull()
+
+    /** Человекочитаемое имя Proton без названия движка. */
+    @JvmStatic fun protonLabel(name: String): String = name.replace("DroidDeck-Proton", "Proton FD", ignoreCase = true)
 
     /** Готово ли всё для запуска (кроме выбора папки игры). */
     @JvmStatic fun ready(context: Context): Boolean = runtimeInstalled(context) && !childLimitBlocks(context)
@@ -117,14 +132,6 @@ object FalloutEngine {
             .putExtra(SessionService.EXTRA_PROGRAM, ok.program)
             .putExtra(SessionService.EXTRA_PROGRAM_ARGS, ok.args)
             .putExtra(SessionService.EXTRA_GAME_ID, ok.scope)
-            .putExtra(SessionActivity.EXTRA_RETURN_HOME, false))
-    }
-
-    /** Сессия Steam — только чтобы один раз войти и скачать Proton Experimental. */
-    @JvmStatic
-    fun openSteamForProton(activity: Activity) {
-        activity.startActivity(Intent(activity, SessionActivity::class.java)
-            .putExtra(SessionService.EXTRA_MODE, SessionService.MODE_STEAM)
             .putExtra(SessionActivity.EXTRA_RETURN_HOME, false))
     }
 

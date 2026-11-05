@@ -208,32 +208,23 @@ public final class EngineSetupActivity extends Activity {
         }
         boolean runtime = FalloutEngine.runtimeInstalled(this);
         com.droiddeck.launcher.session.ComponentsManager.Proton exp = runtime ? FalloutEngine.protonExperimental(this) : null;
-        String ge = runtime ? FalloutEngine.geInstalled(this) : null;
+        String arm = runtime ? FalloutEngine.armProtonInstalled(this) : null;
         if (exp != null) status(stepProton, true, "Proton Experimental установлен — будет использоваться он");
-        else if (ge != null) status(stepProton, true, ge + " установлен");
-        else status(stepProton, false, runtime ? "Proton не скачан (будет Proton движка)" : "Сначала установите Linux-среду");
-        if (!runtime) return;
-
-        if (exp == null) {
-            stepProton.addView(Ui.hint(this, "Proton Experimental — сборка Valve, скачать её можно только через Steam: "
-                    + "войдите один раз, откройте Библиотека > Инструменты > Proton Experimental > Установить, затем выйдите."));
-            stepProton.addView(Ui.ghostButton(this, R.drawable.ic_gamepad, "Войти в Steam (для Proton Experimental)",
-                    v -> FalloutEngine.openSteamForProton(this)));
-        }
-        if (ge == null) {
-            stepProton.addView(Ui.hint(this, "Без Steam: GE-Proton для ARM64 — быстрый, ставится сразу."));
-            stepProton.addView(Ui.button(this, R.drawable.ic_download, "Скачать GE-Proton", v -> installGe()));
-        }
+        else if (arm != null) status(stepProton, true, FalloutEngine.protonLabel(arm) + " установлен");
+        else status(stepProton, false, runtime ? "Proton не установлен" : "Сначала установите Linux-среду");
+        if (!runtime || exp != null || arm != null) return;
+        stepProton.addView(Ui.hint(this, "Сборка Proton для ARM64: работает без Steam и без аккаунта, около 300 МБ."));
+        stepProton.addView(Ui.button(this, R.drawable.ic_download, "Установить Proton", v -> installGe()));
     }
 
     private void installGe() {
         if (protonWorking) return;
         protonWorking = true;
-        renderProton("Загрузка GE-Proton...", -1);
+        renderProton("Загрузка Proton...", -1);
         new Thread(() -> {
             String error;
             try {
-                error = FalloutEngine.installGe(this, (stage, percent) ->
+                error = FalloutEngine.installArmProton(this, (stage, percent) ->
                         runOnUiThread(() -> { if (!isDestroyed()) renderProton(stage, percent); }));
             } catch (Exception e) {
                 error = e.getClass().getSimpleName() + ": " + e.getMessage();

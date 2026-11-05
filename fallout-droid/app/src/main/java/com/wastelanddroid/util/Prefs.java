@@ -21,6 +21,10 @@ public final class Prefs {
     /** Сразу запускать последнюю игру после заставки. */
     public static final String AUTOSTART = "autostart";
     public static final String LAST_GAME = "last_game";
+    /** Выставляется при вылете или незавершённом запуске: автозапуск не срабатывает, пока игра не стартует нормально. */
+    public static final String AUTOSTART_BLOCKED = "autostart_blocked";
+    public static final String LAUNCH_PENDING = "launch_pending";
+    public static final String CRASH_NOTICE = "crash_notice";
 
     private Prefs() {}
 
