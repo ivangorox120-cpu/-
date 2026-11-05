@@ -417,7 +417,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       for (const dx of [-.4, .4]) for (const dz of [-.25, -.06]) { box(.02, .022, .02, chrome, x + dx, y - .012, KD + dz, K, false); } }
     for (const sx of [-1, 1]) for (const ox of [.47, 1.33]) for (const dz of [-.25, -.06]) cyl(.006, .006, 1.13, chrome, sx * ox, 1.575, KD + dz, 8, K); } // стойки витрины
   box(.36, .08, .2, MAT.steel, 0, 1.02, KD - .05, K);
-  const stool = new THREE.Group(); K.add(stool); stool.position.set(0, 0, .25);
+  const stool = new THREE.Group(); K.add(stool); stool.position.set(0, 0, .25); stool.userData.dyn = true; // временная табуретка до загрузки модели стула — не сливать с батчами
   cyl(.19, .19, .05, MAT.wood, 0, .62, 0, 16, stool);
   for (let a = 0; a < 3; a++) { const l = cyl(.018, .018, .62, MAT.steel, Math.cos(a * 2.1) * .14, .31, Math.sin(a * 2.1) * .14, 6, stool); l.rotation.z = Math.cos(a * 2.1) * .12; l.rotation.x = -Math.sin(a * 2.1) * .12; }
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(.05, 12, 8), MAT.bulb); bulb.position.set(0, 2.32, -.1); K.add(bulb); cyl(.004, .004, .14, MAT.dark, 0, 2.42, -.1, 4, K);
@@ -850,7 +850,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
     if (ASSETS.cigarette) life.setCigaretteModel(ASSETS.cigarette.scene.clone(true));
     if (ASSETS.vodka) life.setBottleModel(ASSETS.vodka.scene.clone(true));
-    if (ASSETS.chair) { const c1 = placeModel(ASSETS.chair, -1.05, -.55, .6); c1.scale.setScalar(.95); addCol(-1.3, -.8, -.8, -.3, 'chair'); placeModel(ASSETS.chair, -2.4, -1.9, 2.2); addCol(-2.65, -2.15, -2.15, -1.65, 'chair'); }
+    if (ASSETS.chair) { placeModel(ASSETS.chair, STOOL.x, STOOL.z - .02, Math.PI); stool.visible = false; } // стул продавца вместо табуретки: спинкой к двери, лицом к прилавку
     if (ASSETS.poster) { poster.visible = false; const o = placeModel(ASSETS.poster, KW - .025, -.62, -Math.PI / 2, .9); o.position.y = 1.18; }
     if (ASSETS.nodrink) { const ms = meshesOf(ASSETS.nodrink); let big = ms[0]; ms.forEach(m => { m.geometry.computeBoundingBox(); big.geometry.computeBoundingBox(); if (m.geometry.boundingBox.getSize(tmpV).y > big.geometry.boundingBox.getSize(tmpV2).y) big = m; });
       const g = big.geometry.clone().applyMatrix4(big.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox, c = bb.getCenter(new THREE.Vector3()); g.translate(-c.x, -bb.min.y, -c.z); const sc = .55 / (bb.max.y - bb.min.y); g.scale(sc, sc, sc);
