@@ -894,7 +894,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (ASSETS.stew) { const sm = meshesOf(ASSETS.stew)[0]; if (sm) { const f = FOOD.find(q => q.id === 'tushonka'); const g = sm.geometry.clone().applyMatrix4(sm.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox; g.translate(0, -(bb.min.y + bb.max.y) / 2, 0); f.geo = g; f.model = sm.material; buildFood(); } }
     if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld)); gunMat = gm.material; weapon.setModel(gunHoldMesh(), life.makeHand); buildWallGun(); }
     spawnMarat();
-    for (let i = 0; i < vendorSpots.length; i++) spawnVendor(i);
+    // уличные продавцы стояли неподвижно с позированными руками и выглядели как баг — убраны
     season = -1;
     ctx.onLoaded && ctx.onLoaded();
   });
@@ -1092,7 +1092,11 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const input = { mx: 0, my: 0, keys: {} };
   const inKiosk = (x = P.x, z = P.z) => Math.abs(x) < KW && Math.abs(z) < KD;
   const PR = .26;
-  const hitAny = (x, z, r = PR) => colliders.some(b => x > b.x1 - r && x < b.x2 + r && z > b.z1 - r && z < b.z2 + r);
+  // препятствия для игрока: статичные коллайдеры + машины на дороге (повёрнутый прямоугольник) + автобус — сквозь них не пройти
+  const inOBB = (x, z, cx, cz, hd, hx, hz, r) => { const dx = x - cx, dz = z - cz, c = Math.cos(hd), s_ = Math.sin(hd); const lx = dx * c - dz * s_, lz = dx * s_ + dz * c; return Math.abs(lx) < hx + r && Math.abs(lz) < hz + r; };
+  const hitAny = (x, z, r = PR) => colliders.some(b => x > b.x1 - r && x < b.x2 + r && z > b.z1 - r && z < b.z2 + r) || hitVeh(x, z, r);
+  const hitVeh = (x, z, r = PR) => cars.some(c => inOBB(x, z, c.m.position.x, c.m.position.z, c.m.rotation.y, 2.1, .85, r))
+    || (!transport.riding && (() => { const o = transport.obstacle(); return inOBB(x, z, o.x, o.z, o.heading, o.hx - .3, o.hz - .2, r); })());
   function canMove() { return ctx.getS() && !P.seated && !P.locked && !transport.riding && !ctx.cardOpen() && !ctx.sheetOpen() && P.stun <= 0; }
   function sit() { P.seated = true; P.crouch = false; ctx.onCtl(); }
   function stand() { if (P.locked) return; P.seated = false; const S = ctx.getS(); S && (S.flags.stood = true); ctx.onCtl(); }
@@ -1732,8 +1736,9 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       doorCol.x1 = doorOpen < .3 ? .4 : 1.17; doorCol.x2 = doorOpen < .3 ? 1.2 : 1.25; doorCol.z1 = doorOpen < .3 ? -KD - .05 : -KD - .8 * Math.min(1, doorOpen); doorCol.z2 = -KD + (doorOpen < .3 ? .05 : 0);
       if (doorOpen > .3 && doorOpen < .75) { doorCol.x1 = doorCol.x2 = 999; }
       const ox = P.x, oz = P.z;
-      const nx = P.x + P.vx * dt; if (!hitAny(nx, P.z)) P.x = nx; else P.vx = 0;
-      const nz = P.z + P.vz * dt; if (!hitAny(P.x, nz)) P.z = nz; else P.vz = 0;
+      const stuckIn = hitVeh(P.x, P.z); // машина подъехала вплотную/наехала — даём выйти, не запирая игрока
+      const nx = P.x + P.vx * dt; if (stuckIn || !hitAny(nx, P.z)) P.x = nx; else P.vx = 0;
+      const nz = P.z + P.vz * dt; if (stuckIn || !hitAny(P.x, nz)) P.z = nz; else P.vz = 0;
       P.x = clamp(P.x, BOUND.x1, BOUND.x2); P.z = clamp(P.z, BOUND.z1, BOUND.z2); // невидимая граница внутри бурана
       moved = Math.hypot(P.x - ox, P.z - oz);
     } else { P.vx = P.vz = 0; P.x += (STOOL.x - P.x) * Math.min(1, dt * 6); P.z += (STOOL.z - P.z) * Math.min(1, dt * 6); }
