@@ -69,6 +69,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -175,7 +176,7 @@ fun LoadingOverlay(
             .background(colors.background)
             .blockTouches(),
     ) {
-        CapsuleWall(games, driftMs = 65_000, modifier = Modifier.alpha(0.3f))
+        FalloutBackdrop()
         Box(
             Modifier.fillMaxSize().drawBehind {
                 drawRect(
@@ -194,18 +195,18 @@ fun LoadingOverlay(
             modifier = Modifier.align(Alignment.Center).verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 24.dp),
         ) {
             key(flood == null) {
-                LogoThrobber(
-                    Modifier.width(if (ended) 88.dp else 110.dp).onGloballyPositioned { ball = throbberBall(it.boundsInRoot()).also { b -> ThrobberSpot.ball = b } },
+                RadiationThrobber(
+                    Modifier.size(if (ended) 88.dp else 110.dp).onGloballyPositioned { ball = throbberBall(it.boundsInRoot()).also { b -> ThrobberSpot.ball = b } },
                     running = !ended && flood == null,
                 )
             }
             Spacer(Modifier.height(30.dp))
             Text(
-                if (ended) stringResource(R.string.load_ended) else title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-                color = colors.onBackground, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                if (ended) stringResource(R.string.load_ended) else title, fontSize = 26.sp, fontFamily = FalloutFont,
+                color = FdGreen, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (ended) step else detail, fontSize = 14.sp, lineHeight = 20.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.Center,
+                if (ended) step else detail, fontSize = 15.sp, lineHeight = 20.sp, fontFamily = FalloutFont, color = FdAmber, textAlign = TextAlign.Center,
                 maxLines = if (ended) 12 else 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 6.dp).widthIn(max = 520.dp),
             )
@@ -263,12 +264,12 @@ private fun LoadSegments(count: Int, active: Int, percent: Int, modifier: Modifi
         repeat(count) { i ->
             Box(
                 Modifier.width(44.dp).height(3.dp).clip(RoundedCornerShape(2.dp))
-                    .background(if (i < active) pal.signal else track)
+                    .background(if (i < active) FdGreen else track)
                     .drawBehind {
                         if (i != active) return@drawBehind
-                        if (percent >= 0) drawRect(pal.signal, size = Size(size.width * percent.coerceIn(0, 100) / 100f, size.height))
-                        else if (still) drawRect(pal.signal.copy(alpha = 0.5f))
-                        else drawRect(pal.signal, topLeft = Offset(size.width * run.value, 0f), size = Size(size.width * 0.4f, size.height))
+                        if (percent >= 0) drawRect(FdGreen, size = Size(size.width * percent.coerceIn(0, 100) / 100f, size.height))
+                        else if (still) drawRect(FdGreen.copy(alpha = 0.5f))
+                        else drawRect(FdGreen, topLeft = Offset(size.width * run.value, 0f), size = Size(size.width * 0.4f, size.height))
                     },
             )
         }
@@ -288,13 +289,63 @@ private fun CancelHint(onCancel: () -> Unit, modifier: Modifier = Modifier) {
             .hoverable(src).clickable(interactionSource = src, indication = LocalIndication.current, role = Role.Button, onClick = onCancel)
             .padding(horizontal = 12.dp),
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(20.dp).clip(CircleShape).background(colors.onBackground)) {
-            Text("B", color = colors.background, style = TextStyle(
-                fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold,
-                platformStyle = PlatformTextStyle(includeFontPadding = false),
-                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
-            ))
+        Text(stringResource(R.string.common_cancel), fontSize = 15.sp, fontFamily = FalloutFont, color = FdGreen)
+    }
+}
+
+
+// ───────────── Fallout Droid: оформление экрана загрузки ─────────────
+
+private val FdGreen = Color(0xFF8AFF80)
+private val FdAmber = Color(0xFFFFB840)
+private val FalloutFont = FontFamily(androidx.compose.ui.text.font.Font(R.font.fallout))
+
+/** Знак радиации: медленное вращение и мягкая пульсация свечения. */
+@Composable
+private fun RadiationThrobber(modifier: Modifier = Modifier, running: Boolean = true) {
+    val t = rememberInfiniteTransition(label = "radiation")
+    val angle = t.animateFloat(0f, 360f, infiniteRepeatable(tween(6000, easing = androidx.compose.animation.core.LinearEasing)), label = "spin")
+    val glow = t.animateFloat(0.35f, 0.9f, infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing),
+        androidx.compose.animation.core.RepeatMode.Reverse), label = "glow")
+    Canvas(modifier) {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val r = size.minDimension / 2f
+        val a = if (running) angle.value else 0f
+        val g = if (running) glow.value else 0.6f
+        drawCircle(Brush.radialGradient(listOf(FdGreen.copy(alpha = 0.35f * g), Color.Transparent), center = c, radius = r * 1.25f), r * 1.25f, c)
+        drawCircle(FdGreen.copy(alpha = 0.9f), r, c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = r * 0.06f))
+        val inner = r * 0.24f
+        val outer = r * 0.86f
+        for (i in 0 until 3) {
+            val start = a - 90f - 30f + i * 120f
+            val path = Path().apply {
+                arcTo(androidx.compose.ui.geometry.Rect(c, outer), start, 60f, true)
+                arcTo(androidx.compose.ui.geometry.Rect(c, inner * 1.35f), start + 60f, -60f, false)
+                close()
+            }
+            drawPath(path, FdGreen)
         }
-        Text(stringResource(R.string.common_cancel), fontSize = 13.sp, color = colors.onSurfaceVariant)
+        drawCircle(FdGreen, inner, c)
+        drawCircle(Color(0xFF0B0E0C), inner * 0.55f, c)
+    }
+}
+
+/** Фон: картинка приложения, сильно притемнённая, со строками развёртки. */
+@Composable
+private fun FalloutBackdrop() {
+    val context = LocalContext.current
+    val image = remember {
+        runCatching { context.assets.open("splash.jpg").use { android.graphics.BitmapFactory.decodeStream(it) }?.asImageBitmap() }.getOrNull()
+    }
+    Box(Modifier.fillMaxSize().background(Color(0xFF0B0E0C))) {
+        if (image != null) androidx.compose.foundation.Image(
+            image, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().alpha(0.28f),
+        )
+        Canvas(Modifier.fillMaxSize()) {
+            var y = 0f
+            val step = 3.dp.toPx()
+            while (y < size.height) { drawRect(Color.Black.copy(alpha = 0.10f), Offset(0f, y), Size(size.width, step / 2f)); y += step }
+        }
     }
 }
