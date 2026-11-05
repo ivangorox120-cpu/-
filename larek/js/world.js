@@ -346,6 +346,31 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const P = g.attributes.position; for (let i = 0; i < P.count; i++) { const u = P.getX(i) / L + .5, v = P.getZ(i) / w * 2; const ends = clamp(Math.min(u, 1 - u) * L / (w * .9), 0, 1); const n = .75 + .25 * Math.sin(u * L * 1.3 + seed) * Math.sin(u * L * .37 + seed * 2.1);
       P.setY(i, Math.max(0, h * Math.pow(Math.max(0, 1 - v * v), .8) * Math.pow(ends, .6) * n)); P.setZ(i, P.getZ(i) * (1 + .15 * Math.sin(u * L * .9 + seed))); }
     g.computeVertexNormals(); g.rotateY(-Math.atan2(z2 - z1, x2 - x1)); g.translate((x1 + x2) / 2, .01, (z1 + z2) / 2); driftGeos.push(g); }
+  // Притоптанный снег: серые утоптанные тропинки со следами от подъездов к тротуарам и у мест, где стоят люди,
+  // плюс неровные бугры во дворах — снег не лежит ровной скатертью. Только зимой (winterGround).
+  function trampleSnow() {
+    const tex = regTex(ctex(256, 256, (g, w, h) => { g.clearRect(0, 0, w, h);
+      for (let i = 0; i < 900; i++) { const x = w / 2 + (Math.random() - .5) * w * .9, y = h / 2 + (Math.random() - .5) * h * .9, r = 3 + Math.random() * 10, d = Math.hypot(x - w / 2, y - h / 2) / (w / 2);
+        g.fillStyle = `rgba(${150 + Math.random() * 40},${155 + Math.random() * 40},${165 + Math.random() * 35},${.12 * Math.max(0, 1 - d * d)})`; g.beginPath(); g.ellipse(x, y, r, r * .6, Math.random() * 3, 0, 7); g.fill(); }
+      for (let i = 0; i < 26; i++) { const x = w * .3 + Math.random() * w * .4, y = 20 + Math.random() * (h - 40), a = (Math.random() - .5) * .5; // отпечатки подошв вдоль тропы
+        g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = 'rgba(95,104,118,.32)'; g.beginPath(); g.ellipse(0, 0, 5, 11, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(95,104,118,.22)'; g.fillRect(-4, 12, 8, 6); g.restore(); } }));
+    const mat = std({ map: tex, transparent: true, depthWrite: false, roughness: .8, polygonOffset: true, polygonOffsetFactor: -3 });
+    const geo = new THREE.PlaneGeometry(1.5, 2.6); geo.rotateX(-Math.PI / 2);
+    const spots = [];
+    const track = (x1, z1, x2, z2) => { const d = Math.hypot(x2 - x1, z2 - z1), n = Math.ceil(d / 2.1); for (let i = 0; i <= n; i++) { const t = i / n; spots.push([x1 + (x2 - x1) * t + R(-.3, .3), z1 + (z2 - z1) * t + R(-.3, .3), Math.atan2(x2 - x1, z2 - z1) + R(-.25, .25), R(.8, 1.15)]); } };
+    track(-6, 1.1, -10, -28); track(4, 1.1, 2, -30); track(14, 1.1, 18, -26); track(-30, 18.6, -30, 24); track(28, 18.6, 30, 24); track(-14, 18.6, -18, 24); track(-40, 1.1, -52, -10); track(40, 1.1, 58, -6);
+    for (const [x, z, n] of [[0, 1.6, 5], [8, 1.4, 4], [-3.4, 2.6, 3], [3.2, 2.4, 3]]) for (let i = 0; i < n; i++) spots.push([x + R(-1.2, 1.2), z + R(-.6, .6), R(0, 6.28), R(.9, 1.3)]); // у ларька и остановки
+    const im = new THREE.InstancedMesh(geo, mat, spots.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), sc = new THREE.Vector3();
+    spots.forEach(([x, z, a, k], i) => { q.setFromAxisAngle(up, a); sc.set(k, 1, k); m4.compose(new THREE.Vector3(x, .025, z), q, sc); im.setMatrixAt(i, m4); });
+    im.receiveShadow = true; im.renderOrder = 1; im.userData.winter = im.userData.dyn = true; scene.add(im); winterGround.push(im);
+    // неровности: невысокие бугры снега во дворах (обходим здания, площадки и тропы)
+    const bump = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), pts = [];
+    const freeAt = (x, z) => !colliders.some(b => x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1) && !spots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 1.6);
+    for (let tries = 0; pts.length < 140 && tries < 2000; tries++) { const x = R(-62, 66), z = Math.random() < .5 ? R(-34, .2) : R(19.5, 30); if (Math.abs(x) < 3 && z > -3) continue; if (freeAt(x, z)) pts.push([x, z]); }
+    const bm = new THREE.InstancedMesh(bump, driftMat, pts.length);
+    pts.forEach(([x, z], i) => { q.setFromAxisAngle(up, R(0, 6.28)); sc.set(R(.6, 1.7), R(.07, .22), R(.5, 1.3)); m4.compose(new THREE.Vector3(x, -.02, z), q, sc); bm.setMatrixAt(i, m4); });
+    bm.receiveShadow = true; bm.castShadow = true; bm.userData.winter = bm.userData.dyn = true; scene.add(bm); winterGround.push(bm);
+  }
   function flushDrifts() { if (!driftGeos.length) return; const m = new THREE.Mesh(mergeGeometries(driftGeos.map(g => { g.deleteAttribute('uv'); return g; })), driftMat); m.receiveShadow = true; m.castShadow = true; m.userData.winter = true; m.userData.dyn = true; scene.add(m); winterGround.push(m); driftGeos.length = 0; return m; }
   { const gaps = [[-6, 2], [3, 13.5]]; // «зебра», остановка
     let x = -80; while (x < 86) { const L = R(9, 18); let a = x, b = Math.min(86, x + L); const gp = gaps.find(([g1, g2]) => b > g1 && a < g2); if (gp) { if (a < gp[0]) drift(a, 5.85, gp[0] - .4, 5.85, 1.1, .38, x); x = gp[1] + .4; continue; } drift(a, 5.85 + R(-.1, .1), b, 5.85 + R(-.1, .1), R(.9, 1.2), R(.3, .45), x); x = b + R(.8, 2.5); }
@@ -657,27 +682,38 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     g.strokeStyle = 'rgba(60,40,20,.5)'; g.lineWidth = 3; g.strokeRect(10, 10, w - 20, h - 20); g.fillStyle = 'rgba(40,30,20,.7)'; g.font = '700 26px Arial'; g.fillText('ГОСТ 9142-84', 40, 120); g.font = '22px Arial'; g.fillText('НЕ КАНТОВАТЬ', 50, 160); g.fillStyle = 'rgba(70,50,30,.35)'; g.beginPath(); g.ellipse(170, 200, 50, 26, .3, 0, 7); g.fill(); }));
   const cardMat = std({ map: cardTex, roughness: .95 });
   const concreteMat = std({ ...pbrT('concrete', 1, 1), color: 0xb8b4ac, roughness: 1 });
-  function binGroup(x, z, n, ry = 0, usable = false) {
+  // Мусорные контейнеры: все рабочие — крышки откинуты назад на петлях, внутри тёмный короб с пакетами.
+  // TRASH_BIG — точки, куда можно выбросить что угодно (коробку, ружьё, бутылку).
+  const TRASH_BIG = [], TRASH_SMALL = [];
+  const binOpenGeo = (() => { const g = new THREE.CylinderGeometry(.86, .74, 1.05, 4, 1, true); g.rotateY(Math.PI / 4); g.scale(1, 1, .72); g.translate(0, .62, 0); return g; })();
+  const binInMat = std({ color: 0x15140f, roughness: 1, side: THREE.BackSide });
+  function binGroup(x, z, n, ry = 0) {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
     const pad = new THREE.Mesh(new THREE.BoxGeometry(n * 1.45 + .6, .12, 1.7), concreteMat); pad.position.y = .06; pad.receiveShadow = true; g.add(pad);
     for (let i = 0; i < n; i++) { const bx = (i - (n - 1) / 2) * 1.45;
-      const b = new THREE.Mesh(binGeo, MAT.bin); b.position.set(bx, .12, 0); b.castShadow = b.receiveShadow = true; g.add(b);
-      for (const s_ of [-1, 1]) { const l = new THREE.Mesh(lidGeo, MAT.bin); l.position.set(bx + s_ * .31, 1.32, 0); l.rotation.z = s_ * (Math.random() < .5 ? R(.05, .5) : .04); if (usable) { l.position.set(bx + s_ * .62, 1.5, 0); l.rotation.z = s_ * 1.25; } l.castShadow = true; g.add(l); }
-      if (usable) { const inner = new THREE.Mesh(new THREE.PlaneGeometry(1.15, .8), std({ color: 0x0c0b0a, roughness: 1 })); inner.rotation.x = -Math.PI / 2; inner.position.set(bx, 1.05, 0); g.add(inner); // тёмный зев открытого бака с мусором
-        for (let k = 0; k < 5; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.2, 7, 5), k % 2 ? bagMat : cardMat); m.scale.set(1, .6, 1); m.position.set(bx + R(-.4, .4), 1.06, R(-.22, .22)); g.add(m); } }
+      const b = new THREE.Mesh(binOpenGeo, MAT.bin); b.position.set(bx, .12, 0); b.castShadow = b.receiveShadow = true; g.add(b);
+      const bi = new THREE.Mesh(binOpenGeo, binInMat); bi.position.set(bx, .12, 0); bi.scale.set(.97, 1, .97); g.add(bi); // изнанка стенок
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(1.1, .7), binInMat); floor.material = std({ color: 0x15140f, roughness: 1 }); floor.rotation.x = -Math.PI / 2; floor.position.set(bx, .55, 0); g.add(floor);
+      for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.22, 7, 5), bagMat); m.scale.set(1, .7, 1); m.position.set(bx + R(-.35, .35), .7 + R(0, .12), R(-.18, .18)); g.add(m); } // пакеты внутри
+      for (const s_ of [-1, 1]) { const hinge = new THREE.Group(); hinge.position.set(bx + s_ * .31, 1.3, -.46); hinge.rotation.x = -R(1.85, 2.05); g.add(hinge);
+        const l = new THREE.Mesh(lidGeo, MAT.bin); l.position.z = .475; l.castShadow = true; hinge.add(l); } // крышки откинуты назад на петлях
       for (const s_ of [-1, 1]) { const h = cyl(.02, .02, .5, MAT.steel, bx + s_ * .8, .9, 0, 5, g); h.rotation.x = Math.PI / 2; }
-      if (!usable) { const sn = new THREE.Mesh(new THREE.BoxGeometry(1.2, .07, .9), MAT.snow); sn.position.set(bx, 1.37, 0); sn.userData.winter = true; g.add(sn); } }
-    for (let k = 0; k < (usable ? 0 : n * 2 + 1); k++) { const t = Math.random(); // пакеты и коробки рядом с баками
-      { /* только мешки — коробок у баков нет */ const m = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), bagMat); m.scale.set(R(.9, 1.2), R(.6, .9), R(.8, 1.1)); m.position.set(R(-n * .8, n * .8), .2, R(.75, 1.2) * (Math.random() < .7 ? 1 : -1)); m.castShadow = true; g.add(m); }
-    }
+      g.updateMatrixWorld(true); const wp = g.localToWorld(new THREE.Vector3(bx, 0, 0)); TRASH_BIG.push({ x: wp.x, z: wp.z, y: 1.15 }); }
     g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(pad); addCol(bb.min.x, bb.max.x, bb.min.z, bb.max.z); occ(pad);
   }
-  // бак через дорогу напротив ларька: крышки откинуты, в него можно выбросить любой предмет из рук
-  const TRASH = { x: 4.8, z: 17.55 }; binGroup(TRASH.x, TRASH.z, 1, 0, true);
-  binGroup(-6.8, -5.2, 2); binGroup(-13.5, -12.8, 3, .1); binGroup(14.5, -12.5, 2, -.15); binGroup(-24, 21.2, 3); binGroup(22, 21.4, 2); binGroup(-40, -24, 2, .3); binGroup(44, -26, 3, -.2);
+  // бак через дорогу напротив ларька + контейнерные площадки во дворах (часть лишних убрана)
+  binGroup(4.8, 17.55, 1); binGroup(-6.8, -5.2, 2); binGroup(-13.5, -12.8, 2, .1); binGroup(14.5, -12.5, 2, -.15); binGroup(-24, 21.2, 2); binGroup(22, 21.4, 2);
   // урны: бетонные «вазоны» с металлической вставкой — у ларька, на остановке, у лавок
-  { const urnGeo = new THREE.CylinderGeometry(.26, .2, .62, 10); urnGeo.translate(0, .31, 0); const insGeo = new THREE.CylinderGeometry(.21, .21, .04, 10); insGeo.translate(0, .6, 0);
-    for (const [x, z] of [[KW + .7, KD + .9], [5.8, 4.9], [11.2, 4.9], [-3.6, 5.4], [-21, -3.4], [26, 4.9], [-30, 4.9], [2, 17.6], [-18, 17.6]]) { const u = new THREE.Mesh(urnGeo, concreteMat); u.position.set(x, 0, z); u.castShadow = true; scene.add(u); const ins = new THREE.Mesh(insGeo, MAT.dark); ins.position.set(x, 0, z); scene.add(ins); addCol(x - .26, x + .26, z - .26, z + .26); } }
+  // урны: бетонные «вазоны» с полостью — в них выбрасывается мелкий мусор (окурки, бутылки)
+  { const prof = [[.2, 0], [.235, .04], [.26, .56], [.275, .6], [.275, .63], [.215, .63], [.2, .58], [.18, .3]].map(([r, y]) => new THREE.Vector2(r, y));
+    const urnGeo = new THREE.LatheGeometry(prof, 14), urnMat = concreteMat.clone(); urnMat.side = THREE.DoubleSide; const urnIn = std({ color: 0x1a1814, roughness: 1 });
+    const bottom = new THREE.CircleGeometry(.18, 14); bottom.rotateX(-Math.PI / 2); bottom.translate(0, .3, 0);
+    const litter = new THREE.SphereGeometry(.06, 6, 4), litterM = [std({ color: 0xd8d0bc, roughness: .9 }), std({ color: 0x6a4a2c, roughness: .9 }), bagMat];
+    for (const [x, z] of [[KW + .7, KD + .9], [5.8, 4.9], [11.2, 4.9], [-3.6, 5.4], [26, 4.9], [-30, 4.9], [2, 17.6], [-18, 17.6]]) {
+      const u = new THREE.Mesh(urnGeo, urnMat); u.position.set(x, 0, z); u.castShadow = u.receiveShadow = true; scene.add(u);
+      const bt = new THREE.Mesh(bottom, urnIn); bt.position.set(x, 0, z); scene.add(bt);
+      for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(litter, litterM[k % 3]); m.position.set(x + R(-.08, .08), .33 + k * .02, z + R(-.08, .08)); m.scale.set(1, .6, 1); scene.add(m); } // смятая бумага
+      addCol(x - .26, x + .26, z - .26, z + .26); TRASH_SMALL.push({ x, z, y: .7 }); } }
   const neons = [];
   const signs = [['ВИДЕОПРОКАТ', '#1a2a4a', '#e8d070', -32, 18.95], ['КОМИССИОННЫЙ', '#4a1a1a', '#f0e0c0', 14, 18.95], ['ГАСТРОНОМ', '#2a3a2a', '#e0d8b0', -14, 18.95], ['РЕМОНТ ОБУВИ', '#3a3a3a', '#f0e8d0', 30, 18.95]];
   for (const [t, bg, fg, x, z] of signs) { const tx = textTex(512, 96, t, bg, fg, '900 52px Arial'); const m = new THREE.Mesh(new THREE.PlaneGeometry(3.2, .6), std({ map: tx, emissive: 0xffffff, emissiveMap: tx, emissiveIntensity: 0 })); m.position.set(x, 3.4, z); scene.add(m); m.userData.neon = true; neons.push(m); }
@@ -792,7 +828,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     m.needsUpdate = true;
   }
   const crowns = { winter: [], summer: [] };
-  const loading = Promise.all(toLoad.map(n => loader.loadAsync('assets/models/' + n + '.glb').then(g => { g.__name = n; ASSETS[n] = g; loadedN++; ctx.onLoadProgress && ctx.onLoadProgress(loadedN / toLoad.length); }).catch(e => { console.warn('Не загрузилась модель', n, e); loadedN++; })));
+  const loading = Promise.all(toLoad.map(n => loader.loadAsync('assets/models/' + n + '.glb').then(g => { g.__name = n; { const ls = []; g.scene.traverse(o => { if (o.isLight) ls.push(o); }); ls.forEach(l => l.parent.remove(l)); } /* лампы из экспорта моделей давали пересвет у телефона */ ASSETS[n] = g; loadedN++; ctx.onLoadProgress && ctx.onLoadProgress(loadedN / toLoad.length); }).catch(e => { console.warn('Не загрузилась модель', n, e); loadedN++; })));
   function meshesOf(g) { const out = []; g.scene.updateMatrixWorld(true); g.scene.traverse(o => { if (o.isMesh) out.push(o); }); return out; }
   function prepMats(root) { root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) if (m[k]) m[k].anisotropy = Q.aniso; }); } }); }
   function placeModel(g, x, z, rotY, scale = 1) { const o = g.scene.clone(true); o.userData.tag = g.__name || "model"; o.position.set(x, 0, z); o.rotation.y = rotY; o.scale.setScalar(scale); scene.add(o); prepMats(o); o.updateMatrixWorld(true); return o; }
@@ -816,6 +852,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o); reflectLayer(o);
         { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
       }
+      trampleSnow();
       flushDrifts(); season = -1; // пересчитать видимость сезонных объектов
     } else fallbackBuildings();
     // остановка
@@ -1262,9 +1299,13 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         if (p.stuckN >= 4) unstick(p); // обход не помог несколько раз подряд
         else if (p.path && p.path.length) { const fin = p.path[p.path.length - 1], then = p.then; goTo(p, fin.x, fin.z, then, true); } }
     } else { p.stuck = Math.max(0, (p.stuck || 0) - dt); if (!p.stuck) p.stuckN = 0; }
+    // сглаживаем шаг: толчки соседей и обход не должны дёргать человека из кадра в кадр
+    p.vx = (p.vx ?? mx) + (mx - (p.vx ?? mx)) * Math.min(1, dt * 10); p.vz = (p.vz ?? mz) + (mz - (p.vz ?? mz)) * Math.min(1, dt * 10);
+    if (!npcBlocked(o.x + p.vx, o.z + p.vz) || npcBlocked(o.x, o.z)) { mx = p.vx; mz = p.vz; }
     o.x += mx; o.z += mz;
-    faceTo(p, Math.atan2(mx || dx, mz || dz), dt);
-    return Math.hypot(mx, mz);
+    const ml = Math.hypot(mx, mz);
+    if (ml > spd * dt * .3) faceTo(p, Math.atan2(mx, mz), dt * .7); // разворот только при заметном движении
+    return ml;
   }
   // крайний случай: человек так и не смог обойти препятствие. Если игрок не видит — переставляем на свободное место
   // рядом со следующей точкой пути; если видит — бросает цель и уходит другой дорогой.
@@ -1487,7 +1528,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 9871.3); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
       void main(){ vec2 q = vec2(vW.x + vW.z, vW.y) * .08; float f = n(q + vec2(time * .9, -time * .3)) * .5 + n(q * 2.3 + vec2(time * 1.7, time * .2)) * .3 + n(q * 5.0 + vec2(time * 3.1, 0.)) * .2;
-        float a = (.55 + f * .45) * smoothstep(0., .15, vU.y) * (1. - smoothstep(.85, 1., vU.y)); gl_FragColor = vec4(col * (.85 + f * .25), a); }`,
+        float a = (.55 + f * .45) * smoothstep(0., .1, vU.y) * (1. - smoothstep(4., 26., vW.y)); /* верх растворяется: сверху нет квадрата карты */ gl_FragColor = vec4(col * (.85 + f * .25), a); }`,
     transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
   });
   for (const [x, z, w, ry] of [[BOUND.x1 - 4, (BOUND.z1 + 30) / 2, 90, Math.PI / 2], [BOUND.x2 + 4, (BOUND.z1 + 30) / 2, 90, Math.PI / 2], [(BOUND.x1 + BOUND.x2) / 2, BOUND.z1 - 4, 150, 0], [(BOUND.x1 + BOUND.x2) / 2, 38, 150, 0]]) {
@@ -1589,21 +1630,25 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function lookingAt(objs, maxD) { ray.setFromCamera(new THREE.Vector2(0, 0), camera); ray.far = maxD; const h = ray.intersectObjects(objs, true)[0]; return h ? h : null; }
   const nearMarket = () => false; // рынка больше нет: товар — заказом по телефону
   const nearBooth = () => !inKiosk() && Math.hypot(P.x - BOOTH.x, P.z - BOOTH.z - 1.6) < 2.6;
-  function trashIt() {
+  const nearestOf = (list, maxD) => { let b = null, bd = maxD; for (const t of list) { const d = Math.hypot(P.x - t.x, P.z - t.z); if (d < bd) { bd = d; b = t; } } return b; };
+  function trashIt(bin) {
     if (life.held && life.held.kind === 'gun') setGunState('gone'); // сразу, чтобы сохранение посреди анимации не «воскресило» ружьё
-    life.trashHeld({ x: TRASH.x, y: 1.25, z: TRASH.z }, it => {
+    life.trashHeld({ x: bin.x, y: bin.y, z: bin.z }, it => {
       if (it.kind === 'gun') { ctx.toast && ctx.toast('Ружьё выброшено в мусорный бак.', 'bad'); }
-      else ctx.toast && ctx.toast(it.data.contents ? 'Коробка с товаром ушла в мусор.' : 'Пустая коробка выброшена.', it.data.contents ? 'bad' : 'good');
+      else if (it.kind === 'box') ctx.toast && ctx.toast(it.data.contents ? 'Коробка с товаром ушла в мусор.' : 'Пустая коробка выброшена.', it.data.contents ? 'bad' : 'good');
     });
   }
   function action() {
     const S = ctx.getS(); if (!S || fadeBusy || ctx.cardOpen() || P.stun > 0 || life.notepadState !== 'rest' || life.calling) return null;
     const hb = life.habit;
+    if (hb.busy === 'smoke' && hb.canFinish && !inKiosk() && nearestOf(TRASH_SMALL, 1.7)) return { label: 'Выбросить окурок в урну', icon: 'smoke', fn: () => hb.finishHabit('urn') };
     if (hb.busy === 'smoke') return hb.canFinish ? (life.lookingAtAshtray() ? { label: 'Потушить в пепельнице', icon: 'smoke', fn: () => hb.finishHabit('ashtray') } : { label: 'Выбросить окурок', icon: 'smoke', fn: () => hb.finishHabit('throw') }) : null;
     if (hb.busy) return null;
-    const nearTrash = !inKiosk() && Math.hypot(P.x - TRASH.x, P.z - TRASH.z) < 2.4;
-    if (life.held && nearTrash) { const h = life.held; return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } }; }
-    if (!life.held && gunState() === 'carried' && nearTrash && !weapon.aiming) return { label: 'Выбросить ружьё в бак', icon: 'drop', fn: () => { const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); trashIt(); } };
+    // мелкий мусор (бутылка) — в урну или бак; крупное (коробка, ружьё) — только в большой бак
+    const binBig = !inKiosk() && nearestOf(TRASH_BIG, 2.4), binSmall = !inKiosk() && nearestOf(TRASH_SMALL, 1.7);
+    if (life.held) { const h = life.held, small = h.kind === 'bottle', bin = small ? (binSmall || binBig) : binBig;
+      if (bin) return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : small ? (bin === binSmall ? 'Выбросить в урну' : 'Выбросить в бак') : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(bin), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } }; }
+    if (!life.held && gunState() === 'carried' && binBig && !weapon.aiming) return { label: 'Выбросить ружьё в бак', icon: 'drop', fn: () => { const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); trashIt(binBig); } };
     if (life.held) return { label: life.canPlace() ? 'Поставить' : 'Бросить', icon: life.canPlace() ? 'place' : 'drop', fn: () => { if (!life.placeHeld()) life.dropHeld(); }, alt: { label: 'Повернуть', icon: 'rotate', fn: () => life.rotateHeld() } };
     if (gunState() === 'wall' && inKiosk() && lookingAtBox(rackBox, 2)) return { label: 'Снять ружьё со стены', icon: 'weapon', fn: () => { setGunState('carried'); ctx.audio.reloadClose(); weapon.draw(); } };
     if (gunState() === 'carried' && inKiosk() && lookingAtBox(rackBox, 2) && !weapon.aiming) return { label: 'Повесить ружьё на стену', icon: 'weapon', fn: () => { setGunState('wall'); ctx.audio.click(900, .5, 0, .06); } };
@@ -1611,6 +1656,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (transport.canBoard()) return { label: 'Сесть в автобус №7', icon: 'bus', fn: () => transport.board() };
     const li = life.lookItem(2.2);
     if (li && li.kind === 'gun') return { label: 'Поднять ружьё', icon: 'weapon', fn: () => { life.removeItem(li); setGunState('carried'); weapon.draw(); } };
+    if (li && li.kind === 'bottle') return { label: 'Поднять пустую бутылку', icon: 'drink', fn: () => life.pick(li) };
     if (li && li.kind === 'box') return { label: li.data.opened ? 'Поднять пустую коробку' : 'Поднять коробку', icon: 'box', fn: () => life.pick(li),
       alt: li.data.contents && inKiosk(li.obj.position.x, li.obj.position.z) ? { label: 'Распаковать', icon: 'box', fn: () => life.unpack(li) } : null };
     if (inKiosk() && life.lookingAtPhone()) return { label: 'Позвонить', icon: 'phone', fn: () => ctx.phoneCall() };

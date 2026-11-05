@@ -21,24 +21,54 @@ export function createTransport(env) {
   const glassM = new THREE.MeshStandardMaterial({ color: 0x223038, roughness: .08, metalness: .6, transparent: true, opacity: .55, depthWrite: false });
   const inner = std({ color: 0x8a8a7a, roughness: .9, side: THREE.BackSide });
   const B = (w, h, d, m, x, y, z, p = bus) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; p.add(o); return o; };
-  // корпус: нижняя часть, оконная лента, крыша; ось X — вдоль автобуса (нос в +X)
-  B(L, 1.05, Wd, bodyM, 0, .95, 0); B(L, .12, Wd + .02, stripeM, 0, 1.45, 0);
-  B(L, .95, .06, glassM, 0, 1.98, Wd / 2 - .03); B(L, .95, .06, glassM, 0, 1.98, -Wd / 2 + .03);
-  for (let x = -L / 2 + .3; x <= L / 2 - .3; x += 1.1) { B(.08, .95, Wd + .03, bodyM, x, 1.98, 0); }
-  B(L, .5, Wd, bodyM, 0, 2.7, 0); const roofTop = new THREE.Mesh(new THREE.CylinderGeometry(Wd / 2, Wd / 2, L, 16, 1, false, 0, Math.PI), bodyM); roofTop.rotation.z = Math.PI / 2; roofTop.rotation.y = Math.PI / 2; roofTop.scale.set(1, 1, .22); roofTop.position.y = 2.93; bus.add(roofTop);
-  B(.06, 1.0, Wd - .2, glassM, L / 2 + .01, 1.95, 0); B(.06, .9, Wd - .2, glassM, -L / 2 - .01, 2.0, 0);
-  B(.2, .25, Wd + .1, std({ color: 0x777777, metalness: .8, roughness: .3 }), L / 2 + .05, .5, 0); B(.2, .25, Wd + .1, std({ color: 0x777777, metalness: .8, roughness: .3 }), -L / 2 - .05, .5, 0);
-  const hl = std({ color: 0xffffee, emissive: 0xfff2c0, emissiveIntensity: 0 }); for (const s of [-1, 1]) { const h = new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, .05, 14), hl); h.rotation.z = Math.PI / 2; h.position.set(L / 2 + .04, .75, s * .9); bus.add(h); }
-  const tl = std({ color: 0x8a1a12, emissive: 0xff2a10, emissiveIntensity: .3 }); for (const s of [-1, 1]) B(.05, .2, .25, tl, -L / 2 - .03, .8, s * .95);
-  // табличка маршрута
+  // корпус ЛиАЗ-677: сечения со скруглёнными кромками, вытянутые вдоль X (нос в +X), закруглённые торцы
+  const ext = (pts, y0, depth, bev) => { const sh = new THREE.Shape(); pts.forEach(([x, y], i) => i ? sh.lineTo(x, y) : sh.moveTo(x, y));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: depth - bev * 2, bevelEnabled: true, bevelThickness: bev, bevelSize: bev * .15, bevelSegments: 4, curveSegments: 8 });
+    g.translate(0, y0, -depth / 2 + bev); g.rotateY(Math.PI / 2); g.computeVertexNormals(); return g; };
+  const rr = (w, h, rb, rt) => { const P_ = [], seg = 6, hw = w / 2; // скруглённый прямоугольник: радиусы снизу и сверху
+    const arc = (cx, cy, r, a0, a1) => { for (let i = 0; i <= seg; i++) { const a = a0 + (a1 - a0) * i / seg; P_.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } };
+    arc(hw - rb, rb, rb, -Math.PI / 2, 0); arc(hw - rt, h - rt, rt, 0, Math.PI / 2); arc(-hw + rt, h - rt, rt, Math.PI / 2, Math.PI); arc(-hw + rb, rb, rb, Math.PI, Math.PI * 1.5); return P_; };
+  const lowerM = std({ color: 0xdcb65e, roughness: .45, metalness: .25 }), creamM = std({ color: 0xebe2c8, roughness: .45, metalness: .2 }), pillarM = std({ color: 0xd8cfb4, roughness: .5, metalness: .2 });
+  const lower = new THREE.Mesh(ext(rr(Wd - .1, 1.12, .12, .05), .36, L, .32), lowerM); bus.add(lower); lower.castShadow = lower.receiveShadow = true;
+  const roof = new THREE.Mesh(ext(rr(Wd - .14, .5, .02, .38), 2.42, L - .1, .36), creamM); bus.add(roof); roof.castShadow = true;
+  bus.add(new THREE.Mesh(lower.geometry, inner), new THREE.Mesh(roof.geometry, std({ color: 0xd8d4c4, roughness: .9, side: THREE.BackSide }))); // салон изнутри: стенки и потолок
+  // фальшборт: рисунок на бортах — молдинги, полоса, арки, контуры дверей, шильдик
+  const mkSide = flip => { const c = document.createElement('canvas'); c.width = 1024; c.height = 128; const g = c.getContext('2d'); g.clearRect(0, 0, 1024, 128);
+    const X = m => ((flip ? -m : m) / L + .5) * 1024, Y = m => (1 - (m - .36) / 1.12) * 128;
+    g.fillStyle = '#8a2a1c'; g.fillRect(0, Y(1.46), 1024, Y(1.33) - Y(1.46)); // полоса под окнами
+    g.fillStyle = '#d8d8d0'; g.fillRect(0, Y(1.03), 1024, 3); g.fillRect(0, Y(.5), 1024, 2); // молдинги
+    g.fillStyle = '#2b2620'; for (const wx of [-3.2, 3.4]) { g.beginPath(); g.ellipse(X(wx), Y(.36), 62, 66, 0, Math.PI, 0); g.fill(); } // арки колёс
+    g.strokeStyle = 'rgba(40,30,20,.55)'; g.lineWidth = 2; for (let x = -L / 2 + .7; x < L / 2 - .4; x += 1.05) { g.beginPath(); g.moveTo(X(x), Y(1.32)); g.lineTo(X(x), Y(1.1)); g.stroke(); } // швы панелей
+    g.fillStyle = '#20180f'; g.font = 'italic 900 20px Arial'; g.textAlign = 'center'; g.fillText('ЛиАЗ', X(4.3), Y(.75));
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+  const sideTex = mkSide(false), doorSideTex = mkSide(true); // у борта с дверями детали в зеркальном порядке, надпись читается нормально
+  for (const sd of [-1, 1]) { const pl = new THREE.Mesh(new THREE.PlaneGeometry(L - .5, 1.12), std({ map: sd > 0 ? sideTex : doorSideTex, transparent: true, roughness: .5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    pl.position.set(0, .36 + .56, sd * ((Wd - .1) / 2 + .32 * .15 + .006)); if (sd < 0) pl.rotation.y = Math.PI; bus.add(pl); }
+  // оконная лента: стекло и стойки
+  B(L - .7, .9, .04, glassM, -.05, 1.96, Wd / 2 - .07); B(L - .7, .9, .04, glassM, -.05, 1.96, -Wd / 2 + .07);
+  for (let x = -L / 2 + .45; x <= L / 2 - .5; x += 1.05) for (const sd of [-1, 1]) B(.09, .92, .06, pillarM, x, 1.96, sd * (Wd / 2 - .07));
+  B(L - .5, .06, Wd - .12, pillarM, 0, 1.49, 0).visible = false;
+  // лобовое (два наклонных стекла) и заднее стекло
+  for (const sd of [-1, 1]) { const ws = B(.05, 1.05, Wd / 2 - .12, glassM, L / 2 - .12, 1.98, sd * (Wd / 4 - .02)); ws.rotation.z = -.12; }
+  B(.05, .98, .06, pillarM, L / 2 - .12, 1.98, 0).rotation.z = -.12;
+  B(.05, .82, Wd - .4, glassM, -L / 2 + .08, 2.0, 0);
+  // бампер, решётка
+  const chrome = std({ color: 0x9a9a9a, metalness: .9, roughness: .25 });
+  B(.16, .2, Wd - .1, chrome, L / 2 + .02, .48, 0); B(.16, .2, Wd - .1, chrome, -L / 2 - .02, .48, 0);
+  B(.03, .3, .9, darkM, L / 2 + .01, .82, 0);
+  const hl = std({ color: 0xffffee, emissive: 0xfff2c0, emissiveIntensity: 0 }); for (const s of [-1, 1]) { const h = new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, .06, 16), hl); h.rotation.z = Math.PI / 2; h.position.set(L / 2 + .0, .8, s * .9); bus.add(h); const rim = new THREE.Mesh(new THREE.TorusGeometry(.135, .018, 6, 16), chrome); rim.rotation.y = Math.PI / 2; rim.position.copy(h.position); bus.add(rim); }
+  const tl = std({ color: 0x8a1a12, emissive: 0xff2a10, emissiveIntensity: .3 }); for (const s of [-1, 1]) B(.05, .22, .2, tl, -L / 2 - .01, .82, s * .95);  // табличка маршрута
   const plate = (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#f2ead0'; g.fillRect(0, 0, 256, 64); g.fillStyle = '#1a1a1a'; g.font = '900 34px Arial'; g.fillText('7', 12, 46); g.font = '700 18px Arial'; g.fillText('ЗАВОД — РЫНОК', 52, 40); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
-  const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, .35), std({ map: plate })); pl.position.set(L / 2 + .05, 2.6, 0); pl.rotation.y = Math.PI / 2; bus.add(pl);
+  const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, .35), std({ map: plate })); pl.position.set(L / 2 - .02, 2.62, 0); pl.rotation.y = Math.PI / 2; bus.add(pl);
   // колёса (вращаются)
-  const wheels = []; for (const x of [-3.2, 3.4]) for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, .32, 16), darkM); w.rotation.x = Math.PI / 2; w.position.set(x, .5, s * (Wd / 2 - .1)); bus.add(w); wheels.push(w); }
+  const hubM = std({ color: 0xb8b8b0, metalness: .8, roughness: .35 }); const wheels = []; for (const x of [-3.2, 3.4]) for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, .32, 20), darkM); w.rotation.x = Math.PI / 2; w.position.set(x, .5, s * (Wd / 2 - .02)); bus.add(w); const hub = new THREE.Mesh(new THREE.CylinderGeometry(.24, .28, .04, 14), hubM); hub.position.y = s * .17; w.add(hub); wheels.push(w); }
   // двери справа (сторона −Z при движении в −X, т.е. к тротуару): две створки-гармошки
   const doorsSide = -1; // локальная сторона дверей
   const doors = [];
-  for (const dx of [3.6, -.6]) { const pair = []; for (const s of [-1, 1]) { const d = B(.55, 2.0, .05, glassM, dx + s * .28, 1.4, doorsSide * (Wd / 2 + .01)); pair.push({ m: d, base: d.position.x, s }); } doors.push({ x: dx, pair }); }
+  const doorM = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#d8cfb4'; g.fillRect(0, 0, 64, 256);
+    g.fillStyle = 'rgba(30,40,46,.85)'; g.fillRect(8, 10, 48, 120); g.fillRect(8, 140, 48, 70); g.fillStyle = '#222'; g.fillRect(0, 0, 3, 256); g.fillRect(61, 0, 3, 256); // стёкла и резиновые уплотнители
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return std({ map: t, roughness: .4, metalness: .2 }); })();
+  for (const dx of [3.6, -.6]) { const pair = []; for (const s of [-1, 1]) { const d = B(.55, 2.0, .05, doorM, dx + s * .28, 1.4, doorsSide * (Wd / 2 - .02)); pair.push({ m: d, base: d.position.x, s }); } doors.push({ x: dx, pair }); }
   // салон
   const floor = B(L - .4, .05, Wd - .2, std({ color: 0x4a3a2a, roughness: .9 }), 0, .55, 0);
   const seatM = std({ color: 0x8a2a22, roughness: .7 });

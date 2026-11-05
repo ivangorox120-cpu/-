@@ -63,7 +63,7 @@ export function createWeapon({ audio, onShot }) {
 
   // ---------- состояние ----------
   const W = { state: 'holstered', t: 0, ammo: 2, reserve: 0, aimK: 0, wantAim: false, recoil: 0, drawK: 0, kick: 0, swayT: 0 };
-  const HIP = new THREE.Vector3(.2, -.2, -.44), ADS = new THREE.Vector3(0, -.052, -.27), DOWN = new THREE.Vector3(.2, -.55, -.25);
+  const HIP = new THREE.Vector3(.2, -.2, -.44), ADS = new THREE.Vector3(0, -.075, -.5), DOWN = new THREE.Vector3(.2, -.55, -.25);
   const tmp = new THREE.Vector3(), wp = new THREE.Vector3();
 
   function draw() { if (W.state === 'holstered') { W.state = 'drawing'; W.t = 0; audio && (audio.gunMove ? audio.gunMove() : audio.reloadClose()); return true; } return false; }

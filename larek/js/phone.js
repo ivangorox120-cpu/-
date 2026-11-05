@@ -131,7 +131,7 @@ export function createPhone({ scene, camera, std, audio, color = 0x9a2b22 }) {
     if (!dialState && dialQ.length) { const d = dialQ.shift() || 10; const holeA = (52 + ((d || 10) - 1) * 30) * DEG; dialState = { d, max: holeA - (-STOP) - 0 * DEG, t: 0, ph: 'wind', clicks: 0 }; dialState.max = holeA + STOP; }
     if (!dialState) { if (dialQ.done && !dialQ.length) { const f = dialQ.done; dialQ.done = null; f(); } return; }
     const s = dialState; s.t += dt;
-    if (s.ph === 'wind') { wheelAng = Math.min(s.max, wheelAng + dt * 5.5); if (wheelAng >= s.max) { s.ph = 'hold'; s.t = 0; audio && audio.click(900, .25, 0, .03); } }
+    if (s.ph === 'wind') { wheelAng = Math.min(s.max, wheelAng + dt * 9); if (wheelAng >= s.max) { s.ph = 'hold'; s.t = 0; audio && audio.click(900, .25, 0, .03); } }
     else if (s.ph === 'hold') { if (s.t > .12) { s.ph = 'ret'; s.ret = 0; } }
     else { const v = 30 * DEG / .1; wheelAng = Math.max(0, wheelAng - dt * v); s.ret += dt * v; const c = Math.floor(s.ret / (30 * DEG)); while (s.clicks < Math.min(s.d || 10, c)) { s.clicks++; audio && audio.click(520, .35, 0, .02); } if (wheelAng <= 0) { dialState = null; } }
     wheel.rotation.y = -wheelAng; // по часовой стрелке, если смотреть на диск

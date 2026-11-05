@@ -301,7 +301,8 @@ export function preparePeople(sceneRoot, outfit = 'winter') {
     if (!prims.length) continue;
     const parts = splitParts(prims, PEOPLE_CFG);
     // рука модели навсегда поднята (машет) — в походке она торчит над головой «палкой»; такого персонажа не используем
-    const raised = ['armL', 'armR'].some(k => { const g = parts[k]; if (!g || !g.attributes.position.count) return false; g.computeBoundingBox(); return g.boundingBox.max.y > .25; });
+    // рука модели в позе (машет, согнута к лицу или к груди) — без локтя в походке она торчит «палкой»; такие модели не используем
+    const raised = ['armL', 'armR'].some(k => { const g = parts[k]; if (!g || !g.attributes.position.count) return false; g.computeBoundingBox(); return g.boundingBox.max.y > .25 || g.boundingBox.min.y > -.4; });
     if (raised) continue;
     out.push({ name: person.name, female: PEOPLE_FEMALE.includes(person.name), parts, outfit });
   }
@@ -360,6 +361,9 @@ export class Human {
     if (this.umbrella && a !== 'handsUp' && a !== 'scared') { T.shR.x = -.42; T.shR.z = -.12; T.elR.x = -1.45; }
     if (a !== 'handsUp' && a !== 'scared') { T.neck.y = this.lookYaw * .4; T.head.y = this.lookYaw * .6; T.head.x += this.lookPitch; }
     T.spine.x += lean;
+    // у моделей-прохожих рука цельная, без локтя: позы «согнуть в локте» превращались в прямую руку, торчащую вперёд.
+    // Ограничиваем подъём плеча (кроме «руки вверх» и испуга) — рука остаётся вдоль тела, лишь чуть выносится.
+    if (R.root.userData.static && a !== 'handsUp' && a !== 'scared') for (const j of ['shL', 'shR']) { T[j].x = Math.max(-.45, Math.min(.35, T[j].x)); T[j].z = Math.max(-.2, Math.min(.2, T[j].z)); }
     // смешивание
     const k = 1 - Math.exp(-this.blend * dt);
     for (const j of JOINTS) { const o = R[j]; if (!o) continue; const tg = T[j]; o.rotation.x += (tg.x - o.rotation.x) * k; o.rotation.y += (tg.y - o.rotation.y) * k; o.rotation.z += (tg.z - o.rotation.z) * k; }

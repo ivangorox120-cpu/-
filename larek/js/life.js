@@ -76,6 +76,7 @@ export function createLife(env) {
   function addItem(rec) { // rec: { kind, x, y, z, ry, data }
     const it = { id: rec.id || ('i' + Math.random().toString(36).slice(2, 8)), kind: rec.kind, data: rec.data || {}, state: 'rest', vy: 0 };
     if (rec.kind === 'box') { const w = .5, h = .36, d = .4; it.obj = makeBoxMesh(w, h, d, !!(it.data.opened)); it.half = { x: w / 2, y: h / 2, z: d / 2 }; it.mass = it.data.opened ? 1 : 12; it.stack = true; }
+    else if (rec.kind === 'bottle') { it.obj = emptyBottleMesh(); it.half = { x: .04, y: .15, z: .04 }; it.mass = .4; it.stack = false; }
     else if (rec.kind === 'gun') { it.obj = env.gunWorldMesh(); it.half = { x: .55, y: .04, z: .1 }; it.mass = 3.4; it.stack = false; }
     it.obj.position.set(rec.x, rec.y, rec.z); it.obj.rotation.y = rec.ry || 0; it.obj.traverse(o => { if (o.isMesh) o.userData.item = it; });
     scene.add(it.obj); items.push(it); syncCol(it); return it;
@@ -229,13 +230,17 @@ export function createLife(env) {
   const hab = { busy: null, t: 0 };
   const handR = makeHand(1); handR.visible = false; vm.add(handR);
   // сигарета
-  let cigModel = null; const cigHolder = new THREE.Group(); handR.add(cigHolder); cigHolder.position.set(-.01, .012, -.075); cigHolder.rotation.set(0, Math.PI / 2, 0);
+  let cigModel = null; const cigHolder = new THREE.Group(); handR.add(cigHolder); cigHolder.position.set(-.012, .006, -.07);
   const emberLight = new THREE.PointLight(0xff7030, 0, .6, 2); cigHolder.add(emberLight);
-  function setCigaretteModel(o) { cigModel = o; o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.material = m.material.clone(); } }); cigHolder.add(o); o.rotation.y = 0; o.position.set(-.04, 0, 0); }
+  function setCigaretteModel(o) { cigModel = o; o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.material = m.material.clone(); } }); cigHolder.add(o); o.rotation.y = Math.PI / 2; o.position.set(0, 0, -.03); }
   // бутылка
-  let bottleModel = null; const bottleHolder = new THREE.Group(); handR.add(bottleHolder); bottleHolder.position.set(0, .01, -.03);
+  let bottleModel = null; const bottleHolder = new THREE.Group(); handR.add(bottleHolder); bottleHolder.position.set(.005, -.01, -.045);
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(.014, .014, .018, 12), std({ color: 0xc8b06a, metalness: .8, roughness: .3 })); cap.frustumCulled = false;
-  function setBottleModel(o) { bottleModel = o; o.traverse(m => { if (m.isMesh) m.frustumCulled = false; }); bottleHolder.add(o); o.rotation.x = Math.PI / 2; o.position.set(0, -.02, .1); cap.position.set(0, .295, 0); o.add(cap); }
+  // пустая бутылка (мелкий мусор): копия модели водки без крышки, стоит вертикально
+  function emptyBottleMesh() { const g = new THREE.Group(); if (bottleModel) { const c = bottleModel.clone(true); c.traverse(m => { if (m === cap || m.geometry === cap.geometry) m.visible = false; if (m.isMesh) { m.castShadow = true; m.frustumCulled = true; } }); c.rotation.set(0, 0, 0); c.position.set(0, 0, 0); g.add(c); }
+    else { const m = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .3, 10), std({ color: 0xcfe0e0, roughness: .1, transparent: true, opacity: .7 })); m.position.y = .15; g.add(m); } return g; }
+  function giveEmptyBottle() { const it = addItem({ kind: 'bottle', x: P.x, y: camera.position.y - .5, z: P.z, ry: 0 }); pick(it); }
+  function setBottleModel(o) { bottleModel = o; o.traverse(m => { if (m.isMesh) m.frustumCulled = false; }); bottleHolder.add(o); o.rotation.x = 0; o.position.set(0, -.11, 0); cap.position.set(0, .295, 0); o.add(cap); }
   // дым
   const smokeTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(225,225,225,.55)'); gr.addColorStop(1, 'rgba(225,225,225,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const puffs = []; for (let i = 0; i < 28; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, opacity: 0 })); sp.visible = false; scene.add(sp); puffs.push({ sp, life: 0, v: new THREE.Vector3() }); }
@@ -244,11 +249,12 @@ export function createLife(env) {
 
   const fx = { smoke: 0, drunk: 0, drunkTarget: 0 };
   // курение: достать → прикурить → затяжки → окурок
-  function startSmoke() { if (hab.busy) return false; hab.busy = 'smoke'; hab.t = 0; hab.puffs = 0; hab.burn = 1; handR.visible = true; cigHolder.visible = true; bottleHolder.visible = false; if (cigModel) cigModel.traverse(m => { if (m.material && m.material.emissive) m.material.emissiveIntensity = 0; }); env.onCtl(); return true; }
-  function startDrink(kind) { if (hab.busy) return false; hab.busy = 'drink'; hab.kind = kind; hab.t = 0; hab.sips = 0; handR.visible = true; cigHolder.visible = false; bottleHolder.visible = true; cap.visible = true; env.onCtl(); return true; }
+  function startSmoke() { if (hab.busy) return false; hab.busy = 'smoke'; hab.t = 0; hab.out = 0; hab.lit = false; hab.doneAsk = false; hab.puffs = 0; hab.burn = 1; handR.visible = true; cigHolder.visible = true; bottleHolder.visible = false; if (cigModel) cigModel.traverse(m => { if (m.material && m.material.emissive) m.material.emissiveIntensity = 0; }); env.onCtl(); return true; }
+  function startDrink(kind) { if (hab.busy) return false; hab.busy = 'drink'; hab.kind = kind; hab.t = 0; hab.out = 0; hab.sips = 0; handR.visible = true; cigHolder.visible = false; bottleHolder.visible = true; cap.visible = true; env.onCtl(); return true; }
   function finishHabit(how) { // how: 'ashtray' | 'throw' | 'done'
     if (hab.busy === 'smoke') {
       if (how === 'ashtray') { const s = S(); s.butts = (s.butts || 0) + 1; setButts(s.butts); }
+      else if (how === 'urn') { env.audio && env.audio.click(500, .3, 0, .04); }
       else { // выбросить окурок — летит и гаснет
         const b = new THREE.Mesh(new THREE.CylinderGeometry(.004, .004, .025, 6), buttM); camera.getWorldDirection(tmp); b.position.copy(camera.position).addScaledVector(tmp, .3); b.userData.v = tmp.clone().multiplyScalar(3).add(tmp2.set(0, 1.5, 0)); scene.add(b); thrown.push(b); }
     }
@@ -256,14 +262,21 @@ export function createLife(env) {
   }
   const thrown = [];
   const handBase = new THREE.Vector3(.2, -.27, -.46), mouth = new THREE.Vector3(.03, -.075, -.24);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z), _e = new THREE.Euler(), _qa = new THREE.Quaternion(), _qi = new THREE.Quaternion();
+  const POSES = {
+    // сигарета между пальцами: внизу справа тыльной стороной вверх → у рта ладонью к лицу, огонёк от себя
+    smoke: { base: { p: V(.17, -.2, -.38), r: [-.15, .3, 1.2], c: .55 }, mouth: { p: V(.05, -.11, -.2), r: [.55, .25, 1.35], c: .5 } },
+    // бутылка в кулаке вертикально → горлышком к губам с наклоном
+    drink: { base: { p: V(.17, -.2, -.4), r: [0, .25, 1.45], c: .95 }, mouth: { p: V(.06, -.14, -.25), r: [.9, .15, 1.45], c: .95 } },
+  };
   function habitTick(dt) {
     smokeTick(dt);
     for (const b of thrown.slice()) { b.userData.v.y -= 9.8 * dt; b.position.addScaledVector(b.userData.v, dt); b.rotation.x += dt * 10; if (b.position.y <= .01) { b.position.y = .01; b.userData.v.set(0, 0, 0); b.userData.life = (b.userData.life || 20) - dt; if (b.userData.life <= 0) { scene.remove(b); thrown.splice(thrown.indexOf(b), 1); } } }
     fx.smoke = Math.max(0, fx.smoke - dt / 70);
-    fx.drunk += (fx.drunkTarget - fx.drunk) * Math.min(1, dt * .25); fx.drunkTarget = Math.max(0, fx.drunkTarget - dt / 240); // трезвеем ~4 мин на «единицу»
+    fx.drunk += (fx.drunkTarget - fx.drunk) * Math.min(1, dt * .25); fx.drunkTarget = Math.max(0, fx.drunkTarget - dt / 75); // трезвеем: глоток водки (.35) проходит примерно за полминуты, сильное опьянение — за пару минут
     if (hab.out > 0) { hab.out -= dt; handR.position.lerp(tmp.set(.2, -.6, -.3), Math.min(1, dt * 8)); if (hab.out <= 0) handR.visible = false; return; }
     if (!hab.busy) return;
-    hab.t += dt; const t = hab.t;
+    if (!hab.freeze) hab.t += dt; const t = hab.t;
     let pos = handBase, toMouth = 0;
     if (hab.busy === 'smoke') {
       // 0–0.6 достать, 0.6–1.4 прикурить (вспышка спички), затем циклы затяжек по 4 с
@@ -279,16 +292,24 @@ export function createLife(env) {
       // 0–0.5 взять, 0.5–0.9 открыть, 0.9–1.5 к губам, 1.5–2.8 глотки, 2.8–3.4 опустить
       if (t > .7 && cap.visible) { cap.visible = false; env.audio && env.audio.click(1800, .5, 0, .06); }
       if (t < .9) toMouth = 0; else if (t < 1.5) toMouth = ease((t - .9) / .6); else if (t < 2.8) toMouth = 1; else if (t < 3.4) toMouth = 1 - ease((t - 2.8) / .6); else toMouth = 0;
-      bottleHolder.rotation.x = toMouth * (t < 2.8 ? .9 + Math.sin(t * 4) * .05 : .9);
+      bottleHolder.rotation.x = 0;
       if (t > 1.6 && hab.sips === 0) { hab.sips = 1; const strong = { vodka: .35, samogon: .5, beer: .12 }[hab.kind] || 0; fx.drunkTarget = Math.min(1.6, fx.drunkTarget + strong); env.audio && env.audio.gulp && env.audio.gulp(); env.onDrink && env.onDrink(hab.kind, strong); }
-      if (t > 3.5) finishHabit('done');
+      if (t > 3.5) { finishHabit('done'); const f = hab.onDrinkEnd; f && f(); }
     }
-    pos = tmp.copy(handBase).lerp(mouth, toMouth);
-    if (hab.busy === 'smoke' && t < .6) pos.y -= (1 - t / .6) * .4;
-    handR.position.lerp(pos, Math.min(1, dt * 12)); handR.rotation.set(-.2 + toMouth * .7, .3 - toMouth * .5, .2 + toMouth * .9);
-    handR.curl(hab.busy === 'drink' ? .85 : .55);
+    // позы руки: «у груди» и «у рта» для каждой привычки; между ними — плавный переход
+    const PZ = POSES[hab.busy], a = PZ.base, m = PZ.mouth;
+    pos = tmp.copy(a.p).lerp(m.p, toMouth);
+    if (t < .6) pos.y -= (1 - t / .6) * .35; // рука поднимается снизу
+    handR.position.lerp(pos, Math.min(1, dt * 10));
+    _e.set(a.r[0] + (m.r[0] - a.r[0]) * toMouth, a.r[1] + (m.r[1] - a.r[1]) * toMouth, a.r[2] + (m.r[2] - a.r[2]) * toMouth);
+    _qa.setFromEuler(_e); handR.quaternion.slerp(_qa, Math.min(1, dt * 10));
+    handR.curl(a.c + (m.c - a.c) * toMouth);
+    // предмет в кулаке ориентируем в пространстве взгляда, независимо от поворота кисти
+    _qi.copy(handR.quaternion).invert();
+    if (hab.busy === 'drink') { _e.set(toMouth * 1.45, 0, 0); _qa.setFromEuler(_e); bottleHolder.quaternion.copy(_qi).multiply(_qa); } // вертикально → горлышком к губам
+    else { _e.set(.15 + toMouth * .35, -.5 + toMouth * .4, 0); _qa.setFromEuler(_e); cigHolder.quaternion.copy(_qi).multiply(_qa); } // сигарета смотрит от себя
   }
-  const habit = { get busy() { return hab.busy; }, get canFinish() { return hab.busy === 'smoke' && hab.doneAsk; }, startSmoke, startDrink, finishHabit };
+  const habit = { get busy() { return hab.busy; }, get canFinish() { return hab.busy === 'smoke' && hab.doneAsk; }, startSmoke, startDrink, finishHabit, giveEmptyBottle, set onDrinkEnd(f) { hab.onDrinkEnd = f; }, debugPose(t) { hab.t = t; hab.freeze = t != null; } }; // debugPose — для тестов анимации
 
   return {
     makeHand, items, addItem, removeItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, rotateHeld, trashHeld, unpack, get held() { return held; },

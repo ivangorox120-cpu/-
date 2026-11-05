@@ -1279,16 +1279,21 @@ function phoneCall() {
   ] });
 }
 const PHONE_NUM = { opt: '31740', vova: '22815', info: '09' };
+const PHONE_NAME = { opt: '«Оптторг»', vova: 'Вова', info: 'Справочная' };
 function dial(who) {
   callBusy = true; W.P.locked = true; W.life.startCall(); renderControls();
+  // на экране видно, что идёт звонок, — и всегда можно положить трубку
+  const num = PHONE_NUM[who] || '09', pretty = num.length > 3 ? num.replace(/(\d)(\d\d)(\d\d)$/, '$1-$2-$3') : num;
+  showDialog({ name: 'Телефон', text: `Снимаете трубку… набираете ${pretty} (${PHONE_NAME[who] || ''})`, options: [{ label: 'Положить трубку', fn: hangUp }] });
   setTimeout(() => { if (!callBusy) return; audio.tone425(true); }, 700); // трубка у уха — длинный гудок
   setTimeout(() => { if (!callBusy) return; audio.tone425(false);
     W.life.dialNumber(PHONE_NUM[who] || '09', () => { if (!callBusy) return; // диск отщёлкал номер — пошли вызовы
       audio.tone425(true, 'ring');
-      const rings = who === 'vova' && (S.phase === 'trade') && Math.random() < .5 ? 99 : RI(1, 2);
-      setTimeout(() => { if (!callBusy) return; audio.tone425(false); if (rings > 3) { audio.tone425(true, 'busy'); showDialog({ name: 'Телефон', text: 'Никто не берёт. Вова днём на вокзале, звони вечером.', options: [{ label: 'Положить трубку', fn: hangUp }] }); return; } audio.click(800, .5, 0, .05); talk(who); }, rings > 3 ? 9000 : rings * 4000);
+      showDialog({ name: 'Телефон', text: `Длинные гудки… ${PHONE_NAME[who] || ''}`, options: [{ label: 'Положить трубку', fn: hangUp }] });
+      const rings = who === 'vova' && (S.phase === 'trade') && Math.random() < .5 ? 99 : 1;
+      setTimeout(() => { if (!callBusy) return; audio.tone425(false); if (rings > 3) { audio.tone425(true, 'busy'); showDialog({ name: 'Телефон', text: 'Никто не берёт. Вова днём на вокзале, звони вечером.', options: [{ label: 'Положить трубку', fn: hangUp }] }); return; } audio.click(800, .5, 0, .05); talk(who); }, rings > 3 ? 7000 : 2600);
     });
-  }, 1900);
+  }, 1200);
 }
 function hangUp() { closeDialog(); audio.tone425(false); audio.click(400, .7, 0, .06); audio.tone425(true, 'busy'); setTimeout(() => audio.tone425(false), 1800); W.life.hangUp(); W.P.locked = false; callBusy = false; renderControls(); }
 function talk(who) {
@@ -1412,8 +1417,13 @@ if (W) {
     sprint:    { label: 'Бег', icon: 'sprint', kind: 'hold', down() { W.setSprint(true); }, up() { W.setSprint(false); }, active: () => W.sprint, visible: () => !W.P.seated },
     crouch:    { label: 'Присесть', icon: 'crouch', kind: 'tap', down() { W.toggleCrouch(); }, active: () => W.crouch, visible: () => !W.P.seated },
     inventory: { label: 'Меню', icon: 'menu', kind: 'tap', down() { openSheet(); } },
-    smoke:     { label: 'Закурить', icon: 'smoke', kind: 'tap', down() { if (!hasCig()) return; if (S.cigs <= 0) { if ((S.hidden.kontra || 0) > 0) { S.hidden.kontra--; S.cigs += 200; } else { takeStock('cig', 1); S.cigs += 20; } } S.cigs--; W.life.habit.startSmoke(); save(); }, visible: () => hasCig() && handsFree() },
-    drink:     { label: 'Выпить', icon: 'drink', kind: 'tap', down() { if (!hasBottle()) return; if (!S.bottle || S.bottle.left <= 0) { const k = (S.hidden.samogon || 0) > 0 ? 'samogon' : qOf('vodka') > 0 ? 'vodka' : 'beer'; if (k === 'samogon') S.hidden.samogon--; else takeStock(k, 1); S.bottle = { kind: k, left: k === 'beer' ? 3 : 6 }; } S.bottle.left--; W.life.habit.startDrink(S.bottle.kind); save(); }, visible: () => hasBottle() && handsFree() },
+    smoke:     { label: 'Закурить', icon: 'smoke', kind: 'tap', down() { if (!hasCig()) return; if (S.cigs <= 0) { if ((S.hidden.kontra || 0) > 0) { S.hidden.kontra--; S.cigs += 20; } else { takeStock('cig', 1); S.cigs += 20; } toast('Распечатали новую пачку (20 шт).'); } S.cigs--; W.life.habit.startSmoke(); save(); },
+      text: () => S && S.cigs > 0 ? `Закурить (${S.cigs})` : 'Закурить (новая пачка)', visible: () => hasCig() && handsFree() },
+    drink:     { label: 'Выпить', icon: 'drink', kind: 'tap', down() { if (!hasBottle()) return; if (!S.bottle || S.bottle.left <= 0) { const k = (S.hidden.samogon || 0) > 0 ? 'samogon' : qOf('vodka') > 0 ? 'vodka' : 'beer'; if (k === 'samogon') S.hidden.samogon--; else takeStock(k, 1); S.bottle = { kind: k, left: k === 'beer' ? 3 : 5 }; toast('Открыли новую бутылку.'); }
+        S.bottle.left--; const last = S.bottle.left <= 0; W.life.habit.startDrink(S.bottle.kind);
+        // последний глоток — в руке остаётся пустая бутылка: её можно поставить или выбросить в урну
+        W.life.habit.onDrinkEnd = last ? () => { S.bottle = null; W.life.habit.onDrinkEnd = null; W.life.habit.giveEmptyBottle(); toast('Бутылка кончилась. Пустую — в урну.'); save(); } : null; save(); },
+      text: () => S && S.bottle && S.bottle.left > 0 ? `Выпить (${S.bottle.left})` : 'Выпить (новая бутылка)', visible: () => hasBottle() && handsFree() },
     flashlight:{ label: 'Фонарик', icon: 'flashlight', kind: 'tap', down() { toast(W.toggleFlashlight() ? 'Фонарик включён' : 'Фонарик выключен'); }, active: () => W.flashlightOn, visible: () => W.flashlightOn || (!W.inKiosk() && W.isNight()) },
     door:      { label: 'Дверь', icon: 'door', kind: 'tap', down() { W.toggleDoor(); }, visible: () => W.nearDoor() },
   };
