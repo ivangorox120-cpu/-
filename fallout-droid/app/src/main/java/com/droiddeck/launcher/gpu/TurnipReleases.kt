@@ -52,7 +52,7 @@ object TurnipReleases {
             val gpus = if (m.groupValues[3] == "Axxx") "all Adreno" else m.groupValues[3]
             Kind(m.groupValues[1].isNotEmpty(), "$gpus · $flavour", "wn-" + m.groupValues[2])
         },
-        Source("DroidDeck", "Droid-Deck/Drivers-CI") { name, tag ->
+        Source("Fallout Droid", "Droid-Deck/Drivers-CI") { name, tag ->
             if (!Regex("""^DD-Turnip-v\d+\.\d+\.\d+\.zip$""").matches(name)) return@Source null
             Kind(false, "Android + Linux · all Adreno", DriverPairs.ddTurnip(tag), bundle = true)
         },

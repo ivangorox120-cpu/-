@@ -17,12 +17,12 @@ data class BottomShot(val uri: Uri?, val file: File?, val takenAt: Long, val ste
 }
 
 object BottomScreenshots {
-    private const val FOLDER = "DroidDeck"
+    private const val FOLDER = "FalloutDroid"
     private const val QUALITY = 95
     private const val LIMIT = 120
 
     internal fun fileName(at: Long): String =
-        "DroidDeck_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(at)) + ".jpg"
+        "FalloutDroid_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(at)) + ".jpg"
 
     fun save(context: Context, bitmap: Bitmap, at: Long = System.currentTimeMillis()): Boolean = runCatching {
         val name = fileName(at)

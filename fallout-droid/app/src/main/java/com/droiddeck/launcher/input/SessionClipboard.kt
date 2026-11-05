@@ -29,7 +29,7 @@ class SessionClipboard(context: Context, private val hasFocus: () -> Boolean) {
                     published = true
                     if (current?.toString() != text) {
                         echo = text
-                        clipboard.setPrimaryClip(ClipData.newPlainText("DroidDeck", text))
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Fallout Droid", text))
                     }
                 }
             }

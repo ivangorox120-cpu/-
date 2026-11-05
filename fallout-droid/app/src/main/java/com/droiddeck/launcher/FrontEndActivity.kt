@@ -1046,8 +1046,16 @@ class FrontEndActivity : ComponentActivity() {
         finish()
     }
 
+    private var redirectedToFalloutDroid = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Fallout Droid: интерфейс движка не показывается — всегда открывается наше меню.
+        redirectedToFalloutDroid = true
+        startActivity(Intent(this, com.wastelanddroid.MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        finish()
+        return
         pendingSessionLogExport = savedInstanceState?.getString(KEY_PENDING_SESSION_LOG_EXPORT)?.let(::File)
         homeChoiceOpen = savedInstanceState?.getBoolean(STATE_HOME_CHOICE_OPEN) == true
         gameSpaceOffered = savedInstanceState?.getBoolean(STATE_GAME_SPACE_OFFERED) == true
@@ -1860,6 +1868,7 @@ class FrontEndActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") state.getParcelable(key)
 
     override fun onDestroy() {
+        if (redirectedToFalloutDroid) { super.onDestroy(); return }
         cancelCompatLaunch()
         updates.unregister()
         super.onDestroy()
