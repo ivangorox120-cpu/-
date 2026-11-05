@@ -1,3 +1,4 @@
+"""Single-core Steam affinity is rechecked even if its thread count stayed the same."""
 import subprocess
 import tempfile
 import unittest

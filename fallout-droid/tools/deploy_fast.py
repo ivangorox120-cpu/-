@@ -63,6 +63,7 @@ def graft_targets():
 
 
 def changed_paths(donor_commit):
+    """Return {path: status} for the checkout, uncommitted and untracked files included."""
     changes = {}
     fields = git('diff', '--name-status', '-z', '--no-renames', donor_commit).decode().split('\0')
     for status, path in zip(fields[0::2], fields[1::2]):
@@ -73,6 +74,7 @@ def changed_paths(donor_commit):
 
 
 def classify(changes, targets, donor_entries):
+    """Split changes into grafts {path: asset}, ignored paths and blockers {path: reason}."""
     grafts, ignored, blocked = {}, [], {}
     for path, status in sorted(changes.items()):
         if is_ignored(path):
@@ -94,6 +96,7 @@ def helper_bytes(path):
 
 
 def graft(donor, replacements, output):
+    """Copy the donor with entries replaced, dropping its signature so it can be re-signed."""
     with ZipFile(donor) as source, ZipFile(output, 'w') as target:
         for info in source.infolist():
             name = info.filename
@@ -197,6 +200,7 @@ def pwsh():
 
 
 def signing_env():
+    """The .signing.env build_local.sh uses: the override, else the checkout's own, else the main checkout's."""
     common = Path(git('rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip())
     for candidate in (os.environ.get('DROIDDECK_SIGNING_ENV'), ROOT / '.signing.env', common.parent / '.signing.env'):
         if candidate and Path(candidate).is_file():
@@ -214,6 +218,7 @@ def sign_with_env(env_file, unsigned, signed):
     build_tools = sorted(complete, key=version_key, reverse=True)
     if not build_tools:
         raise Refused('no build-tools with aapt, zipalign and apksigner under ' + str(sdk_root() / 'build-tools'))
+    # BUILD_TOOLS is assigned after the env file is sourced so the file cannot replace the chosen SDK.
     script = 'set -a; cd "$(dirname "$1")"; . "$1"; set +a; BUILD_TOOLS="$5" exec "$2" "$3" standard "$4"'
     result = subprocess.run(['bash', '-c', script, 'sign', str(env_file), str(ROOT / 'tools/release/sign-apk.sh'),
                              str(unsigned), str(signed), str(build_tools[0].parent.resolve())],
@@ -225,6 +230,7 @@ def sign_with_env(env_file, unsigned, signed):
 def sign(unsigned, signed):
     if not SIGNER.is_file() and (env_file := signing_env()):
         return sign_with_env(env_file, unsigned, signed)
+    # Microsoft Store Python virtualizes AppData for child processes too and hides the signer; use a python.org install.
     def quoted(value):
         return "'" + str(value).replace("'", "''") + "'"
     command = (f"if (-not (Test-Path -LiteralPath {quoted(SIGNER)})) {{ Write-Error 'Local signer not found'; exit 1 }}; "

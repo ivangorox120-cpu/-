@@ -1,3 +1,4 @@
+"""Steam owns game caps; the nested compositor follows the output refresh rate."""
 import os
 from pathlib import Path
 import subprocess

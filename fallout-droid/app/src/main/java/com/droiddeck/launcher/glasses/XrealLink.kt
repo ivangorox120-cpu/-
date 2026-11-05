@@ -7,6 +7,7 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+/** One connection owns two TCP channels. All control requests are serialized off the UI thread. */
 internal class XrealLink internal constructor(
     private val connector: XrealConnector,
     private val listener: Listener,
@@ -46,7 +47,7 @@ internal class XrealLink internal constructor(
             VitureProtocol.MSG_DISPLAY -> value in 2..5 || value == XrealModel.NATIVE_60HZ
             VitureProtocol.MSG_BRIGHTNESS -> value in 0..9
             VitureProtocol.MSG_FILM -> value in 0..1
-            else -> false
+            else -> false // No guessed volume, sensor-rate, or VITURE wire commands.
         }
         return valid && commands.offer(Command(msgId, value))
     }
@@ -87,7 +88,7 @@ internal class XrealLink internal constructor(
                         }
                     } catch (e: Exception) {
                         failure.set(e)
-                        current.close()
+                        current.close() // Wake a control read immediately.
                     }
                 }, "xreal-reports").apply { isDaemon = true; start() }
                 ready = true
@@ -144,11 +145,12 @@ internal class XrealLink internal constructor(
         tracking = false
         commands.clear()
         connection.getAndSet(null)?.close()
-        connector.close()
+        connector.close() // Includes sockets still inside connect().
         worker.interrupt()
     }
 }
 
+/** Kept independent of Android so the real framing/acknowledgement path is testable. */
 internal class XrealControl(private val channels: XrealChannels, private val settleDelayMs: Long = 150) {
     private var transaction = 0
     private fun exchange(command: Int, value: Int? = null): ByteArray {
@@ -156,7 +158,7 @@ internal class XrealControl(private val channels: XrealChannels, private val set
         channels.controlOutput.write(XrealProtocol.request(command, transaction, value))
         channels.controlOutput.flush()
         val deadline = System.nanoTime() + 3_000_000_000L
-        repeat(32) {
+        repeat(32) { // Bound unsolicited button/status packets and stale responses.
             if (System.nanoTime() > deadline) throw IOException("XREAL control timed out")
             XrealProtocol.response(XrealProtocol.read(channels.controlInput), command, transaction)?.let { return it }
         }
@@ -170,6 +172,9 @@ internal class XrealControl(private val channels: XrealChannels, private val set
     fun changeDisplay(mode: Int): Int {
         val stereo = mode == 5
         set(XrealProtocol.SET_INPUT, if (stereo) 1 else 0)
+        // On 1S, SET_INPUT itself changes EDID. Sending SET_DISPLAY immediately
+        // receives error 5001 while that change is pending. GET_DISPLAY returns
+        // an empty property during the transition; wait for a real mode report.
         val current = awaitDisplay { (it == 5) == stereo }
         if (current == mode) return current
         set(XrealProtocol.SET_DISPLAY, mode)

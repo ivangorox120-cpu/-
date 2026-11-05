@@ -1,4 +1,5 @@
 #pragma once
+// DXVK's dxbc subset is zlib licensed; vendored under cpp/thirdparty/dxbc.
 
 #include <cstdint>
 #include <vector>

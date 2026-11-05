@@ -26,7 +26,6 @@ public final class LinuxRuntime {
     public static final String EXTRA_LINUX_MODE = "linux_mode";
     private static final String KGSL_DEVICE = "/dev/kgsl-3d0";
     public static final String GUEST_RUNTIME_DIR = "/run/droiddeck";
-    public static final String GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games";
     private static final String SYSTEM_FONTS = "/system/fonts";
     private static final String GUEST_SYSTEM_FONTS = "/usr/local/share/fonts/android";
     public static final String DEBUG_LOG_DIR = "FalloutDroid";
@@ -51,6 +50,7 @@ public final class LinuxRuntime {
     }
 
     public static File liveDir(Context context) {
+        // Android may evict cache files even while guest processes are using them.
         File dir = new File(context.getNoBackupFilesDir(), "guest-runtime");
         dir.mkdirs();
         return dir;
@@ -63,7 +63,9 @@ public final class LinuxRuntime {
     }
 
     private static final String HOST_DIR = "opt/android-host";
+    /** The downloaded add-on pack. The APK does not ship this binary. */
     public static final String PROOT_PACK = "add-on pack";
+    /** Termux's unpatched proot inside the rootfs. Developer switch only. */
     public static final String PROOT_ROOTFS = "rootfs fallback";
     public static final String PROOT_MISSING = "missing";
 
@@ -79,6 +81,7 @@ public final class LinuxRuntime {
         return rootfsProot(context).isFile() && rootfsLoader(context).isFile();
     }
 
+    /** Patched proot is the add-on pack. The rootfs copy is not that binary. */
     public static boolean patchedProot(Context context) {
         return AddonPack.PROOT.installed(context);
     }
@@ -95,6 +98,7 @@ public final class LinuxRuntime {
         return AddonPack.PROOT.file(context, "libproot-loader.so");
     }
 
+    /** Where {@link #prootBinary} came from: {@link #PROOT_PACK}, {@link #PROOT_ROOTFS} or {@link #PROOT_MISSING}. */
     public static String prootSource(Context context) {
         File bin = prootBinary(context);
         if (!bin.isFile()) return PROOT_MISSING;
@@ -112,6 +116,7 @@ public final class LinuxRuntime {
         return hasRootfs(context) && (patchedProot(context) || rootfsProotReady(context));
     }
 
+    /** The rootfs alone: enough to read the game library, while the proot pack can still be downloading. */
     public static boolean hasRootfs(Context context) {
         if (LinuxRuntimeInstaller.isRemoving() || LinuxRuntimeInstaller.hasRemovalPending(context)) return false;
         File root = rootDir(context);
@@ -279,42 +284,10 @@ public final class LinuxRuntime {
         return false;
     }
 
-    static final String MALI_DEVICE = "/dev/mali0";
-
-    static final String[] DRM_RENDER_NODES = {
-        "/dev/dri/renderD128", "/dev/dri/renderD129", "/dev/dri/renderD130", "/dev/dri/renderD131",
-    };
-
-    public static String gpuStandIn(Context context) {
-        if (new File(KGSL_DEVICE).exists()) return KGSL_DEVICE;
-        if (!com.droiddeck.launcher.core.DeviceSupport.INSTANCE.vkBridge(context)) return null;
-        return bridgeStandIn(path -> new File(path).exists());
-    }
-
-    static String bridgeStandIn(java.util.function.Predicate<String> exists) {
-        if (exists.test(MALI_DEVICE)) return MALI_DEVICE;
-        for (String node : DRM_RENDER_NODES) if (exists.test(node)) return node;
-        return null;
-    }
-
-    public static String deviceNumbers(String path) {
-        try {
-            long dev = Os.stat(path).st_rdev;
-            long major = ((dev >> 8) & 0xfff) | ((dev >> 32) & ~0xfffL);
-            long minor = (dev & 0xff) | ((dev >> 12) & ~0xffL);
-            return major + ":" + minor;
-        } catch (ErrnoException e) {
-            return null;
-        }
-    }
-
     private static void bindGpuNode(Context context, List<String> cmd) {
-        String standIn = gpuStandIn(context);
-        if (standIn == null) return;
-        boolean kgsl = standIn.equals(KGSL_DEVICE);
         StructStat st;
         try {
-            st = Os.stat(standIn);
+            st = Os.stat(KGSL_DEVICE);
         } catch (ErrnoException e) {
             return;
         }
@@ -334,14 +307,13 @@ public final class LinuxRuntime {
             Files.write(new File(drm, "dev").toPath(),
                     (major + ":" + minor + "\n").getBytes(StandardCharsets.UTF_8));
             Files.write(new File(device, "uevent").toPath(),
-                    (kgsl ? "DRIVER=kgsl-3d0\nMODALIAS=platform:kgsl-3d0\n" : "DRIVER=mali\nMODALIAS=platform:mali\n")
-                            .getBytes(StandardCharsets.UTF_8));
+                    "DRIVER=kgsl-3d0\nMODALIAS=platform:kgsl-3d0\n".getBytes(StandardCharsets.UTF_8));
             File subsystem = new File(device, "subsystem");
             if (!Files.isSymbolicLink(subsystem.toPath())) {
                 Os.symlink("/sys/bus/platform", subsystem.getPath());
             }
             File driver = new File(device, "driver");
-            if (kgsl && !Files.isSymbolicLink(driver.toPath())) {
+            if (!Files.isSymbolicLink(driver.toPath())) {
                 Os.symlink("/sys/bus/platform/drivers/msm_drm", driver.getPath());
             }
         } catch (IOException | ErrnoException e) {
@@ -349,7 +321,7 @@ public final class LinuxRuntime {
         }
         bind(cmd, new File(base, "sys").getPath() + ":/sys/dev/char");
         bind(cmd, dri.getPath() + ":/dev/dri");
-        bind(cmd, standIn + ":/dev/dri/" + node);
+        bind(cmd, KGSL_DEVICE + ":/dev/dri/" + node);
         bindDrmClass(base, cmd, node, major + ":" + minor);
     }
 
@@ -420,6 +392,9 @@ public final class LinuxRuntime {
         return thermalZone("ddr");
     }
 
+    // MangoHud reads the GPU and DDR temperatures from these zone numbers (bindAdrenoStats). On phones
+    // where they are CPU zones, their type follows the temperature put there, so they stay out of the
+    // CPU average.
     private static java.util.Map<String, String> replacedZoneTypes() {
         java.util.Map<String, String> replaced = new java.util.HashMap<>();
         if (gpuTempSource() != null) {
@@ -430,6 +405,7 @@ public final class LinuxRuntime {
         return replaced;
     }
 
+    /** The zones the session's MangoHud averages for the CPU temperature (all typed cpuN-thermal there). */
     public static List<File> cpuTempZones() {
         java.util.Map<String, String> replaced = replacedZoneTypes();
         List<File> zones = new ArrayList<>();

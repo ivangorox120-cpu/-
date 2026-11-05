@@ -47,6 +47,8 @@ object GogAuth {
         Log.i(TAG, "signed in")
     }
 
+    fun storedToken(context: Context): String? = StoreAccounts.read(context, Store.GOG)?.optString("access_token", "")?.ifEmpty { null }
+
     @JvmStatic
     @Synchronized
     fun validToken(context: Context): String? {

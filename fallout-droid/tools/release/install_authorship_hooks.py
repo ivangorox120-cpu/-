@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Install shared worktree hooks while preserving existing executable hooks."""
 from pathlib import Path
 import shutil
 import subprocess

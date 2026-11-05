@@ -42,7 +42,7 @@ jobs:
             --prerelease \
             --notes "Скачайте \`fallout-droid.apk\` и установите. Android 9+, arm64, Adreno 7xx/8xx (Snapdragon 8 Gen 1 и новее; Adreno 6xx — экспериментально).
 
-          Первый запуск: «Играть» → установка рантайма (~3 ГБ) → вход в Steam для загрузки Proton Experimental. На Android 14+ включите «Disable child process restrictions» в параметрах разработчика.
+          Первый запуск: «Подготовка к игре» → отключите ограничение дочерних процессов (параметры разработчика) → установите Linux-среду (~3 ГБ) → установите Proton. Затем «Играть».
 
           Telegram: https://t.me/rommy_apps
 

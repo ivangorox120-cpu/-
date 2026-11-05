@@ -51,6 +51,7 @@ internal class HandImageBuffer {
         pixels.clear()
         pixels.put(rgb)
         pixels.rewind()
+        // MediaPipe applies the model metadata's float normalization to these RGB bytes.
         return ByteBufferImageBuilder(pixels, width, height, MPImage.IMAGE_FORMAT_RGB).build()
     }
 }

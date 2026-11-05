@@ -6,8 +6,7 @@ image=${DROIDDECK_BUILD_IMAGE}
 platform=${DROIDDECK_DOCKER_PLATFORM}
 rust_cache="${HOME}/.cache/droiddeck-comet-rust${platform#linux/amd64}"
 rust_cache=${rust_cache/\/arm64/-arm64}
-git_common=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)
-docker run --rm --platform "$platform" -v "$repo:/src" -v "$git_common:$git_common" \
+docker run --rm --platform "$platform" -v "$repo:/src" \
   -v "${rust_cache}:/rust" -w /src \
   -e CARGO_HOME=/rust/cargo -e RUSTUP_HOME=/rust/rustup "$image" bash -lc '
     set -euo pipefail

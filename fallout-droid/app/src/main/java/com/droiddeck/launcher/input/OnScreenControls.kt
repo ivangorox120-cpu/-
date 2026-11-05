@@ -13,7 +13,6 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
-import com.droiddeck.launcher.session.SessionPrefs
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -60,19 +59,14 @@ class OnScreenControls(
             return dx * dx + dy * dy <= hit * hit
         }
 
-        fun drag(x: Float, y: Float): Boolean {
+        fun drag(x: Float, y: Float) {
             var dx = x - ax
             var dy = y - ay
             val d = sqrt(dx * dx + dy * dy)
-            val atLimit = d > radius
-            if (atLimit) { dx = dx / d * radius; dy = dy / d * radius }
-            if (!atLimit && abs(dx - kx) < MIN_STICK_MOVE_PX && abs(dy - ky) < MIN_STICK_MOVE_PX) return false
+            if (d > radius) { dx = dx / d * radius; dy = dy / d * radius }
             kx = dx; ky = dy; dirty = true
-            return true
         }
     }
-
-    private val stickRedraw = ThrottledRedraw(this, STICK_REDRAW_MS)
 
     private val controls = listOf(
         Control("up", "dpad", -1, 26f, 0f, -52f),
@@ -217,7 +211,6 @@ class OnScreenControls(
     }
 
     override fun onDetachedFromWindow() {
-        stickRedraw.cancel()
         releaseAll()
         super.onDetachedFromWindow()
     }
@@ -519,7 +512,6 @@ class OnScreenControls(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (editing) return onEditTouch(event)
-        if (event.getToolType(event.actionIndex) == MotionEvent.TOOL_TYPE_MOUSE) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val index = event.actionIndex
@@ -550,7 +542,7 @@ class OnScreenControls(
                     control.ay = if (adaptive) event.getY(index) else control.cy
                     control.drag(event.getX(index), event.getY(index))
                 }
-                if (SessionPrefs.lowLatency(context)) requestUnbufferedDispatch(event)
+                requestUnbufferedDispatch(event)
                 apply()
                 return true
             }
@@ -559,14 +551,13 @@ class OnScreenControls(
                 if (keyboardPressedBy != -1) return true
                 if (quickPressedBy != -1) return true
                 var changed = false
-                var stickMoved = false
                 for (index in 0 until event.pointerCount) {
                     val pointer = event.getPointerId(index)
                     if (forwardedPointerBits and (1 shl pointer) != 0) continue
                     val x = event.getX(index)
                     val y = event.getY(index)
                     val stick = controls.firstOrNull { it.stick >= 0 && it.pressedBy == pointer }
-                    if (stick != null) { stickMoved = stick.drag(x, y) || stickMoved; continue }
+                    if (stick != null) { stick.drag(x, y); changed = true; continue }
                     val over = controlAt(x, y)?.takeIf { it.stick < 0 }
                     for (control in controls) {
                         if (control.stick < 0 && control.pressedBy == pointer && control !== over) {
@@ -579,7 +570,7 @@ class OnScreenControls(
                         changed = true
                     }
                 }
-                if (changed) apply() else if (stickMoved) apply(stickOnly = true)
+                if (changed) apply()
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
@@ -681,6 +672,7 @@ class OnScreenControls(
     private fun closestSnap(position: Float, targets: List<Float>): Float? =
         targets.minByOrNull { abs(position - it) }?.takeIf { abs(position - it) <= dp(SNAP_DP) }
 
+    /** Whether a finger going down at ([x], [y]) lands on something here, as [onTouchEvent] decides it. */
     fun takesTouchAt(x: Float, y: Float): Boolean =
         editing || keyboardContains(x, y) || (!buttonsOnly && quickContains(x, y)) ||
             (!quickHidden && (controlAt(x, y) ?: adaptiveStickAt(x, y)) != null)
@@ -713,7 +705,7 @@ class OnScreenControls(
         else -> control.target != ControllerPrefs.OFF
     }
 
-    private fun apply(stickOnly: Boolean = false) {
+    private fun apply() {
         val bridge = pad
         if (bridge == null || editing) { invalidate(); return }
         val qamHeld = controls.any { it.id == "qam" && it.pressedBy != -1 }
@@ -745,7 +737,7 @@ class OnScreenControls(
                 for (target in used) write(state, target, target in held)
             }
         }
-        if (stickOnly) stickRedraw.request() else invalidate()
+        invalidate()
     }
 
     private fun write(state: PadState, target: String, down: Boolean) {
@@ -787,8 +779,6 @@ class OnScreenControls(
 
     private companion object {
         const val DOUBLE_TAP_MS = 300L
-        const val STICK_REDRAW_MS = 33L
-        const val MIN_STICK_MOVE_PX = 1f
         const val MIN_FACE_MM = 9.5f
         const val FULL_SIZE_HEIGHT_MM = 85f
         const val BOTTOM_MARGIN_MM = 5f

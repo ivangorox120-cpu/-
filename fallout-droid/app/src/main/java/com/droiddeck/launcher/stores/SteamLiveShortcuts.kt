@@ -130,6 +130,7 @@ object SteamLiveShortcuts {
         if (evaluate(context, js) != null) Log.i(TAG, "live shortcuts: art $assetType for $id")
     }
 
+    /** Moves and resizes a game's logo in the running client; with null the client's default position comes back. */
     fun setLogoPosition(context: Context, appId: Long, position: LogoPosition.Value?) {
         if (!clientRunning()) return
         val id = appId and 0xFFFFFFFFL

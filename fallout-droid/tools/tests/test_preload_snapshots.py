@@ -30,6 +30,7 @@ class PreloadSnapshotTest(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
+        # Real repository inputs exercise the transitive include walker and build recipe.
         for group in snapshots.INPUTS:
             for name in snapshots.source_files(group):
                 if name.startswith('@'):

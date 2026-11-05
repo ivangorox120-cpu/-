@@ -1,3 +1,4 @@
+"""Exercise the compositor's real button dispatcher with a recording Wayland sink."""
 import os
 from pathlib import Path
 import shutil

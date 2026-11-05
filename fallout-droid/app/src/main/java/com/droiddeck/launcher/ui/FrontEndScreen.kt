@@ -133,7 +133,7 @@ class FrontEndState(
     val dualScreen: Boolean = false,
     val dualScreenDevice: Boolean = false,
     val dualScreenMode: String = com.droiddeck.launcher.input.DualScreen.MODE_AUTO,
-    val dualScreenSessions: String = com.droiddeck.launcher.input.DualScreen.MODE_AUTO,
+    val dualScreenLauncher: Boolean = true,
     val dualScreenControls: Boolean = true,
     val packages: List<PackageRow>? = null,
     val packageCatalogLoading: Boolean = false,
@@ -149,10 +149,6 @@ class FrontEndState(
     val oscMode: String = SessionPrefs.OSC_AUTO,
     val controller: com.droiddeck.launcher.input.ControllerPrefs.Settings? = null,
     val phantomProcessStatus: PhantomProcessStatus = PhantomProcessStatus.NOT_APPLICABLE,
-    val adreno: Boolean = true,
-    val vkBridge: Boolean = false,
-    val vkBridgeSafe: Boolean = true,
-    val bridgeProtonDxvk: Boolean = false,
     val showPhantomGate: Boolean = false,
     val orientation: Int = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
     val launcherOrientation: Int = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER,
@@ -209,9 +205,6 @@ class FrontEndActions(
     val onInstallPackage: (String) -> Unit,
     val onRemovePackage: (String) -> Unit,
     val onRuntime: () -> Unit,
-    val onVkBridge: (Boolean) -> Unit = {},
-    val onVkBridgeSafe: (Boolean) -> Unit = {},
-    val onBridgeProtonDxvk: (Boolean) -> Unit = {},
     val onFrameGenPick: (FrameGen.Mode) -> Unit,
     val onImportLossless: () -> Unit,
     val onProtons: () -> Unit,
@@ -232,9 +225,6 @@ class FrontEndActions(
     val onMemoryHud: (String) -> Unit = {},
     val onBackgroundAppLimit: (Int) -> Unit = {},
     val onShareLogs: () -> Unit = {},
-    val onShareSessionLog: (File) -> Unit = {},
-    val onSaveSessionLog: (File) -> Unit = {},
-    val onDeleteSessionLog: (File, () -> Unit) -> Unit = { _, done -> done() },
     val onClearLogs: () -> Unit = {},
     val onResetSettings: () -> Unit = {},
     val onOffline: () -> Unit,
@@ -248,7 +238,7 @@ class FrontEndActions(
     val onLauncherFullscreen: (Boolean) -> Unit = {},
     val onAnimationsEnabled: (Boolean) -> Unit = {},
     val onDualScreenMode: (String) -> Unit = {},
-    val onDualScreenSessions: (String) -> Unit = {},
+    val onDualScreenLauncher: (Boolean) -> Unit = {},
     val onDualScreenControls: (Boolean) -> Unit = {},
     val onDownloadSource: (String) -> Unit = {},
     val onDownloadMirror: (String) -> Unit = {},
@@ -301,6 +291,8 @@ internal object Motion {
         if (scale == 0f) snap() else spring(damping, stiffness)
 }
 
+private val Shape10 = RoundedCornerShape(10.dp)
+
 internal val Shape12 = RoundedCornerShape(12.dp)
 
 internal fun hueOf(name: String) = (name.hashCode().toUInt() % 360u).toFloat()
@@ -318,6 +310,13 @@ internal fun Rise(i: Int, modifier: Modifier = Modifier, content: @Composable ()
         exit = fadeOut(Motion.tw(120)),
         label = "rise",
     ) { content() }
+}
+
+@Composable
+private fun Modifier.staggerIn(i: Int): Modifier {
+    val t = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { t.animateTo(1f, Motion.tw(360, i * 30)) }
+    return graphicsLayer { alpha = t.value; translationY = (1f - t.value) * 10.dp.toPx() }
 }
 
 @Composable
@@ -436,7 +435,6 @@ private fun FrontEndScreenBody(s: FrontEndState, a: FrontEndActions, page: (@Com
             "stores:downloads" -> { com.droiddeck.launcher.stores.StoresState.openDownloads = true; selected = "stores" }
             "components" -> a.onComponents(true)
             "setup:launcher" -> { SetupTabs.openLauncher = true; selected = "setup" }
-            com.droiddeck.launcher.sync.SyncthingService.NAV -> com.droiddeck.launcher.sync.Syncthing.requestOpen()
             "setup:integration" -> { SetupTabs.openOverview = true; selected = "setup" }
             else -> selected = target
         }
@@ -555,9 +553,6 @@ private fun FrontEndScreenBody(s: FrontEndState, a: FrontEndActions, page: (@Com
     }
     LaunchedEffect(com.droiddeck.launcher.storage.StorageState.openRequests) {
         if (com.droiddeck.launcher.storage.StorageState.openPending) showRailPage("setup", true)
-    }
-    LaunchedEffect(com.droiddeck.launcher.sync.Syncthing.openRequests) {
-        if (com.droiddeck.launcher.sync.Syncthing.openPending) showRailPage("setup", true)
     }
     val onRailFocus: (String) -> Unit = { key ->
         if (key != railSelection) showRailPage(key, false)
@@ -711,7 +706,6 @@ private fun FrontEndScreenBody(s: FrontEndState, a: FrontEndActions, page: (@Com
         StoreTheme(com.droiddeck.launcher.stores.Store.XBOX) { XboxStoreDialogs() }
         com.droiddeck.launcher.stores.StoresState.pendingInstall?.let { item -> StoreTheme(item.store) { InstallWhere(item) } }
         com.droiddeck.launcher.stores.StoresState.itchPicking?.let { item -> StoreTheme(item.store) { ItchBuildPicker(item) { com.droiddeck.launcher.stores.StoresState.itchPicking = null } } }
-        com.droiddeck.launcher.stores.StoresState.gameJoltPicking?.let { item -> StoreTheme(item.store) { GameJoltBuildPicker(item) { com.droiddeck.launcher.stores.StoresState.gameJoltPicking = null } } }
         StepsLayer(screenAt)
 
         appToChooseDisplay?.let { app ->

@@ -28,6 +28,7 @@ class GpuDetectionTest {
     }
 
     @Test fun nonAdrenoRenderersAreNeverAdrenoWhateverNumberTheyCarry() {
+        // Xclipse (Exynos), Mali and Immortalis names; familyOf ignores the number off Adreno.
         assertEquals(Family.NOT_ADRENO, GpuInfo.familyOf(false, 0))
         assertEquals(Family.NOT_ADRENO, GpuInfo.familyOf(false, GpuInfo.threeDigits("Samsung Xclipse 920")))
         assertEquals(Family.NOT_ADRENO, GpuInfo.familyOf(false, GpuInfo.threeDigits("Xclipse 940")))

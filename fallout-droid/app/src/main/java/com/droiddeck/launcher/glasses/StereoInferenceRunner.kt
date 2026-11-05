@@ -31,6 +31,7 @@ internal class StereoInferenceRunner : AutoCloseable {
                 catch (e: ExecutionException) { throw e.cause ?: e }
             }
         } finally {
+            // Native inference must finish before either camera's pixels or detector can be reused.
             if (interrupted) Thread.currentThread().interrupt()
         }
     }

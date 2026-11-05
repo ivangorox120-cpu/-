@@ -3,6 +3,7 @@ package com.droiddeck.launcher.input
 import android.media.AudioManager
 import android.view.KeyEvent
 
+/** Use Steam's PulseAudio bridge for feedback instead of requesting Android's volume UI. */
 internal object SteamVolumeKeys {
     fun dispatch(event: KeyEvent, enabled: Boolean, adjust: (Int) -> Unit): Boolean {
         val direction = when (event.keyCode) {

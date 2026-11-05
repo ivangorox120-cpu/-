@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""Build and publish the one-file update catalog consumed by DroidDeck.
+
+The catalog is derived from GitHub releases, but the Android app never has to infer
+channels, parse release notes, dereference tags, or spend unauthenticated API quota.
+"""
 
 from __future__ import annotations
 
@@ -225,6 +230,7 @@ def release_entry(
 
 
 def preview_history_entry(release: dict, preview: dict, variants: list[tuple[str, str]]):
+    """Return compact history metadata for one complete, signed main build."""
     tag = release.get("tag_name") or ""
     tag_match = MAIN_TAG.fullmatch(tag)
     commit = (preview.get("commit") or "").lower()
@@ -253,6 +259,7 @@ def preview_history_entry(release: dict, preview: dict, variants: list[tuple[str
 
 
 def recent_previews(entries: list[dict], limit: int = 10) -> list[dict]:
+    """Keep the newest distinct Preview commits, newest first."""
     result = []
     seen = set()
     for entry in sorted(entries, key=lambda item: item["publishedAt"], reverse=True):
@@ -281,6 +288,8 @@ def main_commit(release: dict) -> str | None:
 
 
 def stable_app_release(releases: list[dict]) -> dict | None:
+    """The newest published app release. The repo also publishes gamescope and desktop-package
+    releases that GitHub may mark latest, so an app release is one shipping DroidDeck-<tag>.apk."""
     apps = [
         r for r in releases
         if not r.get("draft") and not r.get("prerelease")

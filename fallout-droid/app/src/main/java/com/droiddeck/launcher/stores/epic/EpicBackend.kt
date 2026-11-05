@@ -47,6 +47,7 @@ object EpicBackend : StoreBackend, EpicLaunchSupport {
                 if (!quiet) StoresState.status[store] = app.getString(R.string.stores_sync_library)
             }
             val result = EpicLibrary.sync(app, force) { line -> if (!quiet) StoresState.post { StoresState.status[store] = line } }
+            // Throttled means the cache is fresh, possibly written by another sync after this one read it.
             val fresh = if (result == EpicLibrary.SyncResult.Throttled) EpicLibrary.cached(app).map { EpicLibrary.toCatalogItem(app, it) } else cached
             StoresState.post {
                 StoresState.status.remove(store)

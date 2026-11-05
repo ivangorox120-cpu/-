@@ -1,3 +1,4 @@
+// Compile with the installed SDK's headers to verify the two mode vocabularies.
 #include "viture_protocol_public.h"
 #include "../../main/cpp/viture/display_modes.h"
 using namespace droiddeck::viture;

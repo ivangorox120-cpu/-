@@ -1,3 +1,4 @@
+"""The Quick Access Frame Limit follows the panel when its refresh rate changes."""
 from pathlib import Path
 import runpy
 import subprocess

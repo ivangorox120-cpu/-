@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Build the Quest allocation adapter around the unchanged bundled Android Turnip."""
 import io
 import json
 from pathlib import Path
@@ -33,6 +34,7 @@ def pack(entries, output):
 
 
 def build_a6xx(ndk, output_dir=OUTPUT.parent, archive_path=None):
+    """Pin a real A6xx driver, with a separate Quest adapter around the same bytes."""
     cached = archive_path or ROOT / 'app/build/quest-inputs' / f'Turnip-{A6XX_TAG}.zip'
     if not cached.exists():
         cached.parent.mkdir(parents=True, exist_ok=True)

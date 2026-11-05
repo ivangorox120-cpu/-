@@ -2,6 +2,7 @@ package com.droiddeck.launcher.input
 
 import android.content.Context
 
+/** Global defaults with optional overrides for the currently focused game. */
 object GesturePrefs {
     private fun prefs(context: Context) = context.getSharedPreferences("touch_gestures", Context.MODE_PRIVATE)
 

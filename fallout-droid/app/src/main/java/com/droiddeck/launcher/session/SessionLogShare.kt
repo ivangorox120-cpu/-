@@ -19,8 +19,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 object SessionLogShare {
-    data class Details(val sizeBytes: Long, val modifiedAt: Long)
-
     private val main = Handler(Looper.getMainLooper())
 
     var progress by mutableStateOf<Float?>(null)
@@ -37,30 +35,7 @@ object SessionLogShare {
         }, "share-logs").start()
     }
 
-    fun latest(context: Context): File? = sessions(context).lastOrNull()
-
-    fun sessions(context: Context): List<File> {
-        val current = SessionPaths.current()?.takeIf { it.isDirectory && SessionPaths.isSessionFolder(it) }
-        return (SessionPaths.sessionFolders(context) + listOfNotNull(current))
-            .distinctBy { it.absoluteFile.toPath().normalize().toString() }
-            .sortedWith(SessionPaths.chronological)
-    }
-
-    fun details(folder: File): Details {
-        var size = 0L
-        var modified = folder.lastModified()
-        folder.walkTopDown().filter { it.isFile }.forEach { file ->
-            size += file.length()
-            modified = maxOf(modified, file.lastModified())
-        }
-        return Details(size, modified)
-    }
-
-    fun deleteSession(context: Context, folder: File): Boolean {
-        if (runCatching { SessionPaths.current()?.canonicalFile == folder.canonicalFile }.getOrDefault(false)) return false
-        val knownSession = runCatching { folder.canonicalFile }.getOrNull() in sessions(context).mapNotNull { runCatching { it.canonicalFile }.getOrNull() }
-        return knownSession && folder.isDirectory && folder.deleteRecursively()
-    }
+    fun latest(context: Context): File? = SessionPaths.sessionFolders(context).lastOrNull()
 
 
     fun zipFolder(context: Context, folder: File, onProgress: ((Float) -> Unit)? = null): File? {
@@ -94,6 +69,7 @@ object SessionLogShare {
         return zip
     }
 
+    /** Every entry is scrubbed line by line, whatever its size: a raw copy can carry tokens out of the device. */
     private fun addEntry(z: ZipOutputStream, name: String, f: File) {
         z.putNextEntry(ZipEntry(name))
         val w = z.bufferedWriter()

@@ -1,3 +1,4 @@
+"""One entry point for runtime recipes, cache identities and verified job handoff."""
 import argparse
 import hashlib
 import json
@@ -33,9 +34,6 @@ def identity(name, root=ROOT):
     values = {}
     for name_ in sorted(set(paths)):
         if '__pycache__' in name_ or name_.endswith(('.pyc', '.md')):
-            continue
-        if (root / name_).is_dir():
-            values[name_] = subprocess.check_output(['git', 'ls-files', '--stage', '--', name_], cwd=root, text=True).split()[1]
             continue
         content = (root / name_).read_bytes()
         if b'\0' not in content:

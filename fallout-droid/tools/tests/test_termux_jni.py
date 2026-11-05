@@ -12,6 +12,7 @@ TERMUX_DIR = TESTS.parents[1] / "app/src/main/cpp/termux"
 
 
 def jni_include_dir():
+    """A directory holding jni.h: JNI_INCLUDE, then the JDK, then the Android NDK."""
     candidates = [os.environ.get("JNI_INCLUDE")]
     java_home = os.environ.get("JAVA_HOME")
     if java_home:
@@ -28,6 +29,7 @@ def jni_include_dir():
 
 
 def include_flags():
+    """-I flags for jni.h, plus the JDK's per-platform directory that holds jni_md.h."""
     base = jni_include_dir()
     flags = ["-I", base]
     for sub in glob.glob(os.path.join(base, "*")):

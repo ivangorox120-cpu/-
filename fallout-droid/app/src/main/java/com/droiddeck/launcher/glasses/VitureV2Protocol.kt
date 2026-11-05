@@ -1,4 +1,5 @@
-// Adapted from elasticjava/viture-v2, MIT, Copyright (c) 2026 Holger Bartnick. Source: ece8c30485f7d357fefa362ae74f3eabac9b3899; see docs/third-party/viture-v2/.
+// Adapted from elasticjava/viture-v2, MIT, Copyright (c) 2026 Holger Bartnick.
+// Source: ece8c30485f7d357fefa362ae74f3eabac9b3899; see docs/third-party/viture-v2/.
 package com.droiddeck.launcher.glasses
 
 import kotlin.math.sqrt
@@ -36,6 +37,7 @@ object VitureV2Protocol {
         val success: Boolean get() = status == 0
     }
 
+    // Device ticks have no established time unit; quaternion is xyzw with no axis remapping.
     class Pose internal constructor(
         val deviceTick: Long,
         val quaternion: FloatArray,
@@ -62,6 +64,7 @@ object VitureV2Protocol {
     }
 
     fun imuControl(streams: Int, rate: Rate = Rate.HZ_120): ByteArray {
+        // Upstream measured that stream mask 3 ACKs but produces no events on Pro 2.
         require(streams == STREAM_OFF || streams == STREAM_POSE || streams == STREAM_RAW)
         require(streams != STREAM_POSE || rate.hz <= 240)
         val wireRate = if (streams == STREAM_OFF) 0 else rate.wireValue

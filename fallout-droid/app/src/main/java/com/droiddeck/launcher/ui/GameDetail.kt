@@ -98,7 +98,6 @@ import com.droiddeck.launcher.stores.StoreInstallRoot
 import com.droiddeck.launcher.stores.StoreLanguage
 import com.droiddeck.launcher.stores.StoreSizes
 import com.droiddeck.launcher.stores.StoresState
-import com.droiddeck.launcher.stores.gamejolt.GameJoltApi
 import com.droiddeck.launcher.stores.battlenet.BattleNetInstall
 import com.droiddeck.launcher.stores.download.DownloadQueue
 import com.droiddeck.launcher.stores.download.DownloadState
@@ -116,6 +115,7 @@ import java.io.File
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 
+/** What a game page shows: `app:<appId>` for a game in the library, `[app:]<store>:<id>` for a store product. */
 internal class GameRef(val appId: Int?, val store: Store?, val storeId: String?) {
     fun game(games: List<Library.SteamGame>): Library.SteamGame? = when {
         appId != null -> games.firstOrNull { it.appId == appId }
@@ -140,7 +140,7 @@ internal enum class GameTab { ABOUT, ACHIEVEMENTS, LAUNCH, SAVES, INSTALL }
 
 @Composable
 internal fun GameDetail(
-    key: String, s: FrontEndState, a: FrontEndActions, lead: FocusRequester, backLabel: String, hopRail: String?, onBack: () -> Unit, inStore: Boolean = false,
+    key: String, s: FrontEndState, a: FrontEndActions, lead: FocusRequester, backLabel: String, hopRail: String?, onBack: () -> Unit,
 ) {
     val narrow = LocalNarrowPane.current
     val stacked = narrow || LocalConfiguration.current.screenWidthDp < 700
@@ -195,6 +195,7 @@ internal fun GameDetail(
     var inPage by remember(key) { mutableStateOf(false) }
     var onStrip by remember(key) { mutableStateOf(false) }
     var dropped by remember(key) { mutableStateOf(0) }
+    // A tab's content is swapped or refreshed under the focused row; focus goes back to the tabs, not to the rail.
     LaunchedEffect(dropped) {
         if (dropped == 0) return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
@@ -219,7 +220,6 @@ internal fun GameDetail(
                     if (!s.shortcutPicker) CompositionLocalProvider(LocalPillButtons provides true) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (installed != null && installed.sidecar.store == Store.ITCH) ItchCheckButton(installed)
-                            if (installed != null && installed.sidecar.store == Store.GAMEJOLT) GameJoltCheckButton(installed)
                             RemoveButton(title, game, installed, a)
                         }
                     }
@@ -234,7 +234,7 @@ internal fun GameDetail(
                         color = MaterialTheme.colorScheme.error, maxLines = 3, overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(2.dp))
-                    GameCapsule(scores) { GameActions(store, id, game, item, installed, s, a, Modifier.focusRequester(lead), compactMenu = stacked, inStore = inStore) }
+                    GameCapsule(scores) { GameActions(store, id, game, item, installed, s, a, Modifier.focusRequester(lead), compactMenu = stacked) }
                 }
             }
             if (StoresMotion.heroLands) header() else Rise(1) { header() }
@@ -319,6 +319,7 @@ private fun GameStatusLine(source: String, game: Library.SteamGame?, item: Catal
     }
 }
 
+/** One frosted pill that holds the game's actions and its headline scores. */
 @Composable
 private fun GameCapsule(scores: GameScores?, actions: @Composable () -> Unit) {
     Row(
@@ -384,7 +385,7 @@ private fun GameTitle(title: String, logo: Any?, titleSize: TextUnit) {
 @Composable
 internal fun GameActions(
     store: Store?, id: String?, game: Library.SteamGame?, item: CatalogItem?, installed: InstalledStoreGame?,
-    s: FrontEndState, a: FrontEndActions, leadOn: Modifier, compactMenu: Boolean = false, inStore: Boolean = false,
+    s: FrontEndState, a: FrontEndActions, leadOn: Modifier, compactMenu: Boolean = false,
 ) {
     val ctx = LocalContext.current
     val storeKey = if (store != null && id != null) "${store.id}:$id" else null
@@ -411,16 +412,10 @@ internal fun GameActions(
                     if (compactMenu) GameMoreMenu(game, a) else {
                         FileButtons(game, a)
                         GameShortcutMenu(game, a)
+                        EditArtButton(game)
                     }
                 }
                 if (store == Store.ITCH && installed != null) ItchUpdateButton(installed, download == null && StoresState.uninstalling[installed.key] == null)
-                if (store == Store.GAMEJOLT && installed != null) GameJoltUpdateButton(installed, download == null && StoresState.uninstalling[installed.key] == null)
-                if (store == Store.GAMEJOLT && installed != null) GameJoltVersionButton(installed, download == null && StoresState.uninstalling[installed.key] == null)
-                if (inStore && store == Store.GAMEJOLT && installed != null) {
-                    SecondaryButton(stringResource(R.string.stores_view_on, Store.GAMEJOLT.shortLabel)) {
-                        openUrl(ctx, item?.storeUrl.orEmpty().ifBlank { GameJoltApi.pageUrl("game", installed.sidecar.id) })
-                    }
-                }
                 if (store == Store.GOG && installed != null) GogMaintenanceActions(installed)
                 if (store == Store.XBOX && id != null) XboxInstalledStream(id, game?.name ?: item?.title.orEmpty(), item)
                 if (store == Store.XBOX && installed != null && id != null) {
@@ -443,7 +438,6 @@ internal fun GameActions(
                     }
                     SecondaryButton(stringResource(R.string.bnet_open)) { a.onBattleNet() }
                 }
-                if (game != null && !compactMenu) EditArtButton(game)
             }
             download != null -> {
                 ActionChip(downloadLabel(download), ok = false)
@@ -491,7 +485,7 @@ internal fun GameActions(
                 }
                 if (!item.accessible) SecondaryButton(buyLabel(item)) { openStoreUrl(ctx, item) }
             }
-            item != null && (item.store == Store.ITCH || item.store == Store.GAMEJOLT) && item.isFree -> {
+            item != null && item.store == Store.ITCH && item.isFree -> {
                 InstallButton(stringResource(R.string.stores_install), leadOn) { StoresState.requestInstall(ctx, item) }
                 SecondaryButton(stringResource(R.string.stores_view_on, item.store.shortLabel)) { openStoreUrl(ctx, item) }
             }
@@ -506,6 +500,7 @@ internal fun GameActions(
     }
 }
 
+/** Xbox Cloud Gaming rows the user added to the Library, for games not installed here. */
 @Composable
 internal fun rememberXboxCloudRows(s: FrontEndState): List<Library.SteamGame> {
     val ctx = LocalContext.current
@@ -540,6 +535,7 @@ private fun XboxInstalledStream(id: String, title: String, item: CatalogItem?) {
 private fun XboxLibraryButton(id: String, item: CatalogItem?) {
     val ctx = LocalContext.current
     LaunchedEffect(Unit) { XboxCloudGames.load(ctx) }
+    // Add and Remove replace each other; the controller focus moves to the new button instead of getting lost.
     val slot = remember { FocusRequester() }
     val inputMode = androidx.compose.ui.platform.LocalInputModeManager.current
     val scope = rememberCoroutineScope()
@@ -576,6 +572,7 @@ private fun GameShortcutMenu(g: Library.SteamGame, a: FrontEndActions) {
     }
 }
 
+/** The pencil opens the editor each kind of game always had: the shortcut editor for added games, art for the rest. */
 @Composable
 private fun rememberEditArt(g: Library.SteamGame): (() -> Unit)? {
     val ctx = LocalContext.current
@@ -596,6 +593,7 @@ private fun EditArtButton(g: Library.SteamGame) {
     IconAction(Icons.Outlined.Edit, stringResource(R.string.game_edit_art), "game:edit", onClick = open)
 }
 
+/** Narrow screens keep one More button in the capsule instead of a row of small ones. */
 @Composable
 private fun GameMoreMenu(g: Library.SteamGame, a: FrontEndActions) {
     var open by remember(g.gameId) { mutableStateOf(false) }
@@ -934,6 +932,7 @@ private fun InstallTab(game: Library.SteamGame?, installed: InstalledStoreGame?,
     }
 }
 
+/** Text a controller has to land on to bring it into view: focusable, with the focus ring. */
 @Composable
 internal fun Modifier.readable(): Modifier {
     val pal = LocalPalette.current
@@ -954,6 +953,7 @@ internal fun FactRow(label: String, value: String, labelWidth: androidx.compose.
     }
 }
 
+/** Store installs are measured by [StoreSizes]; Steam and added games by walking their folder once. */
 @Composable
 internal fun diskSize(installed: InstalledStoreGame?, folder: File): Long? {
     val ctx = LocalContext.current

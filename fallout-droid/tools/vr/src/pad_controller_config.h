@@ -11,6 +11,7 @@ struct PadControllerConfig {
     bool sticksMoveHands = false;
 };
 
+// One key=value per line, written by the app before SteamVR starts.
 inline PadControllerConfig pad_controller_config(const char *text) {
     PadControllerConfig config;
     if (!text) return config;

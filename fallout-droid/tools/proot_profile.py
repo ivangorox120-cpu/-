@@ -1,3 +1,4 @@
+"""Read cumulative PRoot handler counters from a session log without double counting snapshots."""
 from __future__ import annotations
 
 import json

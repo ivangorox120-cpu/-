@@ -1,3 +1,4 @@
+"""Retry a dropped shortcut without duplicating a launch that is still preparing its first window."""
 import os
 from pathlib import Path
 import subprocess
@@ -28,6 +29,7 @@ class SteamColdLaunchTest(unittest.TestCase):
         self.agent_count = self.root / "agent-count"
         self.focus_count = self.root / "focus-count"
 
+        # FOCUS lists the focused app per xprop call; the last value repeats.
         xprop = self.bin / "xprop"
         xprop.write_text(
             "#!/bin/sh\n"

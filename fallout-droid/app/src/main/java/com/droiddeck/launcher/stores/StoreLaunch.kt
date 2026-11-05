@@ -22,8 +22,7 @@ object StoreLaunch {
 
     fun launcherText(sidecar: StoreGameSidecar): String {
         val exe = sidecar.exe.replace('/', '\\')
-        val dir = sidecar.workdir?.let { if (it.isEmpty()) "" else it.replace('/', '\\') }
-            ?: exe.substringBeforeLast('\\', "")
+        val dir = exe.substringBeforeLast('\\', "")
         val lines = ArrayList<String>()
         lines += "@echo off"
         lines += "setlocal"

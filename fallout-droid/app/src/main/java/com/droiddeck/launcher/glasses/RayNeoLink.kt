@@ -6,6 +6,7 @@ import android.hardware.usb.UsbManager
 import android.os.SystemClock
 import android.util.Log
 
+/** RayNeo command/response and IMU share one endpoint. Keep reads on a single worker. */
 internal class RayNeoLink private constructor(
     private val connection: UsbDeviceConnection,
     private val endpoints: RayNeoEndpointSelection,
@@ -51,6 +52,7 @@ internal class RayNeoLink private constructor(
                 ready && (mode == RayNeoProtocol.CMD_SWITCH_TO_3D || mode == RayNeoProtocol.CMD_SWITCH_TO_2D) &&
                     command(mode)
             }
+            // No VITURE brightness, volume, film, rate or raw command is sent to RayNeo.
             else -> false
         }
     }
@@ -157,6 +159,7 @@ internal class RayNeoLink private constructor(
                     }
                     val wxyz = filter.update(packet.sample)
                     if (wantImu && collector == null && lastSensor >= warmupUntil) {
+                        // Normalize basis and component order at the hardware boundary.
                         listener.onPose(raw, RayNeoOrientationFilter.glassesPose(wxyz),
                             SystemClock.elapsedRealtimeNanos())
                     }
@@ -173,6 +176,7 @@ internal class RayNeoLink private constructor(
     override fun close() {
         synchronized(writeLock) {
             if (!running) return
+            // Best effort: stop the sensor before releasing the claimed interface.
             if (ready) runCatching { command(RayNeoProtocol.CMD_CLOSE_IMU) }
             running = false
         }

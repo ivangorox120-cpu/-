@@ -72,6 +72,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
+/** The last game frame, captured as the session left the screen, and where it sat in the overlay. */
 class PausedFrame(val image: ImageBitmap, val bounds: android.graphics.Rect)
 
 private const val CARD_SCALE = 0.82f
@@ -124,6 +125,7 @@ fun SessionPausedOverlay(
                         onFrameNeeded()
                         withTimeoutOrNull(FRAME_WAIT_MS) { snapshotFlow { currentFrame }.first { it != null } }
                     }
+                    // Pausing mostly happens while the screen is off or the app is away, so it appears already settled.
                     press.snapTo(1f)
                     ring.snapTo(0f)
                     lift.snapTo(1f)

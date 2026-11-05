@@ -1,3 +1,7 @@
+"""NetworkManager contract and real D-Bus handovers (requires python3-gi and dbus).
+
+Run on Linux: dbus-run-session -- python3 -m unittest discover -s tools/tests -p test_netmanager.py
+"""
 import importlib.machinery
 import importlib.util
 import json

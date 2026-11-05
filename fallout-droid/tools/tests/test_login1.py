@@ -1,3 +1,4 @@
+"""Real login1 sleep handshakes; run with dbus-run-session and python3-gi."""
 import os
 from pathlib import Path
 import subprocess

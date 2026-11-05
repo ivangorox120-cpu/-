@@ -183,11 +183,11 @@ class GlassesRenderingTest {
             picture3d = GlassesSettings.PICTURE_SCREEN)
         for (state in listOf(ultra.copy(displayId = -1), GlassesState())) {
             val preview = GlassesRendering.cardboard(base, settings, state, false, true)
-            assertTrue(preview.enabled)
+            assertTrue(preview.enabled) // Published as headset proximity, preventing standby.
             assertTrue(preview.mono)
             assertEquals(Cardboard.SOURCE_SBS, preview.source)
             assertEquals(Cardboard.Viewer.NONE.id, preview.viewer)
-            assertTrue(preview.headTracking)
+            assertTrue(preview.headTracking) // Phone preference, not dormant glasses settings.
             assertFalse(base.enabled)
             assertSame(base, GlassesRendering.cardboard(base, settings, state, false, false))
         }

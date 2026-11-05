@@ -40,13 +40,14 @@ data class RayNeoEndpointSelection(
 object RayNeoProtocol {
     const val VENDOR_ID = 0x1BBB
     const val PRODUCT_ID = 0xAF50
+    // verncat/RayNeo-Air-3S-Pro-OpenVR PR #3 (MIT), tested on GT hardware.
     const val GT_VENDOR_ID = 0x3941
     private const val GT_CONTROL_INTERFACE = 5
 
     fun isGt(vid: Int, pid: Int) = vid == GT_VENDOR_ID && pid == PRODUCT_ID
 
     const val BOARD_AIR_4_PRO = 0x3A
-    const val BOARD_GT = 0x40
+    const val BOARD_GT = 0x40 // Observed on the user's non-Max GT.
 
     const val PKT_MAGIC = 0x99
     const val PKT_SENSOR = 0x65
@@ -130,6 +131,7 @@ object RayNeoProtocol {
                     endpoint.type != UsbConstants.USB_ENDPOINT_XFER_BULK) {
                     continue
                 }
+                // Exclude small button reports from GT's protocol transport.
                 if (gt && endpoint.maxPacketSize < 64) continue
 
                 if (endpoint.direction == UsbConstants.USB_DIR_IN && inEndpoint == null) {
@@ -157,6 +159,8 @@ object RayNeoProtocol {
             }
         }
 
+        // Interface numbers can change with firmware. Use a unique protocol-sized
+        // pair when interface 5 is absent, never an arbitrary composite interface.
         return if (gt) gtCandidates.singleOrNull() else fallback
     }
 

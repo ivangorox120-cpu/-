@@ -2,14 +2,19 @@ package com.droiddeck.launcher.glasses
 
 import kotlin.math.abs
 
+/** 1S radians/sec and device nanoseconds, mapped using directed hardware captures. */
 internal class XrealOrientationFilter {
     private val fusion = ImuFusion()
 
+    // 1S reports right/down/forward. Rotate 180 degrees about X into the
+    // shared right/up/back basis before either gravity alignment or fusion.
+    // Captures: level gravity -Y; looking left -gyroY; up +gyroX; right tilt +gyroZ.
     fun update(sample: XrealProtocol.Sample): FloatArray? = fusion.update(sample.timeNs,
         Vec3(sample.accel.x, -sample.accel.y, -sample.accel.z),
         Vec3(sample.gyro.x, -sample.gyro.y, -sample.gyro.z))
 }
 
+/** Gyro integration with gravity correction in the shared right/up/back basis, rad/s and device ns. */
 internal class ImuFusion {
     private var previous = 0L
     private var rotation = Quaternion.IDENTITY
@@ -22,7 +27,7 @@ internal class ImuFusion {
         previous = timeNs
         val norm = accel.length()
         val gravityValid = abs(norm - 9.81f) < 1.5f
-        if (dt > 0.25f) initialized = false
+        if (dt > 0.25f) initialized = false // Never integrate a reconnect/stall as motion.
         if (!initialized) {
             if (!gravityValid) return null
             val up = accel.normalized()
@@ -42,6 +47,7 @@ internal class ImuFusion {
             }
             rotation = rotation.integrateBodyRate(rate, dt).normalized()
         }
+        // Same right/up/back -> shared glasses basis used by the RayNeo adapter.
         return RayNeoOrientationFilter.glassesPose(floatArrayOf(rotation.w, rotation.x, rotation.y, rotation.z))
     }
 }

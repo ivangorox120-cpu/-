@@ -1,4 +1,5 @@
 #!/bin/sh
+# Audio stays on the session's PulseAudio, so WirePlumber runs its upstream video-only profile.
 set -u
 
 bundle=/usr/local/lib/droiddeck-pipewire.tzst

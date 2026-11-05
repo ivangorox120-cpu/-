@@ -57,6 +57,7 @@ object FileOps {
             return true
         }
         if (!copyWithProgress(src, dst, progress, isCancelled)) return false
+        // Once the destination is committed, finish deleting the source.
         return delete(src)
     }
 

@@ -9,6 +9,7 @@ import android.hardware.usb.UsbManager
 import android.os.SystemClock
 import android.util.Log
 
+/** Controls are vendor control transfers; the HID interrupt endpoint streams IMU reports unprompted. */
 internal class RokidLink private constructor(
     private val connection: UsbDeviceConnection,
     private val usbInterface: UsbInterface,
@@ -43,7 +44,7 @@ internal class RokidLink private constructor(
                 ?.let { listener.onValue(VitureProtocol.MSG_BRIGHTNESS, RokidModel.brightnessStep(it)) } != null
             VitureProtocol.MSG_BRIGHTNESS -> value in 0..RokidModel.BRIGHTNESS_STEPS &&
                 control(RokidModel.REQUEST_SET_BRIGHTNESS, RokidModel.brightnessRaw(value), RokidModel.INDEX_BRIGHTNESS)
-            else -> false
+            else -> false // Volume is the glasses' USB audio device; there is no film or IMU-rate control.
         }
     }
 
@@ -53,6 +54,7 @@ internal class RokidLink private constructor(
         if (!running) return null
         val buffer = ByteArray(64)
         val count = connection.controlTransfer(VENDOR_IN, request, 0, index, buffer, buffer.size, TIMEOUT_MS)
+        // Display mode is reported in the second byte, brightness in the first.
         val offset = if (request == RokidModel.REQUEST_GET_DISPLAY) 1 else 0
         if (count > offset) buffer[offset].toInt() and 0xff else null
     }
@@ -88,6 +90,7 @@ internal class RokidLink private constructor(
                 if (enabled && !wasTracking) fusion = ImuFusion()
                 wasTracking = enabled
                 if (!enabled) continue
+                // Max captures: already right/up/back; level gravity +Y, turn left +gyroY, look up +gyroX, roll right -gyroZ.
                 fusion.update(sample.timeNs, sample.accel, sample.gyro)?.let {
                     if (running && tracking) listener.onPose(buffer.copyOf(count), it, SystemClock.elapsedRealtimeNanos())
                 }
