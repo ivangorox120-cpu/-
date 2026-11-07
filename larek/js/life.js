@@ -874,7 +874,8 @@ export function createLife(env) {
             clamp(camera.position.y - .42 + tmp.y * .22, groundHeightAt(P.x, P.z) + .04, camera.position.y - .15),
             camera.position.z + hDirZ * bReach
           );
-          if (inK(P.x, P.z)) {
+          const nearDoorway = P.x > .2 && P.x < 1.4 && P.z < -KD + .75; // у дверного проёма коробку не держим внутри — иначе её не вынести
+          if (inK(P.x, P.z) && !nearDoorway) {
             tgt.x = clamp(tgt.x, -KW + .28, KW - .28);
             tgt.z = clamp(tgt.z, -KD + .28, KD - .28);
           }
@@ -1171,17 +1172,19 @@ export function createLife(env) {
   }
 
   function doorstepBoxSpot(idx) {
-    // Все коробки доставки ставятся строго на землю (y = 0) аккуратными рядами у двери ларька, чтобы ни одна коробка никогда не висела в воздухе!
-    const col = idx % 3;
-    const row = Math.floor(idx / 3);
-    const colOffsets = [-.56, 0, .56];
-    return {
-      x: DOORSTEP.x + colOffsets[col],
-      y: 0,
-      z: DOORSTEP.z - row * .48,
-      ry: R(-.10, .10)
-    };
+    // коробки доставки: вразнобой у двери — рядом друг с другом или одна на другой (не выше двух), всегда на земле или на коробке
+    const H = .36, near = items.filter(i => i.kind === 'box' && i.state === 'rest' && Math.hypot(i.obj.position.x - DOORSTEP.x, i.obj.position.z - DOORSTEP.z) < 2.2);
+    const base = near.filter(b => b.obj.position.y < groundHeightAt(b.obj.position.x, b.obj.position.z) + .1 && !near.some(o => o !== b && Math.hypot(o.obj.position.x - b.obj.position.x, o.obj.position.z - b.obj.position.z) < .2 && o.obj.position.y > b.obj.position.y + .2));
+    if (base.length && Math.random() < .4) { const b = base[Math.floor(Math.random() * base.length)]; return { x: b.obj.position.x + R(-.05, .05), y: b.obj.position.y + H, z: b.obj.position.z + R(-.04, .04), ry: b.obj.rotation.y + R(-.35, .35) }; }
+    for (let k = 0; k < 30; k++) {
+      const x = DOORSTEP.x + R(-1.0, 1.0), z = DOORSTEP.z - R(0, .9);
+      if (near.some(b => Math.abs(b.obj.position.x - x) < .52 && Math.abs(b.obj.position.z - z) < .44)) continue;
+      return { x, y: groundHeightAt(x, z), z, ry: R(-.6, .6) };
+    }
+    const col = idx % 3, row = Math.floor(idx / 3); const x = DOORSTEP.x + [-.56, 0, .56][col], z = DOORSTEP.z - row * .48;
+    return { x, y: groundHeightAt(x, z), z, ry: R(-.1, .1) };
   }
+
 
   function deliveryTick(dt, dHour = dt / 90) {
     if (knockT > 0) { const prev = knockT; knockT -= dt; const door = new THREE.Vector3(DOORSTEP.x, 1.3, -KD - .3);

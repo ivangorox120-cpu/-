@@ -232,7 +232,7 @@ export function createWeapon({ audio, onShot }) {
     swayT: 0, lookLagX: 0, lookLagY: 0,
     barrelHeat: 0, wispTimer: 0,
   };
-  const HIP = new THREE.Vector3(.125, -.092, -.265);
+  const HIP = new THREE.Vector3(.12, -.118, -.215); // от бедра: ниже и правее, стволы смотрят в центр экрана (как в шутерах)
   const ADS = new THREE.Vector3(0, -.038, -.235);
   const DOWN = new THREE.Vector3(.18, -.42, -.22);
   const tmp = new THREE.Vector3(), wp = new THREE.Vector3(), bDir = new THREE.Vector3();
@@ -426,8 +426,8 @@ export function createWeapon({ audio, onShot }) {
     rig.position.copy(tmp);
 
     const pitchRec = rec * (.32 - W.aimK * .10);
-    const yawBase = (1 - W.aimK) * .11 + (sprint ? .42 : 0) + W.lookLagX * 1.4;
-    const pitchBase = (1 - drawn) * -.85 + (W.state === 'reloading' ? .26 + breakA * .10 : 0) + (sprint ? -.22 : 0) + (1 - W.aimK) * .025 + W.lookLagY * 1.2;
+    const yawBase = (1 - W.aimK) * .055 + (sprint ? .42 : 0) + W.lookLagX * 1.4;
+    const pitchBase = (1 - drawn) * -.85 + (W.state === 'reloading' ? .26 + breakA * .10 : 0) + (sprint ? -.22 : 0) + (1 - W.aimK) * -.035 + W.lookLagY * 1.2;
     const rollBase = (W.state === 'reloading' ? .34 : -.04 * (1 - W.aimK)) + (sprint ? .18 : 0) - rec * .07;
     rig.rotation.set(pitchBase + pitchRec, yawBase, rollBase);
     rig.visible = W.state !== 'holstered';

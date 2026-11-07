@@ -1142,6 +1142,7 @@ function setHtml() {
     <h3>Эффекты</h3>
     <div class="card setgrid">
       <label>Кинематографичный ретро-фильтр ${sel('retro', [[0, 'выключен'], [1, 'включён']], st.retro ? 1 : 0)}</label>
+      <label>Летающие газеты и мусор ${sel('litter', [[1, 'включены'], [0, 'выключены']], st.litter === 0 ? 0 : 1)}</label>
     </div>
     <h3>Камера</h3>
     <div class="card setgrid">
@@ -1226,6 +1227,7 @@ document.addEventListener('input', e => {
   const v = +e.target.value; const sp = e.target.nextElementSibling;
   if (['bob', 'master', 'radio', 'ambience'].includes(k)) { SET[k] = v; if (k !== 'bob') audio.setVolume(k, v); if (sp) sp.textContent = Math.round(v * 100) + '%'; }
   else if (k === 'retro') { SET.retro = v; W && W.setRetro(v); }
+  else if (k === 'litter') { SET.litter = v; }
   else if (k === 'sens') { if (controls) controls.lookSens = v; if (sp) sp.textContent = v.toFixed(2); }
   else { SET.custom = Object.assign({}, QUALITY[SET.quality], SET.custom || {}, { [k]: v }); if (sp) sp.textContent = k === 'draw' ? v + ' м' : v; W && W.applyQuality(SET.custom); }
   saveSet();
@@ -1512,7 +1514,7 @@ function hiddenReact(c, k) {
 // ============================================================
 const SET_KEY = 'larek-settings-v1';
 const isMob = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-const SET = Object.assign({ quality: isMob ? 'medium' : 'high', custom: null, bob: 1, retro: 0, master: .9, radio: .7, ambience: .6 }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
+const SET = Object.assign({ quality: isMob ? 'medium' : 'high', custom: null, bob: 1, retro: 0, litter: 1, master: .9, radio: .7, ambience: .6 }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
 function saveSet() { try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) {} }
 const audio = createAudio();
 ['master', 'radio', 'ambience'].forEach(k => audio.setVolume(k, SET[k]));

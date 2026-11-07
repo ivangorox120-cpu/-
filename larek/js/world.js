@@ -919,48 +919,69 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function buildItemProto(id) {
     const g = new THREE.Group();
     const lbl = c => std({ color: c, roughness: .5 });
-    const bottleWithLabel = (h, r, bodyCol, capCol, wrapMat, neckCol = null, cork = false) => {
-      const bm = new THREE.MeshStandardMaterial({
-        color: bodyCol, roughness: cork ? .28 : .14, metalness: .08, transparent: true, opacity: cork ? .80 : .88
-      });
-      cyl(r, r, h * .64, bm, 0, h * .32, 0, 14, g);
-      cyl(r * .38, r * .94, h * .20, bm, 0, h * .74, 0, 12, g);
-      cyl(r * .36, r * .36, h * .10, bm, 0, h * .89, 0, 10, g);
-      if (cork) {
-        // Деревянно-сургучная пробка самогона и бечёвка на горлышке
-        const ck = cyl(r * .34, r * .28, h * .08, lbl(capCol), 0, h * .95, 0, 10, g);
-        ck.userData.isCap = true;
-        cyl(r * .42, r * .42, h * .025, lbl(0x8c734b), 0, h * .83, 0, 10, g);
-      } else {
-        const cp = cyl(r * .41, r * .41, h * .055, std({ color: capCol, metalness: .7, roughness: .3 }), 0, h * .94, 0, 12, g);
-        cp.userData.isCap = true;
+    // бутылки: точёный профиль стекла (дно, плечи, горлышко, венчик), жидкость внутри с уровнем налива, этикетка и колпачок
+    const BOTTLE_PROF = {
+      // [радиус в долях r, высота в долях h]
+      beer:    [[0, 0], [.86, 0], [.97, .015], [1, .045], [1, .58], [.96, .64], [.8, .7], [.52, .77], [.4, .82], [.38, .89], [.44, .905], [.44, .925], [.36, .93], [0, .93]],
+      vodka:   [[0, 0], [.88, 0], [.98, .012], [1, .04], [1, .55], [.97, .6], [.82, .65], [.5, .7], [.37, .74], [.34, .9], [.4, .91], [.4, .93], [.33, .935], [0, .935]],
+      samogon: [[0, 0], [.9, 0], [1, .02], [1, .62], [.94, .68], [.66, .74], [.42, .78], [.38, .9], [.46, .915], [.46, .93], [0, .93]],
+      soda:    [[0, 0], [.86, 0], [.97, .015], [1, .045], [1, .56], [.95, .63], [.76, .69], [.48, .76], [.38, .82], [.37, .89], [.43, .905], [.43, .925], [.35, .93], [0, .93]],
+    };
+    const latheOf = (prof, r, h, shrink = 0, cutY = 9) => {
+      const pts = []; for (const [pr, py] of prof) { const y = py * h; if (y > cutY) { pts.push(new THREE.Vector2(0, cutY)); break; } pts.push(new THREE.Vector2(Math.max(0, pr * r - shrink), Math.max(0, y - (py === 0 ? 0 : 0)))); }
+      if (cutY < 9 && pts[pts.length - 1].x !== 0) pts.push(new THREE.Vector2(0, cutY));
+      return new THREE.LatheGeometry(pts, 22);
+    };
+    const bottleWithLabel = (h, r, bodyCol, capCol, wrapMat, neckCol = null, cork = false, kind = 'beer', liqCol = null, fill = .8) => {
+      const prof = BOTTLE_PROF[kind] || BOTTLE_PROF.beer;
+      const glassM = new THREE.MeshStandardMaterial({ color: bodyCol, roughness: .06, metalness: .1, transparent: true, opacity: kind === 'samogon' ? .38 : .62, depthWrite: false });
+      const body = new THREE.Mesh(latheOf(prof, r, h), glassM); body.castShadow = true; body.renderOrder = 2; g.add(body);
+      if (liqCol !== null) { // жидкость: чуть меньше стекла, до уровня налива; сверху — мениск
+        const liq = new THREE.Mesh(latheOf(prof, r, h, r * .07, h * fill), new THREE.MeshStandardMaterial({ color: liqCol, roughness: .2, metalness: 0, transparent: true, opacity: .82 }));
+        liq.position.y = .003; liq.renderOrder = 1; g.add(liq);
       }
-      if (neckCol !== null) cyl(r * .44, r * .55, h * .06, lbl(neckCol), 0, h * .81, 0, 10, g);
-      const lbGeo = new THREE.CylinderGeometry(r * 1.025, r * 1.025, h * .34, 16, 1, true);
-      const lb = new THREE.Mesh(lbGeo, wrapMat);
-      lb.position.y = h * .34;
-      lb.castShadow = true;
-      g.add(lb);
+      const dno = cyl(r * .86, r * .86, .004, new THREE.MeshStandardMaterial({ color: bodyCol, roughness: .3, transparent: true, opacity: .8 }), 0, .002, 0, 18, g); // толстое дно
+      if (cork) {
+        // деревянная пробка, сургуч и бечёвка на горлышке
+        const ck = cyl(r * .37, r * .31, h * .085, lbl(capCol), 0, h * .955, 0, 12, g); ck.userData.isCap = true;
+        const wax = cyl(r * .5, r * .47, h * .03, std({ color: 0x7a1a14, roughness: .45 }), 0, h * .915, 0, 12, g); wax.userData.isCap = true;
+        cyl(r * .43, r * .43, h * .02, lbl(0x8c734b), 0, h * .84, 0, 10, g);
+      } else if (kind === 'vodka') {
+        // алюминиевая «бескозырка» с язычком
+        const cp = cyl(r * .42, r * .42, h * .06, std({ color: 0xc8c6c0, metalness: .85, roughness: .32 }), 0, h * .94, 0, 16, g); cp.userData.isCap = true;
+        const tab = box(r * .3, h * .045, r * .05, std({ color: 0xc8c6c0, metalness: .85, roughness: .32 }), r * .42, h * .925, 0, g); tab.userData.isCap = true;
+      } else {
+        // кроненпробка с зубчиками
+        const cp = cyl(r * .47, r * .5, h * .045, std({ color: capCol, metalness: .65, roughness: .3 }), 0, h * .945, 0, 21, g); cp.userData.isCap = true;
+        const top = cyl(r * .44, r * .44, .002, std({ color: capCol, metalness: .7, roughness: .25 }), 0, h * .968, 0, 18, g); top.userData.isCap = true;
+      }
+      if (neckCol !== null) { const nr = (kind === 'vodka' ? .36 : .4) * r * 1.06; cyl(nr, nr * 1.08, h * .055, lbl(neckCol), 0, h * .8, 0, 14, g); } // кольеретка на горлышке
+      const lbH = kind === 'vodka' ? h * .3 : h * .3, lbY = kind === 'vodka' ? h * .3 : h * .32;
+      const lb = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.012, r * 1.012, lbH, 22, 1, true, -Math.PI * .62, Math.PI * 1.24), wrapMat); // этикетка не по кругу — сзади видно стекло
+      lb.position.y = lbY; lb.castShadow = true; g.add(lb);
+      // блик на стекле — тонкая светлая полоска вдоль корпуса
+      const hl = new THREE.Mesh(new THREE.PlaneGeometry(r * .18, h * .5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .22, depthWrite: false }));
+      hl.position.set(-r * .55, h * .36, r * .86); hl.rotation.y = -.55; g.add(hl);
     };
     switch (id) {
       case 'vodka': {
         const wm = cylWrapMat('#f5efe0', '#c49a38', 'ВОДКА', 'СПИРТ «КОРОЛЬ»', '0.5 Л · 40°', '#b82418');
-        bottleWithLabel(.28, .036, 0x2d5a36, 0xd4b254, wm, 0xd4b254, false);
+        bottleWithLabel(.28, .036, 0xb9cfc4, 0xd4b254, wm, 0xd4b254, false, 'vodka', 0xe8f0ee, .86);
         break;
       }
       case 'beer': {
         const wm = cylWrapMat('#f2d06b', '#7a2814', 'ПИВО', 'ЗАВОДСКОЕ', 'СВЕТЛОЕ · 0.5 Л', '#8a1e12');
-        bottleWithLabel(.24, .034, 0x5c3214, 0xd4a72c, wm, 0xd4a72c, false);
+        bottleWithLabel(.24, .034, 0x4a2a10, 0xd4a72c, wm, 0xd4a72c, false, 'beer', 0x9a5a14, .82);
         break;
       }
       case 'samogon': {
         const wm = cylWrapMat('#dfd1b4', '#4a3520', 'САМОГОН', 'ПЕРВАЧ · 60°', 'ДОМАШНИЙ', '#7a1e14');
-        bottleWithLabel(.26, .038, 0xc8d2c4, 0x5c3c24, wm, null, true);
+        bottleWithLabel(.26, .038, 0xd2dccf, 0x7a5a38, wm, null, true, 'samogon', 0xe6e2cc, .8);
         break;
       }
       case 'soda': {
         const wm = cylWrapMat('#f7df64', '#c42b1c', 'ЛИМОНАД', 'БУРАТИНО', 'ГОСТ · 0.5 Л', '#b81e14');
-        bottleWithLabel(.23, .032, 0xc97b28, 0xc0392b, wm, 0xf7df64, false);
+        bottleWithLabel(.23, .032, 0x6a8a5a, 0xc0392b, wm, 0xf7df64, false, 'soda', 0xd98a1c, .84);
         break;
       }
       case 'cig': {
@@ -1973,16 +1994,20 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   })));
   const paperGeos = [0, 1, 2].map(v => { const g = new THREE.PlaneGeometry(.58, .41, 8, 6); g.rotateX(-Math.PI / 2); const P = g.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i); P.setY(i, .004 + Math.abs(Math.sin(x * 9 + v) * .012) + Math.max(0, Math.abs(x) - .22) * (.08 + v * .03) + Math.sin(z * 14 + x * 5 + v * 2) * .006); } g.computeVertexNormals(); return g; });
   const paperMats = paperTex.map(t => std({ map: t, roughness: .95, side: THREE.DoubleSide }));
+  const groundPapers = [];
   { const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), S4 = new THREE.Vector3();
     for (let v = 0; v < 3; v++) { const pts = []; for (let i = 0; i < 24; i++) { const z = pick([R(6.6, 13.8), R(6.6, 13.8), R(1.6, 6), R(14.6, 18.2), R(-30, -4)]), x = R(-62, 66); if (Math.abs(x) < KW + .5 && Math.abs(z) < KD + .5) continue; pts.push([x, z]); }
-      const im = new THREE.InstancedMesh(paperGeos[v], paperMats[v], pts.length); pts.forEach(([x, z], i) => { const sc = Math.random() < .35 ? .55 : 1; im.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .012, z), Q4.setFromEuler(new THREE.Euler(0, R(0, 6.28), 0)), S4.set(sc, 1, sc))); }); im.receiveShadow = true; scene.add(im); } }
+      const im = new THREE.InstancedMesh(paperGeos[v], paperMats[v], pts.length); groundPapers.push(im); pts.forEach(([x, z], i) => { const sc = Math.random() < .35 ? .55 : 1; im.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .012, z), Q4.setFromEuler(new THREE.Euler(0, R(0, 6.28), 0)), S4.set(sc, 1, sc))); }); im.receiveShadow = true; scene.add(im); } }
   const flyPapers = []; for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(paperGeos[i % 3], paperMats[i % 3]); m.position.set(R(-20, 20), .02, R(2, 17)); m.userData = { vy: 0, spin: 0, air: 0, dyn: true }; m.castShadow = true; scene.add(m); flyPapers.push(m); }
   function paperTick(dt) { // лист подхватывает порывом, крутит и опускает
-    for (const m of flyPapers) { const u = m.userData, w = windVec.length();
+    const on = !ctx.settings || ctx.settings().litter !== 0; // настройка «Летающий мусор и газеты»
+    for (const g of groundPapers) g.visible = on;
+    for (const m of flyPapers) { m.visible = on; if (!on) continue; const u = m.userData, w = windVec.length(); const ox = m.position.x, oz = m.position.z;
       if (u.air <= 0 && w > 1.2 && Math.random() < dt * w * .25) { u.air = R(1, 3); u.vy = R(.6, 1.6); u.spin = R(-4, 4); }
       if (u.air > 0) { u.air -= dt; m.position.x += windVec.x * dt * .9; m.position.z += windVec.y * dt * .9; m.position.y = Math.max(.02, m.position.y + u.vy * dt); u.vy -= dt * 1.6; m.rotation.x += u.spin * dt * .6; m.rotation.z += u.spin * dt; }
       else { m.position.y = Math.max(.02, m.position.y - dt * .5); m.rotation.x *= .9; m.rotation.z *= .9; if (Math.random() < dt * w * .3) { m.position.x += windVec.x * dt * .4; m.position.z += windVec.y * dt * .4; m.rotation.y += dt * .5; } }
-      if (Math.hypot(m.position.x - P.x, m.position.z - P.z) > 30) m.position.set(P.x + R(-15, 15), .02, clamp(P.z + R(-10, 10), 1.5, 18)); }
+      if (Math.abs(m.position.x) < KW + .25 && Math.abs(m.position.z) < KD + .25) { m.position.x = ox; m.position.z = oz; u.air = Math.min(u.air, .2); } // в ларёк газеты не залетают — упираются в стену
+      if (Math.hypot(m.position.x - P.x, m.position.z - P.z) > 30) { m.position.set(P.x + R(-15, 15), .02, clamp(P.z + R(-10, 10), 1.5, 18)); if (Math.abs(m.position.x) < KW + .5 && Math.abs(m.position.z) < KD + .5) m.position.x += 4; } }
   }
 
   // ---------- фонари и провода ----------
@@ -3551,6 +3576,13 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         let o = h.object;
         while (o && o.userData.showcaseSlot == null && o.parent && o.parent !== shelfGroup) o = o.parent;
         if (o && o.userData.showcaseSlot != null) return o.userData.showcaseSlot;
+      }
+      // запасной путь: луч попал в стеклянную полку витрины, но не в сам слот — берём ближайший к точке слот
+      const rp = life.rayPlaceShelf && life.rayPlaceShelf(1.15);
+      if (rp && rp.rowIdx >= 17 && Math.hypot(rp.point.x - P.x, rp.point.z - P.z) <= 1.0) {
+        let best = null, bd = .4;
+        SLOT_POS.forEach(([sx, sy], i) => { if (i >= S.slots.length) return; const d = Math.hypot(rp.point.x - sx, (rp.point.y - sy) * 2); if (d < bd) { bd = d; best = i; } });
+        if (best != null) return best;
       }
       return null;
     };
