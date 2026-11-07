@@ -124,7 +124,7 @@ const sfx = {
 const SAVE_KEY = 'larek-save-v1';
 let S = null;      // сохраняемое состояние
 let T = null;      // торговый день (не сохраняется)
-let tab = 'kiosk';
+let tab = 'hero';
 
 function newGame(name, sex) {
   S = {
@@ -138,10 +138,17 @@ function newGame(name, sex) {
     order:{ lines:{}, hidden:{} }, deliveries:[], items:[], hidden:{}, butts:0, cigs:0, bottle:null,
   };
   genPrices();
-  // наследство дяди
-  addStock('gum', 20, S.prices.gum); addStock('soda', 10, S.prices.soda);
-  addStock('paper', 15, S.prices.paper); addStock('cig', 10, S.prices.cig);
-  S.slots = ['gum','soda','paper','cig',null,null];
+  // наследство дяди: часть товара уже стоит поштучно на полках, а рядом лежат оптовые блоки/упаковки для распаковки
+  addStock('gum', 6, S.prices.gum); addStock('soda', 5, S.prices.soda);
+  addStock('paper', 5, S.prices.paper); addStock('cig', 5, S.prices.cig);
+  S.slots = [null,null,null,null,null,null];
+  S.slotCounts = [0,0,0,0,0,0];
+  S.shelfPlacements = [];
+  S.items = [
+    { id: 'pk_start_cig',  kind: 'pack', x: -1.12, y: .035, z: -.48, ry: .15,  data: { goodId: 'cig',  count: 5, maxCount: 5, unitCost: S.prices.cig,  opened: false } },
+    { id: 'pk_start_beer', kind: 'pack', x: -.74,  y: .035, z: -.52, ry: -.08, data: { goodId: 'beer', count: 5, maxCount: 5, unitCost: S.prices.beer, opened: false } },
+    { id: 'pk_start_gum',  kind: 'pack', x: -.38,  y: .035, z: -.50, ry: .05,  data: { goodId: 'gum',  count: 5, maxCount: 5, unitCost: S.prices.gum,  opened: false } },
+  ];
 }
 function save() {
   if (!S) return;
@@ -218,16 +225,17 @@ function clockStr() { const h = W ? W.hour : 9, hh = Math.floor(h) % 24, mm = Ma
 function renderHud() {
   if (!S) { $('#hud').innerHTML = ''; return; }
   const gun = W && S.gun && W.weapon.drawn ? `<span class="k">ПАТРОНЫ</span><span>${W.weapon.ammo} / ${W.weapon.reserve}</span>` : '';
-  $('#hud').innerHTML = `<div class="hrow"><span>${dateStr(S.day).toUpperCase()}</span><span id="clock">${clockStr()}</span><span>${fmt(S.money)} ₽</span><span>$${fmt(S.usd)}</span>${S.debt > 0 ? `<span class="k">ДОЛГ</span><span style="color:#e8735a">$${S.debt}</span>` : ''}${gun}</div>
+  $('#hud').innerHTML = `<div class="hrow"><span>${fmt(S.money)} ₽</span><span>$${fmt(S.usd)}</span>${S.debt > 0 ? `<span class="k">ДОЛГ</span><span style="color:#e8735a">$${S.debt}</span>` : ''}${gun}</div>
     <div id="reps">${repBar('street', 'Улица')}${repBar('law', 'Закон')}${repBar('folk', 'Народ')}</div>`;
 }
 function renderTabs() {
   if (!S) { $('#tabs').innerHTML = ''; return; }
   const trade = S.phase === 'trade';
-  const T_ = [['kiosk', '🏪', 'Ларёк'], ['exch', '💱', 'Обмен'], ['hero', '👤', 'Герой'], ['set', '⚙', 'Опции']];
-  $('#tabs').innerHTML = T_.map(([k, i, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}" ${trade && (k === 'market' || k === 'exch') ? 'disabled' : ''}><span>${i}</span>${n}</button>`).join('');
+  const T_ = [['hero', '👤', 'Герой'], ['set', '⚙', 'Опции']]; // обменник убран из игры
+  if (!['hero', 'set'].includes(tab)) tab = 'hero';
+  $('#tabs').innerHTML = T_.map(([k, i, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}" ${trade && k === 'exch' ? 'disabled' : ''}><span>${i}</span>${n}</button>`).join('');
 }
-function openSheet(t) { if (t) tab = t; sheetOpen = true; render(); $('#screen').scrollTop = 0; }
+function openSheet(t) { if (t && ['hero', 'set'].includes(t)) tab = t; else if (!['hero', 'set'].includes(tab)) tab = 'hero'; sheetOpen = true; render(); $('#screen').scrollTop = 0; }
 function closeSheet() { if (!W) return; sheetOpen = false; render(); }
 function renderControls() {
   $('#topBtns').style.display = S ? 'flex' : 'none';
@@ -238,7 +246,8 @@ function renderControls() {
   if (controls) controls.setVisible(playing || (controls && controls.editing));
   let hint = '';
   if (W && S && S.phase === 'morning' && playing && !dialogOpen) {
-    if (W.P.seated && !S.flags.stood) hint = 'Свайп по экрану — осмотреться. «Действие» → «Встать», чтобы ходить.';
+    if (!S.slots.some(id => id && qOf(id) > 0) && W.inKiosk()) hint = 'Возьмите товар с полок («Действие») и поставьте его на стеклянную витрину у окна, затем сядьте за прилавок.';
+    else if (W.P.seated && !S.flags.stood) hint = 'Свайп по экрану — осмотреться. «Действие» → «Встать», чтобы ходить.';
     else if (!W.P.seated && W.inKiosk() && !S.flags.wentOut) hint = 'Повернитесь к двери за спиной и откройте её. Выйти можно просто пройдя в проём.';
   }
   if (S && S.phase === 'night' && playing && !dialogOpen) hint = W && W.inKiosk() ? 'Ночь. Сядьте на табурет, чтобы уснуть до утра.' : '';
@@ -254,16 +263,14 @@ function render() {
   if (!W) sheetOpen = true;
   $('#closeSheet').style.display = W ? '' : 'none';
   const trade = S.phase === 'trade';
-  if (trade && (tab === 'market' || tab === 'exch')) tab = 'kiosk';
+  if (!['hero', 'set'].includes(tab)) tab = 'hero';
   $('#sheet').classList.toggle('on', sheetOpen);
   if (sheetOpen) {
     const scr = $('#screen');
     const keepScroll = scr.dataset.view === tab ? scr.scrollTop : 0;
     scr.dataset.view = tab;
-    if (tab === 'kiosk') scr.innerHTML = kioskHtml();
-    else if (tab === 'market') { tab = 'kiosk'; scr.innerHTML = kioskHtml(); }
-    else if (tab === 'exch') scr.innerHTML = exchHtml();
-    else if (tab === 'hero') scr.innerHTML = heroHtml();
+    if (tab === 'exch') scr.innerHTML = exchHtml();
+    else if (tab === 'hero') scr.innerHTML = financeHtml() + heroHtml();
     else if (tab === 'set') scr.innerHTML = setHtml();
     scr.scrollTop = keepScroll;
     if (tab === 'exch') drawChart();
@@ -343,7 +350,7 @@ function introCards() {
   queueCard({ title:'Как играть',
     html:`<p>👀 <b>Свайп по экрану</b> — крутить головой. Кнопка <b>«Действие»</b> показывает, что можно сделать: встать, открыть дверь, сесть, включить радио, поговорить.</p>
       <p>🕹 Джойстик слева — ходить, <b>«Бег»</b> — бежать, <b>«Присесть»</b>. На ПК: WASD, Shift, C, E — действие, F — дверь, Q — ружьё, R — перезарядка, ПКМ — прицел, ЛКМ — выстрел.</p>
-      <p>🚪 Дверь за спиной открывается и закрывается. Выходите в город пешком: рынок слева (там дешевле), обменник справа, остановка, дворы. Осторожно на дороге — машины не всегда успевают тормозить.</p>
+      <p>🚪 Дверь за спиной открывается и закрывается. Выходите в город пешком: остановка, детская площадка, дворы. Товар заказывается через блокнот и телефон на прилавке.</p>
       <p>🔫 Под прилавком — дядино охотничье ружьё и 6 патронов. Только чтобы пугать: наведите на хулиганов — кто-то отступит, кто-то нет. Выстрел в воздух распугает всех, но милиции это не понравится.</p>
       <p>⚙ Раскладку кнопок можно менять: <b>Блокнот → Опции → Редактор управления</b>.</p>` });
 }
@@ -380,9 +387,8 @@ function kioskHtml() {
     <input type="range" min="0" max="150" step="5" value="${mk}" data-range="markup">
     <p class="muted">Высокая наценка — больше денег, но покупатели чаще уходят, а «Народ» запоминает жадность.</p>
     <div class="mbtns">
-      ${S.phase === 'morning' ? `<button class="btn green big" data-a="open">Открыть ларёк ▶</button>
-      ${S.seller ? '<button class="btn" data-a="auto">Пусть торгует тётя Люба (весь день)</button>' : ''}
-      ${W && !W.P.inside ? '<button class="btn" data-a="gocounter">Вернуться за прилавок</button>' : ''}` : '<p class="warn">Ларёк открыт — покупатели у окошка.</p>'}
+      ${S.phase === 'morning' ? `<button class="btn green big" data-a="open">Сесть за прилавок (начать продажу) ▶</button>
+      ${S.seller ? '<button class="btn" data-a="auto">Пусть торгует тётя Люба (весь день)</button>' : ''}` : '<p class="warn">Ларёк открыт — идёт продажа. Встаньте из-за прилавка, чтобы закрыть его.</p>'}
     </div>
     ${ups.length ? '<h3>Улучшения</h3>' + ups.map(([k, u]) => `<div class="card row sp"><div><b>${u.icon} ${u.name}</b><div class="muted">${u.desc}</div></div>
         <button class="btn small yellow" data-up="${k}" ${S.money < usdToRub(u.usd) ? 'disabled' : ''}>${fmt(usdToRub(u.usd))} ₽</button></div>`).join('') : ''}
@@ -393,7 +399,7 @@ function openSlotPicker(i) {
   const items = GOOD_IDS.filter(id => qOf(id) > 0);
   queueCard({ title:'Что положить на витрину?',
     html: items.length ? items.map(id => `<div class="good"><div class="ic">${GOODS[id].icon}</div><div class="nm"><div>${GOODS[id].name}</div><div class="muted">на складе ${qOf(id)} · цена ${fmt(sellPrice(id))} ₽${displayed(id) ? ' · уже на витрине' : ''}</div></div>
-      <button class="btn small" data-pick="${id}">Сюда</button></div>`).join('') : '<p>Склад пуст. Сходите на рынок.</p>',
+      <button class="btn small" data-pick="${id}">Сюда</button></div>`).join('') : '<p>Склад пуст. Закажите товар через блокнот и телефон на прилавке.</p>',
     onShow(box) { box.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { S.slots[i] = b.dataset.pick; sfx.click(); nextCard(); }); },
     buttons: [{ label:'Убрать с витрины', fn() { S.slots[i] = null; } }, { label:'Отмена' }],
   });
@@ -438,19 +444,41 @@ function pickGreeting(k) {
     newrus: ['Слышь, братан, давай лучшее.', 'Сдачи не надо. Шучу. Надо.', 'Мне по-быстрому, у меня стрелка.'],
   }[k] || ['Здрасьте.']);
 }
-function startTrade() {
-  if (!S.slots.some(id => id && qOf(id) > 0)) { toast('Витрина пуста — нечего продавать!', 'bad'); return; }
-  S.phase = 'trade';
-  if (W) W.goCounter(true);
-  if (W) sheetOpen = false;
-  T = { t:0, len:450, queue:[], walking:[], cur:null, nextSpawn:.5, rev:0, cogs:0, sold:0, lost:0, specials:[], paused:false, startMoney:S.money };
-  // особые посетители
+function initTradeSession() {
+  T = { t:0, len:900, queue:[], walking:[], cur:null, nextSpawn:.5, rev:0, cogs:0, sold:0, lost:0, specials:[], paused:false, startMoney:S.money };
   if (S.day >= 3 && S.day % 4 === 3) T.specials.push({ at: R(60, 170), k:'racket' });
   const polChance = (S.permit ? .1 : .22) * (S.outfit === 'business' ? .5 : 1) * (S.rep.law > 30 ? .5 : 1);
   if (Math.random() < polChance) T.specials.push({ at: R(40, 250), k:'police' });
   if (Math.random() < .3) T.specials.push({ at: R(40, 250), k:'neighbor' });
   if (S.rep.folk < -40 && Math.random() < .5) T.specials.push({ at: R(20, 120), k:'boycott' });
-  sfx.door(); render();
+}
+function onSitCounter() {
+  if (!S || S.phase === 'night' || S.phase === 'evening') return;
+  if (!T) initTradeSession();
+  else T.paused = false;
+  S.phase = 'trade';
+  sheetOpen = false;
+  sfx.door();
+  if (!S.slots.some(id => id && qOf(id) > 0)) toast('Прилавок открыт. Возьмите товар с полок и поставьте на стеклянную витрину у окна!');
+  else toast('Прилавок открыт — началась продажа', 'good');
+  render();
+}
+function onStandCounter() {
+  if (!S || S.phase !== 'trade') return;
+  S.phase = 'morning';
+  if (T) {
+    T.paused = true;
+    T.cur = null;
+    T.queue = [];
+    T.walking = [];
+  }
+  sfx.door();
+  toast('Прилавок закрыт');
+  render();
+}
+function startTrade() {
+  if (W) { sheetOpen = false; W.goCounter(false); }
+  else onSitCounter();
 }
 function specialVisitor(k) {
   if (k === 'racket') {
@@ -512,7 +540,7 @@ function tradeTick(dt) {
   }
   // спавн
   T.nextSpawn -= dt;
-  if (T.nextSpawn <= 0 && T.t < T.len - 4) {
+  if (T.nextSpawn <= 0 && T.t < T.len - 4 && S.slots.some(id => id && qOf(id) > 0)) {
     if (T.queue.length + T.walking.length < 6) { const c = makeCustomer(); if (W) { T.walking.push(c); W.spawnCustomer(c); } else T.queue.push(c); }
     T.nextSpawn = (W ? R(14, 26) : R(7, 13)) / traffic() * (T.boycott ? 1.8 : 1);
   }
@@ -573,7 +601,7 @@ function onKill(role, c, kind) {
 }
 function custStatus(c) {
   const id = c.item, q = qOf(id), onVit = displayed(id);
-  if (!onVit && q > 0) return { ok:false, msg:'Есть на складе, но нет на витрине! Положите на витрину.' };
+  if (!onVit && q > 0) return { ok:false, msg:'Есть на полке, но нет на витрине! Возьмите с полки и поставьте на витрину.' };
   if (!onVit || q === 0) return { ok:false, msg:'Такого нет.' };
   return { ok:true, n: Math.min(q, c.qty), msg: q < c.qty ? `Есть только ${q} из ${c.qty}` : '' };
 }
@@ -584,7 +612,7 @@ function moodOf(c) {
 function tradePanelHtml() {
   return `<div class="tp"><div class="timer"><i id="tBar" style="width:${clamp(100 - T.t / T.len * 100, 0, 100)}%"></i></div>
     <div id="cust">${custHtml()}</div>
-    <div class="tstat"><span>ВЫРУЧКА ${fmt(T.rev)} ₽ · ПРОДАНО ${T.sold} · УШЛИ ${T.lost}</span><button class="btn small" data-a="vitrine">Витрина</button></div></div>`;
+    <div class="tstat"><span>ВЫРУЧКА ${fmt(T.rev)} ₽ · ПРОДАНО ${T.sold} · УШЛИ ${T.lost}</span></div></div>`;
 }
 function custHtml() {
   const c = T.cur;
@@ -755,8 +783,9 @@ function eveningFlow(r) {
 }
 function sleep() {
   if (!S || (S.phase !== 'night' && S.phase !== 'evening')) return;
-  if (W) W.goCounter(false);
+  T = null;
   S.phase = 'evening';
+  if (W) { W.P.x = 0; W.P.z = -.25; W.P.yaw = Math.PI; W.P.pitch = -.08; W.P.seated = false; W.P.locked = false; }
   advanceDay();
 }
 function nightEvents() {
@@ -873,7 +902,7 @@ function advanceDay() {
 function chapter2Intro() {
   queueCard({ title:'Глава 2 · 1993 «Ваучер»',
     html:`<p>Новый год вы встретили у телевизора. Страна делит заводы: каждому выдали по ваучеру — «две «Волги»», как обещали.</p>
-      <p>Открылся вокзальный рынок: там дешевле табак, спиртное и кассеты, но можно нарваться на брак.</p>
+      <p>В блокноте заказов появились новые товары и одежда 1993 года.</p>
       <p class="goal">Цель главы: открыть павильон ($500) и пережить 1993 год с хорошим капиталом.</p>` });
   const vsell = usdToRub(20);
   queueCard({ title:'🎫 Что делать с ваучером?',
@@ -916,64 +945,7 @@ function checkLevel() {
   while (S.xp >= xpNeed(S.lvl)) { S.xp -= xpNeed(S.lvl); S.lvl++; S.sp++; toast(`Новый уровень ${S.lvl + 1}! +1 очко навыков`, 'good'); }
 }
 
-// ============================================================
-//  Рынок
-// ============================================================
-function marketHtml() {
-  const ch2 = (chapter() === 2 || S.free) && (!W || W.nearMarket());
-  const trade = S.phase !== 'morning';
-  const src = ch2 ? S.src : 'market';
-  const rows = GOOD_IDS.filter(goodAvail).map(id => {
-    const p = buyPrice(id, src), pp = S.prevPrices[id];
-    const trend = pp ? (S.prices[id] > pp * 1.02 ? '<span class="up">▲</span>' : S.prices[id] < pp * .98 ? '<span class="dn">▼</span>' : '') : '';
-    return `<div class="good"><div class="ic">${GOODS[id].icon}</div><div class="nm"><div>${GOODS[id].name}${waveItem() === id ? ' 🔥' : ''}</div>
-      <div class="muted">у вас ${qOf(id)}${S.stock[id] && S.stock[id].q ? ' · ср. цена ' + fmt(S.stock[id].c) : ''}</div></div>
-      <div><div class="pr">${fmt(p)} ₽ ${trend}</div><div class="row" style="gap:4px;margin-top:3px">
-        <button class="btn small" data-buy="${id}" data-n="1" ${trade ? 'disabled' : ''}>+1</button>
-        <button class="btn small" data-buy="${id}" data-n="5" ${trade ? 'disabled' : ''}>+5</button>
-        <button class="btn small" data-buy="${id}" data-n="10" ${trade ? 'disabled' : ''}>+10</button></div></div></div>`;
-  }).join('');
-  const outfits = Object.entries(OUTFITS).filter(([k, o]) => !o.from || S.day >= o.from).map(([k, o]) => {
-    const owned = S.owned.includes(k), on = S.outfit === k;
-    return `<div class="good"><div class="ic">${o.icon}</div><div class="nm"><div>${o.name}</div><div class="muted">${o.desc}</div></div>
-      ${on ? '<span class="chip">надето</span>' : owned ? `<button class="btn small" data-wear="${k}">Надеть</button>`
-        : `<button class="btn small yellow" data-outfit="${k}" ${S.money < usdToRub(o.usd) || trade ? 'disabled' : ''}>${fmt(usdToRub(o.usd))} ₽</button>`}</div>`;
-  }).join('');
-  return `<h2>🛒 ${src === 'station' ? 'Вокзальный рынок' : 'Оптовый рынок'}</h2>
-    ${trade ? '<p class="warn">Рынок работает только утром.</p>' : ''}
-    ${W ? (W.nearMarket() ? '<p class="dn"><b>Вы на рынке — оптовые цены.</b></p>' : '<p class="muted">Вы не на рынке: заказ с доставкой <b>+15%</b>. Рынок — налево от ларька, под вывеской «РЫНОК»' + (chapter() === 2 || S.free ? '; там же вокзальные лотки.' : '.') + '</p>') : ''}
-    ${ch2 ? `<div class="seg"><button data-src="market" class="${src === 'market' ? 'on' : ''}">Оптовый</button><button data-src="station" class="${src === 'station' ? 'on' : ''}">Вокзал</button></div>
-      ${src === 'station' ? '<p class="muted">Дешевле табак, спиртное и кассеты. Но каждая пятая партия — с браком.</p>' : ''}` : ''}
-    ${S.cheap > 0 ? '<p class="dn"><b>Скидка от Ашота: −15% (ещё ' + S.cheap + ' дн.)</b></p>' : ''}
-    <p class="muted">Склад: ${stockTotal()}/${storeCap()} · Касса: ${fmt(S.money)} ₽</p>
-    <div class="card">${rows}</div>
-    <h3>🦆 Охотничий отдел</h3>
-    <div class="card"><div class="good"><div class="ic">🔴</div><div class="nm"><div>Патроны 12 калибра (дробь) ×5</div><div class="muted">${S.gun ? 'У вас: ' + (S.shells + (W ? W.weapon.ammo : S.ammo)) + ' шт.' : 'Ружьё изъято милицией.'}</div></div>
-      <button class="btn small yellow" data-a="shells" ${trade || !S.gun || S.money < usdToRub(3) ? 'disabled' : ''}>${fmt(usdToRub(3))} ₽</button></div></div>
-    <h3>👕 Вещевой рынок</h3>
-    <p class="muted">Одежда — это пропуск: по ней встречают.</p>
-    <div class="card">${outfits}</div>`;
-}
-function buy(id, n) {
-  const src = (chapter() === 2 || S.free) && (!W || W.nearMarket()) ? S.src : 'market';
-  const p = buyPrice(id, src);
-  const space = storeCap() - stockTotal();
-  n = Math.min(n, space, Math.floor(S.money / p));
-  if (n <= 0) { toast(space <= 0 ? 'Склад забит!' : 'Не хватает денег', 'bad'); sfx.bad(); return; }
-  S.money -= p * n;
-  let got = n;
-  if (src === 'station' && Math.random() < .2) { got = Math.max(0, n - Math.ceil(n * .4)); toast(`Брак! Годных только ${got} из ${n}`, 'bad'); }
-  if (got > 0) addStock(id, got, p * n / got);
-  if (id === 'gum') {
-    S.gumBought += got;
-    while (S.gumBought >= 10) {
-      S.gumBought -= 10;
-      const missing = CARD_NAMES.map((_, i) => i).filter(i => !S.cards.includes(i));
-      if (missing.length && Math.random() < .7) { const c = pick(missing); S.cards.push(c); toast(`Вкладыш! «${CARD_NAMES[c]}» (${S.cards.length}/${CARD_NAMES.length})`, 'good'); if (S.cards.length === CARD_NAMES.length) { rep('folk', 10); toast('Полный альбом! Школьники в восторге. Народ +10', 'good'); } }
-    }
-  }
-  sfx.coin(); render();
-}
+
 
 // ============================================================
 //  Обменник
@@ -1032,14 +1004,41 @@ function usdOp(kind, n) {
 // ============================================================
 //  Герой
 // ============================================================
+// долг, фонд «ПМП» и ваучер (раньше были в обменнике, который убран)
+const debtPayable = () => Math.min(S.debt, S.usd + Math.floor(S.money / Math.round(S.rate * 1.04)));
+function financeHtml() {
+  const trade = S.phase !== 'morning';
+  const pmpOpen = (chapter() === 2 || S.free) && S.day >= 14 && !S.pmpDead;
+  return `${S.debt > 0 ? `<div class="card goal"><b>Долг «заводским»: $${S.debt}</b><div class="muted">Долг в долларах, отдаётся рублями по курсу ${fmt(Math.round(S.rate * 1.04))} ₽ за $1. Срок — декабрь 1992.</div>
+      <div class="row" style="margin-top:8px"><button class="btn small red" data-a="paydebt" ${debtPayable() < 1 || trade ? 'disabled' : ''}>Отдать $${debtPayable()} (${fmt(Math.max(0, debtPayable() - S.usd) * Math.round(S.rate * 1.04))} ₽)</button></div></div>` : ''}
+    ${pmpOpen || S.pmp > 0 ? `<div class="card"><b>🏦 Фонд «ПМП» — 30% в месяц!</b>
+      <div class="muted">«Мы не летаем — мы растём!» Вложено сейчас: <b>${fmt(S.pmp)} ₽</b>. Выйти можно в любой момент... пока офис открыт.</div>
+      <div class="row" style="margin-top:8px;gap:6px">
+        <button class="btn small yellow" data-a="pmpIn" ${S.money < 100 || trade || S.pmpDead ? 'disabled' : ''}>Вложить ¼ кассы</button>
+        <button class="btn small" data-a="pmpOut" ${S.pmp <= 0 || trade ? 'disabled' : ''}>Забрать всё</button></div></div>` : ''}
+    ${S.voucher ? `<div class="card"><b>🎫 Ваучер:</b> ${{ fund: S.fundGone ? 'фонд «Золотой телёнок» исчез 🙃' : 'в фонде «Золотой телёнок» (обещают ×10)', zavod:'акции завода, дивиденды каждый месяц', sold:'продан' }[S.voucher]}</div>` : ''}`;
+}
 function heroHtml() {
   const SK = [['trade', 'Торговля', 'дешевле закупка (−4%/ур.)'], ['charm', 'Обаяние', 'покупатели терпимее к цене'], ['sense', 'Чуйка', 'больше терпения, легче ловить фальшивки; на 2 ур. видно, сколько готов дать покупатель']];
+  const ch = chapter();
+  const goal = S.free ? 'Свободная торговля. Капитал: $' + fmt(capitalUsd())
+    : ch === 1 ? (S.debt > 0 ? `Отдать долг $${S.debt} до декабря 1992` : 'Долг отдан. Доживите до 1993-го и копите.')
+    : (S.up.pavilion ? 'Павильон открыт. Доживите до конца 1993 и наберите капитал.' : 'Открыть павильон ($500) до конца 1993');
+  const mk = Math.round(S.markup * 100);
+  const mkLabel = mk <= 25 ? 'по-честному' : mk <= 60 ? 'как все' : mk <= 100 ? 'дерзко' : 'грабёж';
+  const ups = Object.entries(UPGRADES).filter(([k, u]) => !S.up[k] && (!u.from || S.day >= u.from));
   return `<h2>👤 ${esc(S.name)}</h2>
+    <div class="card goal"><b>Цель:</b> ${goal}</div>
     <div class="row"><div style="font-size:54px;width:80px;text-align:center">${OUTFITS[S.outfit].icon}</div>
       <div><div><b>Уровень ${S.lvl + 1}</b></div><div class="muted">Опыт ${S.xp}/${xpNeed(S.lvl)}</div>
       <div class="muted">${OUTFITS[S.outfit].icon} ${OUTFITS[S.outfit].name}</div>
       <div class="muted">${S.permit ? '📄 Разрешение на торговлю' : '📄 Без разрешения'}</div>
-      <div class="muted">Капитал ≈ $${fmt(capitalUsd())}</div></div></div>
+      <div class="muted">Капитал ≈ $${fmt(capitalUsd())} · На полках: ${stockTotal()}/${storeCap()}</div></div></div>
+    <h3>Наценка на товар: ${mk}% <span class="chip">${mkLabel}</span></h3>
+    <input type="range" min="0" max="150" step="5" value="${mk}" data-range="markup">
+    <p class="muted">Чтобы выставить товар на продажу, возьмите его рукой с полки в ларьке и поставьте на стеклянную витрину у окна.</p>
+    ${ups.length ? '<h3>Улучшения</h3>' + ups.map(([k, u]) => `<div class="card row sp"><div><b>${u.icon} ${u.name}</b><div class="muted">${u.desc}</div></div>
+        <button class="btn small yellow" data-up="${k}" ${S.money < usdToRub(u.usd) ? 'disabled' : ''}>${fmt(usdToRub(u.usd))} ₽</button></div>`).join('') : ''}
     <h3>Навыки ${S.sp ? `<span class="chip">очков: ${S.sp}</span>` : ''}</h3>
     <div class="card">${SK.map(([k, n, d]) => `<div class="skill"><div class="lv">${'★'.repeat(S.sk[k])}${'☆'.repeat(Math.max(0, 3 - S.sk[k]))}</div>
       <div style="flex:1"><b>${n}</b><div class="muted">${d}</div></div><button class="btn small" data-skill="${k}" ${S.sp > 0 && S.sk[k] < 3 ? '' : 'disabled'}>+</button></div>`).join('')}</div>
@@ -1099,7 +1098,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('button, [data-a]'); if (!el || el.disabled) return;
   if (el.closest('#mbox')) return; // модалки обрабатываются отдельно
   const d = el.dataset;
-  if (d.tab) { if (S.phase === 'trade' && d.tab !== 'kiosk') return; tab = d.tab; sfx.click(); render(); $('#screen').scrollTop = 0; return; }
+  if (d.tab) { if (S.phase === 'trade' && d.tab === 'exch') return; tab = d.tab; sfx.click(); render(); $('#screen').scrollTop = 0; return; }
   if (!S && !['new', 'continue'].includes(d.a)) return;
   if (d.slot !== undefined) {
     if (S.phase === 'evening') return;
@@ -1120,7 +1119,7 @@ document.addEventListener('click', e => {
   if (d.skill) { if (S.sp > 0 && S.sk[d.skill] < 3) { S.sp--; S.sk[d.skill]++; sfx.ching(); render(); } return; }
   switch (d.a) {
     case 'new': if (load()) queueCard({ title:'Начать заново?', html:'<p>Текущее сохранение пропадёт.</p>', buttons:[{ label:'Да, заново', cls:'red', fn() { setTimeout(startNewFlow, 0); } }, { label:'Отмена' }] }); else startNewFlow(); break;
-    case 'continue': S = load(); if (S.phase !== 'night') S.phase = 'morning'; S.gunState = S.gunState || 'wall'; S.gun = S.gunState === 'carried'; S.shells = S.shells ?? 0; S.ammo = S.ammo ?? 2; S.order = S.order || { lines: {}, hidden: {} }; S.deliveries = S.deliveries || []; S.items = S.items || []; S.hidden = S.hidden || {}; S.cigs = S.cigs || 0; S.butts = S.butts || 0; tab = 'kiosk'; if (W) W.reset(); syncAmmoToWeapon(); offlineIncome(); render(); break;
+    case 'continue': S = load(); if (S.phase !== 'night') S.phase = 'morning'; S.gunState = S.gunState || 'wall'; S.gun = S.gunState === 'carried'; S.shells = S.shells ?? 0; S.ammo = S.ammo ?? 2; S.order = S.order || { lines: {}, hidden: {} }; S.deliveries = S.deliveries || []; S.items = S.items || []; S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0); S.shelfPlacements = S.shelfPlacements || []; S.hidden = S.hidden || {}; S.cigs = S.cigs || 0; S.butts = S.butts || 0; tab = 'kiosk'; if (W) W.reset(); syncAmmoToWeapon(); offlineIncome(); render(); break;
     case 'shells': { const p = usdToRub(3); if (S.money < p) return; S.money -= p; if (W) W.weapon.reserve += 5; else S.shells += 5; syncAmmoFromWeapon(); sfx.coin(); toast('Пачка патронов: +5', 'good'); render(); break; }
     case 'editctl': sheetOpen = false; render(); controls && controls.setEditing(true); renderControls(); break;
     case 'sleep': sheetOpen = false; sleep(); break;
@@ -1134,7 +1133,7 @@ document.addEventListener('click', e => {
     case 'auto': { const r = autoDay(); S.phase = 'trade'; eveningFlow(r); break; }
     case 'hire': S.seller = true; sfx.ching(); toast('Тётя Люба вышла на смену!', 'good'); render(); break;
     case 'sell': case 'discount': case 'next': act(d.a); break;
-    case 'paydebt': { const k = Math.min(S.usd, S.debt); S.usd -= k; S.debt -= k; sfx.ching(); toast(S.debt ? `Отдали $${k}. Осталось $${S.debt}` : 'Долг закрыт! Колян уважает.', 'good'); if (!S.debt) rep('street', 5); render(); break; }
+    case 'paydebt': { const k = debtPayable(); if (k < 1) break; const fromUsd = Math.min(S.usd, k), rub = (k - fromUsd) * Math.round(S.rate * 1.04); S.usd -= fromUsd; S.money -= rub; S.debt -= k; sfx.ching(); toast(S.debt ? `Отдали $${k}. Осталось $${S.debt}` : 'Долг закрыт! Колян уважает.', 'good'); if (!S.debt) rep('street', 5); render(); break; }
     case 'pmpIn': { const k = Math.round(S.money / 4); S.money -= k; S.pmp += k; sfx.coin(); toast(`Вложено ${fmt(k)} ₽ в «ПМП»`); render(); break; }
     case 'pmpOut': { S.money += S.pmp; toast(`Забрали ${fmt(S.pmp)} ₽ из «ПМП»`, 'good'); S.pmp = 0; sfx.ching(); render(); break; }
     case 'mute': S.mute = !S.mute; audio.setMuted(S.mute); render(); break;
@@ -1146,7 +1145,7 @@ document.addEventListener('input', e => {
     S.markup = +e.target.value / 100;
     const vit = document.querySelector('.vit'); if (vit) vit.outerHTML = vitrineHtml();
     const h = e.target.previousElementSibling; const mk = Math.round(S.markup * 100);
-    if (h) h.innerHTML = `Наценка: ${mk}% <span class="chip">${mk <= 25 ? 'по-честному' : mk <= 60 ? 'как все' : mk <= 100 ? 'дерзко' : 'грабёж'}</span>`;
+    if (h) h.innerHTML = `Наценка на товар: ${mk}% <span class="chip">${mk <= 25 ? 'по-честному' : mk <= 60 ? 'как все' : mk <= 100 ? 'дерзко' : 'грабёж'}</span>`; if (W) W.updateShelves();
   }
 });
 document.addEventListener('change', e => { if (e.target.dataset.range) save(); });
@@ -1248,6 +1247,87 @@ document.addEventListener('click', e => {
   renderNotepad();
 }, true);
 
+// --- Кладовщик Геннадий на проходной «Краснозаводского завода» ---
+function factoryTalk() {
+  if (!W || !S) return;
+  const gNpc = W.debug.people.find(p => p.role === 'zavod');
+  if (gNpc) gNpc.talking = true;
+  const done = () => { if (gNpc) gNpc.talking = false; closeDialog(); };
+  const disc = .80; // на заводе отпускная цена на 20% ниже оптовой и без платы за доставку!
+  const LOTS = [
+    { id: 'beer',     qty: 10, title: 'Ящик пива «Заводское» (10 бут. / 2 уп.)' },
+    { id: 'tushonka', qty: 10, title: 'Коробка тушёнки «Говядина» (10 бан. / 2 уп.)' },
+    { id: 'cig',      qty: 10, title: 'Коробка сигарет «Космонавт» (10 пач. / 2 блока)' },
+    { id: 'soda',     qty: 10, title: 'Ящик лимонада «Буратинка» (10 бут. / 2 уп.)' },
+    { id: 'vodka',    qty: 10, title: 'Ящик спирта «Король» (10 бут. / 2 уп.)' },
+  ];
+  const buyLot = (lot, toKiosk = false) => {
+    const unit = Math.max(1, Math.round((S.prices[lot.id] || GOODS[lot.id].base) * disc));
+    const cost = unit * lot.qty;
+    if (S.money < cost) {
+      showDialog({
+        name: 'Кладовщик Геннадий',
+        text: `Наличных не хватает, коммерсант. Нужно ${fmt(cost)} ₽, а у тебя в кассе ${fmt(S.money)} ₽.`,
+        options: [{ label: 'Понял', fn: () => factoryTalk() }]
+      });
+      return;
+    }
+    S.money -= cost;
+    const contents = { [lot.id]: [lot.qty, unit] };
+    if (toKiosk) {
+      const etaH = R(.35, .65);
+      S.deliveries = S.deliveries || [];
+      S.deliveries.push({ contents, hidden: false, label: '«Заводской сбыт»', etaHours: etaH, eta: etaH * 90, state: 'way' });
+      sfx.coin(); renderHud(); save();
+      showDialog({
+        name: 'Кладовщик Геннадий',
+        text: 'Оформил пропуск! Наш заводской грузовик по пути закинет коробку прямо к двери твоего ларька.',
+        options: [{ label: 'Спасибо, Геннадий!', fn: done }]
+      });
+    } else {
+      if (W.spawnFactoryBox) W.spawnFactoryBox(contents);
+      sfx.coin(); renderHud(); save();
+      toast('Коробка с завода выдана! Возьмите её у проходной и везите на автобусе №7.', 'good');
+      showDialog({
+        name: 'Кладовщик Геннадий',
+        text: 'Вынес коробку со штампом ОТК — вон у проходной стоит! Можешь прямо в руки взять, зайти с ней в ПАЗик к Дяде Коле и довезти до ларька, или распаковать на месте.',
+        options: [{ label: 'Отлично, забираю!', fn: done }]
+      });
+    }
+  };
+  showDialog({
+    name: 'Кладовщик Геннадий (Краснозаводский завод)',
+    text: 'Здорово! Добрался-таки на седьмом автобусе до нашего завода? У нас в отделе сбыта для своих отпускные цены на 20% ниже городских — прямо с конвейера, в заводских коробках по 10 штук!',
+    options: [
+      ...LOTS.map(lot => {
+        const unit = Math.max(1, Math.round((S.prices[lot.id] || GOODS[lot.id].base) * disc));
+        const cost = unit * lot.qty;
+        return {
+          label: `📦 ${lot.title} — ${fmt(cost)} ₽ (−20%)`,
+          fn: () => showDialog({
+            name: 'Кладовщик Геннадий',
+            text: `${lot.title} по заводской цене — ${fmt(cost)} ₽ (${fmt(unit)} ₽/шт.). Вынести коробку прямо сюда к проходной (увезёшь сам на автобусе без доплаты за доставку) или отправить попутной заводской машиной к ларьку?`,
+            options: [
+              { label: `Взять коробку здесь за ${fmt(cost)} ₽`, fn: () => buyLot(lot, false) },
+              { label: `Отправить к ларьку за ${fmt(cost)} ₽`, fn: () => buyLot(lot, true) },
+              { label: 'Назад к списку', fn: () => factoryTalk() },
+            ]
+          })
+        };
+      }),
+      {
+        label: 'Как завод живёт в 92-м?',
+        fn: () => showDialog({
+          name: 'Кладовщик Геннадий',
+          text: 'Гудит помаленьку! Первый механосборочный цех и котельная в две смены пашут, а зарплату людям часто бартером выдают — тушёнкой да заводским пивом. Потому через отдел сбыта за живые рубли всегда рады отгрузить!',
+          options: [{ label: 'Понятно', fn: () => factoryTalk() }]
+        })
+      },
+      { label: 'Бывай, Геннадий', fn: done }
+    ]
+  });
+}
+
 // --- Марат: патроны на остановке ---
 function maratTalk() {
   if (!W) return; const m = W.debug.people.find(p => p.role === 'marat'); if (m) m.talking = true;
@@ -1307,7 +1387,7 @@ function talk(who) {
       S.money -= o.total;
       const src = hidden ? S.order.hidden : S.order.lines, contents = {};
       for (const [k, q] of Object.entries(src)) if (q) contents[k] = [q, lineInfo(hidden ? 'h:' + k : k).unit];
-      S.deliveries = S.deliveries || []; S.deliveries.push({ contents, hidden, label: name, eta: R(9, 15), state: 'way' });
+      const etaH = R(.48, .92); S.deliveries = S.deliveries || []; S.deliveries.push({ contents, hidden, label: name, etaHours: etaH, eta: etaH * 90, state: 'way' });
       if (hidden) S.order.hidden = {}; else S.order.lines = {};
       if (hidden) rep('street', 1);
       save(); renderHud(); sfx.coin();
@@ -1316,16 +1396,27 @@ function talk(who) {
     { label: 'Нет, отбой', fn: hangUp },
   ] });
 }
-function onDelivered(d) { toast('Тук-тук! Привезли заказ — коробка у двери.', 'good'); }
+function onDelivered(d, boxCount = 1) {
+  if (boxCount > 1) toast(`Тук-тук! Привезли заказ — у двери ${boxCount} кор.`, 'good');
+  else toast('Тук-тук! Привезли заказ — коробка у двери.', 'good');
+}
 function onUnpack(data) {
-  const c = data.contents || {}; let n = 0;
+  const c = (data && data.contents) || {};
   for (const [k, [q, unit]] of Object.entries(c)) {
-    if (data.hidden) { S.hidden[k] = (S.hidden[k] || 0) + q; }
-    else if (k.startsWith('outfit:')) { const id = k.slice(7); if (!S.owned.includes(id)) S.owned.push(id); toast('Обновка: ' + OUTFITS[id].name + ' (надеть — меню → Герой)', 'good'); }
-    else { addStock(k, q, unit); if (k === 'gum') S.gumBought += q; }
-    n += q;
+    if (k.startsWith('outfit:')) {
+      const id = k.slice(7);
+      if (!S.owned.includes(id)) S.owned.push(id);
+      toast('Обновка: ' + OUTFITS[id].name + ' (надеть — меню → Герой)', 'good');
+    }
   }
-  sfx.ching(); toast(data.hidden ? `Разложили «товар для своих»: ${n} шт — под прилавок` : `Распаковали: ${n} шт товара на склад`, 'good'); save(); render();
+  sfx.ching();
+  if (data && data.spawnedPacks > 0) {
+    const extraTxt = data.extraBoxes > 0 ? ` (остальное в ${data.extraBoxes} соседн. кор.)` : '';
+    toast(`Коробка открыта! Внутри ${data.spawnedPacks} уп.${extraTxt} — доставайте блоки по одному.`, 'good');
+  } else {
+    toast('Коробка открыта!', 'good');
+  }
+  save(); render();
 }
 const hiddenCount = () => Object.values(S.hidden || {}).reduce((a, b) => a + b, 0);
 // предложение из-под полы — часть разговора с покупателем
@@ -1389,9 +1480,58 @@ function syncAmmoFromWeapon() { if (!W || !S) return; S.ammo = W.weapon.ammo; S.
 function look(dx, dy, kind) { if (controls && kind !== 'mouse') controls.look(dx, dy); else W && W.look(dx, dy, kind); }
 const W = (() => { try { return createWorld({
   getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET,
-  toast, openSheet, onCtl, rep, qOf, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
-  arrive, customerScared, onKill, subtitles, gopnikDemand, say, sleep, maratTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack,
-  onDrink(k, strong) { if (strong > .3 && W && W.life.fx.drunkTarget > 1) toast('Голова поплыла… Хватит, пожалуй.'); },
+  toast, openSheet, onCtl, rep, qOf, addStock, takeStock, slotCount,
+  onGumUnpacked(n) {
+    if (!S) return;
+    S.gumBought = (S.gumBought || 0) + (n || 1);
+    while (S.gumBought >= 10) {
+      S.gumBought -= 10;
+      const missing = CARD_NAMES.map((_, i) => i).filter(i => !S.cards.includes(i));
+      if (missing.length && Math.random() < .7) {
+        const c = pick(missing); S.cards.push(c);
+        toast(`Вкладыш! «${CARD_NAMES[c]}» (${S.cards.length}/${CARD_NAMES.length})`, 'good');
+        if (S.cards.length === CARD_NAMES.length) { rep('folk', 10); toast('Полный альбом! Школьники в восторге. Народ +10', 'good'); }
+      }
+    }
+  },
+  onStockChange: () => { renderHud(); save(); if (T) renderTrade(); }, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
+  arrive, customerScared, onKill, subtitles, gopnikDemand, say, sleep, maratTalk, factoryTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack, onSitCounter, onStandCounter,
+  onDrink(k, strong, total) {
+    if (k === 'soda') { toast('Сладкий холодный лимонад «Буратинка» отлично освежает!'); return; }
+    const d = total ?? (W && W.life.fx.drunkTarget) ?? strong;
+    if (d >= 1.35) toast('В глазах темнеет, ноги подкашиваются… Перебрал!', 'bad');
+    else if (d >= .95) toast('Ноги ватные, в глазах двоится… Ещё немного — и вырубит!', 'bad');
+    else if (d >= .55) toast(k === 'samogon' ? 'Ух, крепкий первач! Голова сразу поплыла…' : 'Хорошо пошло — голова уже заметно кружится.');
+    else toast(k === 'beer' ? 'Холодное пиво освежает — пошёл лёгкий хмель.' : k === 'samogon' ? 'Ух, забористый самогон! Сразу дало в голову.' : 'Спирт обжёг горло — по телу пошло тепло.');
+  },
+  onBlackout(spotName, sleepHours) {
+    if (!S) return;
+    if (dialogOpen) closeDialog();
+    if (sheetOpen) closeSheet();
+    const hrs = sleepHours || R(4.0, 7.0);
+    const hInt = Math.floor(hrs), mInt = Math.round((hrs - hInt) * 60);
+    const timeTxt = mInt > 0 ? `${hInt} ч ${mInt} мин` : `${hInt} ч`;
+    if (S.phase === 'trade' && T) {
+      T.t += hrs * (T.len / 12);
+      T.lost += T.queue.length + (T.cur && !T.cur.special ? 1 : 0);
+      T.queue = [];
+      if (T.cur && !T.cur.special) T.cur = null;
+      renderTrade();
+    }
+    // С шансом 55% при отключке пропадают деньги (случайная сумма от 500 до 5000 ₽)
+    const stealChance = .55;
+    if (S.money > 0 && Math.random() < stealChance) {
+      const rawSteal = RI(500, 5000);
+      const lost = Math.min(S.money, rawSteal);
+      S.money -= lost;
+      sfx.bad && sfx.bad();
+      floatText('−' + fmt(lost) + ' ₽');
+      toast(`Вас вырубило на ${timeTxt}! Очнулись лёжа на земле (${spotName}) — из карманов пропало ${fmt(lost)} ₽!`, 'bad');
+    } else {
+      toast(`Вас вырубило на ${timeTxt}! Вы очнулись лёжа на земле (${spotName}). Повезло — деньги целы.`);
+    }
+    save(); renderHud(); renderControls();
+  },
   dialog: showDialog, closeDialog,
   gopResolved(how) { if (how === 'scared') { rep('street', 3); toast('Гопники отступили. Улица +3'); } },
   onShot() { syncAmmoFromWeapon(); toast('Выстрел в воздух! Все разбегаются. Закон −4', 'bad'); renderHud(); },
@@ -1401,30 +1541,64 @@ const W = (() => { try { return createWorld({
 }); } catch (e) { console.error('3D не запустился', e); return null; } })();
 if (W) W.setRetro(SET.retro); // ретро-фильтр — из настроек (по умолчанию выключен)
 if (W) {
-  const hasCig = () => S && (S.cigs > 0 || qOf('cig') > 0 || (S.hidden.kontra || 0) > 0);
-  const hasBottle = () => S && ((S.bottle && S.bottle.left > 0) || qOf('vodka') > 0 || qOf('beer') > 0 || (S.hidden.samogon || 0) > 0);
+  const heldGoodId = () => W && W.life.held && W.life.held.kind === 'good' ? (W.life.held.data && W.life.held.data.goodId) : null;
+  const heldCigPack = () => ['cig', 'kontra'].includes(heldGoodId());
+  const heldDrinkId = () => { const hg = heldGoodId(); return ['beer', 'vodka', 'samogon', 'soda'].includes(hg) ? hg : null; };
   const handsFree = () => S && !W.life.habit.busy && !W.life.held && !W.weapon.drawn && !W.P.locked && !npOpen;
   const carried = () => S && S.gunState === 'carried';
+  // Когда руки заняты сигаретой, бутылкой или предметом — достать/использовать оружие нельзя (чтобы не появлялась «3-я рука»)
+  const canUseWeapon = () => carried() && !W.life.habit.busy && !W.life.held && !W.P.locked && !npOpen;
   const ACTIONS = {
     move:      { label: 'Движение', icon: 'move', kind: 'stick' },
     interact:  { label: 'Действие', icon: 'interact', kind: 'tap', down() { const a = W.action(); if (a) { sfx.click(); a.fn(); } }, visible: () => !!W.action(), text: () => { const a = W.action(); return a ? a.label : 'Действие'; } },
     use:       { label: 'Ещё', icon: 'hand', kind: 'tap', down() { const a = W.action(); if (a && a.alt) { sfx.click(); a.alt.fn(); } }, visible: () => { const a = W.action(); return !!(a && a.alt); }, text: () => { const a = W.action(); return a && a.alt ? a.alt.label : ''; } },
-    fire:      { label: 'Огонь', icon: 'fire', kind: 'tap', down() { if (!carried()) return; if (!W.weapon.drawn) { W.weapon.draw(); renderHud(); return; } const r = W.weapon.fire(); if (r === 'empty') toast('Стволы пусты — перезарядите'); syncAmmoFromWeapon(); renderHud(); }, visible: carried },
-    aim:       { label: 'Прицел', icon: 'aim', kind: 'hold', down() { if (carried()) W.weapon.aim(true); }, up() { W.weapon.aim(false); }, visible: () => carried() && W.weapon.drawn, active: () => W.weapon.aiming },
-    reload:    { label: 'Перезарядка', icon: 'reload', kind: 'tap', down() { if (!W.weapon.reload()) { if (W.weapon.reserve <= 0) toast('Патронов нет — спросите у Марата на остановке'); } setTimeout(() => { syncAmmoFromWeapon(); renderHud(); }, 2500); }, visible: () => carried() && W.weapon.drawn && W.weapon.ammo < 2 },
-    weapon:    { label: 'Ружьё', icon: 'weapon', kind: 'tap', down() { W.weapon.toggle(); setTimeout(renderHud, 500); }, visible: carried, active: () => W.weapon.drawn },
-    gunput:    { label: 'Положить ружьё', icon: 'drop', kind: 'tap', down() { W.putGunDown(); }, visible: () => carried() && !W.weapon.aiming && !W.life.held },
+    fire:      { label: 'Огонь', icon: 'fire', kind: 'tap', down() { if (!canUseWeapon()) return; if (!W.weapon.drawn) { W.weapon.draw(); renderHud(); renderControls(); return; } const r = W.weapon.fire(); if (r === 'empty') toast('Стволы пусты — перезарядите'); syncAmmoFromWeapon(); renderHud(); }, visible: canUseWeapon },
+    aim:       { label: 'Прицел', icon: 'aim', kind: 'hold', down() { if (canUseWeapon()) W.weapon.aim(true); }, up() { W.weapon.aim(false); }, visible: () => canUseWeapon() && W.weapon.drawn, active: () => W.weapon.aiming },
+    reload:    { label: 'Перезарядка', icon: 'reload', kind: 'tap', down() { if (!canUseWeapon()) return; if (!W.weapon.reload()) { if (W.weapon.reserve <= 0) toast('Патронов нет — спросите у Марата на остановке'); } setTimeout(() => { syncAmmoFromWeapon(); renderHud(); }, 2500); }, visible: () => canUseWeapon() && W.weapon.drawn && W.weapon.ammo < 2 },
+    weapon:    { label: 'Ружьё', icon: 'weapon', kind: 'tap', down() { if (!canUseWeapon()) return; W.weapon.toggle(); setTimeout(() => { renderHud(); renderControls(); }, 500); }, visible: canUseWeapon, active: () => W.weapon.drawn },
+    gunput:    { label: 'Положить ружьё', icon: 'drop', kind: 'tap', down() { if (!canUseWeapon()) return; W.putGunDown(); }, visible: () => canUseWeapon() && !W.weapon.aiming },
     sprint:    { label: 'Бег', icon: 'sprint', kind: 'hold', down() { W.setSprint(true); }, up() { W.setSprint(false); }, active: () => W.sprint, visible: () => !W.P.seated },
     crouch:    { label: 'Присесть', icon: 'crouch', kind: 'tap', down() { W.toggleCrouch(); }, active: () => W.crouch, visible: () => !W.P.seated },
     inventory: { label: 'Меню', icon: 'menu', kind: 'tap', down() { openSheet(); } },
-    smoke:     { label: 'Закурить', icon: 'smoke', kind: 'tap', down() { if (!hasCig()) return; if (S.cigs <= 0) { if ((S.hidden.kontra || 0) > 0) { S.hidden.kontra--; S.cigs += 20; } else { takeStock('cig', 1); S.cigs += 20; } toast('Распечатали новую пачку (20 шт).'); } S.cigs--; W.life.habit.startSmoke(); save(); },
-      text: () => S && S.cigs > 0 ? `Закурить (${S.cigs})` : 'Закурить (новая пачка)', visible: () => hasCig() && handsFree() },
-    drink:     { label: 'Выпить', icon: 'drink', kind: 'tap', down() { if (!hasBottle()) return; if (!S.bottle || S.bottle.left <= 0) { const k = (S.hidden.samogon || 0) > 0 ? 'samogon' : qOf('vodka') > 0 ? 'vodka' : 'beer'; if (k === 'samogon') S.hidden.samogon--; else takeStock(k, 1); S.bottle = { kind: k, left: k === 'beer' ? 3 : 5 }; toast('Открыли новую бутылку.'); }
-        S.bottle.left--; const last = S.bottle.left <= 0; W.life.habit.startDrink(S.bottle.kind);
-        // последний глоток — в руке остаётся пустая бутылка: её можно поставить или выбросить в урну
-        W.life.habit.onDrinkEnd = last ? () => { S.bottle = null; W.life.habit.onDrinkEnd = null; W.life.habit.giveEmptyBottle(); toast('Бутылка кончилась. Пустую — в урну.'); save(); } : null; save(); },
-      text: () => S && S.bottle && S.bottle.left > 0 ? `Выпить (${S.bottle.left})` : 'Выпить (новая бутылка)', visible: () => hasBottle() && handsFree() },
-    flashlight:{ label: 'Фонарик', icon: 'flashlight', kind: 'tap', down() { toast(W.toggleFlashlight() ? 'Фонарик включён' : 'Фонарик выключен'); }, active: () => W.flashlightOn, visible: () => W.flashlightOn || (!W.inKiosk() && W.isNight()) },
+    smoke:     { label: 'Закурить', icon: 'smoke', kind: 'tap', down() {
+        if (!S || W.life.habit.busy || W.weapon.drawn || W.P.locked || npOpen) return;
+        // Чтобы покурить, нужно сначала взять пачку сигарет в руку и положить её в карман
+        if (heldCigPack()) {
+          const hg = heldGoodId();
+          const addN = hg === 'kontra' ? 100 : 20;
+          W.life.removeItem(W.life.held);
+          S.cigs = (S.cigs || 0) + addN;
+          sfx.click();
+          toast(`Пачка убрана в карман (+${addN} сигарет). Теперь можно закурить!`, 'good');
+          W.updateShelves(); save(); renderHud(); renderControls();
+          return;
+        }
+        if (W.life.held || (S.cigs || 0) <= 0) return;
+        S.cigs--;
+        W.life.habit.startSmoke();
+        W.updateShelves(); save(); renderHud(); renderControls();
+      },
+      text: () => heldCigPack() ? 'Положить в карман' : `Закурить (${S ? (S.cigs || 0) : 0})`,
+      visible: () => !!(S && !W.life.habit.busy && !W.weapon.drawn && !W.P.locked && !npOpen && (heldCigPack() || (!W.life.held && (S.cigs || 0) > 0))) },
+    drink:     { label: 'Выпить', icon: 'drink', kind: 'tap', down() {
+        const k = heldDrinkId();
+        if (!k || W.life.habit.busy || W.weapon.drawn || W.P.locked || npOpen) return;
+        W.life.removeItem(W.life.held);
+        const bName = k === 'samogon' ? 'самогон' : k === 'vodka' ? 'спирт «Король»' : k === 'soda' ? 'лимонад «Буратинка»' : 'пиво «Заводское»';
+        toast(`Открыли бутылку (${bName}).`);
+        W.life.habit.startDrink(k, true); W.updateShelves();
+        // Каждая выпитая бутылка оставляет после себя пустую бутылку
+        W.life.habit.onDrinkEnd = (dKind, willBlackout) => {
+          W.life.habit.giveEmptyBottle(dKind || k, !!willBlackout);
+          if (!willBlackout) toast('Бутылка пуста — можно поставить или выбросить в урну.');
+          save(); renderHud(); renderControls();
+        };
+        save(); renderHud(); renderControls(); },
+      text: () => {
+        const k = heldDrinkId();
+        return k === 'beer' ? 'Выпить: Пиво' : k === 'vodka' ? 'Выпить: Спирт' : k === 'samogon' ? 'Выпить: Самогон' : k === 'soda' ? 'Выпить: Лимонад' : 'Выпить';
+      },
+      visible: () => !!(S && heldDrinkId() && !W.life.habit.busy && !W.weapon.drawn && !W.P.locked && !npOpen) },
     door:      { label: 'Дверь', icon: 'door', kind: 'tap', down() { W.toggleDoor(); }, visible: () => W.nearDoor() },
   };
   const defaults = () => ({ elements: [
@@ -1440,7 +1614,6 @@ if (W) {
     { uid: 'cr', action: 'crouch', x: .3, y: .73, size: 50, opacity: .6, hit: 1.2 },
     { uid: 'sm', action: 'smoke', x: .55, y: .7, size: 50, opacity: .65, hit: 1.2 },
     { uid: 'dk', action: 'drink', x: .66, y: .66, size: 50, opacity: .65, hit: 1.2 },
-    { uid: 'fl', action: 'flashlight', x: .06, y: .56, size: 48, opacity: .6, hit: 1.2 },
     { uid: 'iv', action: 'inventory', x: .06, y: .42, size: 52, opacity: .6, hit: 1.2 },
   ] });
   controls = createControls({ root: $('#ui'), actions: ACTIONS, defaults, storageKey: 'larek-controls-v2',
@@ -1448,8 +1621,8 @@ if (W) {
   window.addEventListener('keydown', e => {
     if (!S || cardOpen || dialogOpen || sheetOpen || e.repeat) return;
     const k = e.code;
-    if (k === 'KeyE') ACTIONS.interact.down(); if (k === 'KeyF') ACTIONS.use.down(); if (k === 'KeyQ' && carried()) ACTIONS.weapon.down(); if (k === 'KeyR' && carried()) ACTIONS.reload.down(); if (k === 'KeyT' && ACTIONS.smoke.visible()) ACTIONS.smoke.down(); if (k === 'KeyY' && ACTIONS.drink.visible()) ACTIONS.drink.down(); if (k === 'KeyX' && carried()) ACTIONS.gunput.down();
-    if (k === 'KeyC') ACTIONS.crouch.down(); if (k === 'KeyG') ACTIONS.flashlight.down(); if (k === 'ShiftLeft') W.setSprint(true); if (k === 'Tab') { e.preventDefault(); openSheet(); }
+    if (k === 'KeyE') ACTIONS.interact.down(); if (k === 'KeyF') ACTIONS.use.down(); if (k === 'KeyQ' && canUseWeapon()) ACTIONS.weapon.down(); if (k === 'KeyR' && canUseWeapon()) ACTIONS.reload.down(); if (k === 'KeyT' && ACTIONS.smoke.visible()) ACTIONS.smoke.down(); if (k === 'KeyY' && ACTIONS.drink.visible()) ACTIONS.drink.down(); if (k === 'KeyX' && canUseWeapon()) ACTIONS.gunput.down();
+    if (k === 'KeyC') ACTIONS.crouch.down(); if (k === 'ShiftLeft') W.setSprint(true); if (k === 'Tab') { e.preventDefault(); openSheet(); }
   });
   window.addEventListener('keyup', e => { if (e.code === 'ShiftLeft') W.setSprint(false); });
 }
@@ -1460,7 +1633,7 @@ let last = performance.now(), hudT = 0;
 function loop(now) {
   const dt = Math.min(.1, (now - last) / 1000) * (window.__larekTimeScale || 1); last = now; // ускорение времени — только для автотестов
   if (S) tradeTick(dt);
-  hudT -= dt; if (hudT <= 0 && S) { hudT = .5; const c = document.getElementById('clock'); if (c) c.textContent = clockStr(); if (controls) controls.refresh(); $('#cross').classList.toggle('aim', !!(W && W.weapon.aiming)); }
+  hudT -= dt; if (hudT <= 0 && S) { hudT = .5; if (controls) controls.refresh(); $('#cross').classList.toggle('aim', !!(W && W.weapon.aiming)); }
   if (W) { try { W.frame(dt); } catch (e) { console.error(e); } }
   requestAnimationFrame(loop);
 }

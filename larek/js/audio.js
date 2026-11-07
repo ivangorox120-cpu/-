@@ -93,18 +93,73 @@ export function createAudio() {
     }
   }
 
-  // ---- шаги: одно «зерно» шага с вариативностью ----
+  // ---- шаги: свой тембр и акустический отклик для каждой поверхности (снег, тропинка/тротуар, асфальт, дерево, пол автобуса, металл, коробка) ----
   let lastStepI = -1;
   function step(surface, speed, inside) {
     if (!ctx || st.muted) return;
-    const key = surface === 'snow' ? 'snow' : 'walk', b = buffers[key]; if (!b) return;
-    const list = STEPS[key]; let i; do i = Math.floor(Math.random() * list.length); while (i === lastStepI && list.length > 1); lastStepI = i;
-    const src = ctx.createBufferSource(); src.buffer = b;
-    src.playbackRate.value = .9 + Math.random() * .2 + (speed > 3 ? .06 : 0);
-    const g = ctx.createGain(); g.gain.value = (key === 'snow' ? .8 : .55) * (.75 + Math.random() * .35) * (speed > 3 ? 1.2 : 1) * (inside ? .8 : 1);
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 5000 + Math.random() * 4000;
-    src.connect(f); f.connect(g); g.connect(sfxBus);
-    const t = ctx.currentTime; src.start(t, list[i], .42); g.gain.setTargetAtTime(0, t + .3, .04);
+    const t = ctx.currentTime;
+    const volMul = (.78 + Math.random() * .3) * (speed > 3 ? 1.2 : 1);
+    const key = surface === 'snow' ? 'snow' : 'walk';
+    const b = buffers[key];
+    if (b) {
+      const list = STEPS[key];
+      let i; do i = Math.floor(Math.random() * list.length); while (i === lastStepI && list.length > 1); lastStepI = i;
+      const src = ctx.createBufferSource(); src.buffer = b;
+      const rateBase = surface === 'wood' ? .78 : surface === 'bus' ? .84 : surface === 'box' ? .74 : surface === 'path' ? 1.04 : surface === 'metal' ? 1.12 : .94;
+      src.playbackRate.value = rateBase + (Math.random() - .5) * .14 + (speed > 3 ? .06 : 0);
+      const g = ctx.createGain();
+      const baseGain = surface === 'snow' ? .78 : surface === 'wood' ? .48 : surface === 'bus' ? .50 : surface === 'box' ? .42 : surface === 'path' ? .62 : .56;
+      g.gain.value = baseGain * volMul * (inside ? .85 : 1);
+      const f = ctx.createBiquadFilter();
+      f.type = surface === 'path' || surface === 'metal' ? 'bandpass' : 'lowpass';
+      f.frequency.value = surface === 'wood' ? 1800 : surface === 'bus' ? 2200 : surface === 'box' ? 1400 : surface === 'path' ? 2400 : surface === 'metal' ? 3200 : 5200 + Math.random() * 3000;
+      if (f.type === 'bandpass') f.Q.value = .75;
+      src.connect(f); f.connect(g); g.connect(sfxBus);
+      src.start(t, list[i], .38); g.gain.setTargetAtTime(0, t + .26, .04);
+    }
+    // Дополнительный характерный физический слой для конкретного материала под ногами
+    if (surface === 'wood') {
+      // Глухой деревянный стук половых досок
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = 'triangle'; o.frequency.setValueAtTime(155 + Math.random() * 35, t);
+      o.frequency.exponentialRampToValueAtTime(68, t + .09);
+      og.gain.setValueAtTime(.22 * volMul, t); og.gain.exponentialRampToValueAtTime(.001, t + .10);
+      o.connect(og); og.connect(sfxBus); o.start(t); o.stop(t + .11);
+    } else if (surface === 'bus') {
+      // Упругий шаг по резиновому коврику и металлическому полу салона ПАЗика
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(210 + Math.random() * 40, t);
+      o.frequency.exponentialRampToValueAtTime(95, t + .08);
+      og.gain.setValueAtTime(.20 * volMul, t); og.gain.exponentialRampToValueAtTime(.001, t + .09);
+      o.connect(og); og.connect(sfxBus); o.start(t); o.stop(t + .10);
+    } else if (surface === 'metal') {
+      // Звонкий металлический лязг чугунной решётки ливнёвки
+      for (const fq of [880, 1340]) {
+        const o = ctx.createOscillator(), og = ctx.createGain();
+        o.type = 'triangle'; o.frequency.setValueAtTime(fq + (Math.random() - .5) * 90, t);
+        o.frequency.exponentialRampToValueAtTime(fq * .65, t + .11);
+        og.gain.setValueAtTime(.14 * volMul, t); og.gain.exponentialRampToValueAtTime(.001, t + .12);
+        o.connect(og); og.connect(sfxBus); o.start(t); o.stop(t + .13);
+      }
+    } else if (surface === 'box') {
+      // Сухой картонный прогиб и шорох коробки
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf(.12, 3.2);
+      const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 620 + Math.random() * 180; bf.Q.value = 1.8;
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(.28 * volMul, t); ng.gain.exponentialRampToValueAtTime(.001, t + .12);
+      n.connect(bf); bf.connect(ng); ng.connect(sfxBus); n.start(t);
+    } else if (surface === 'path') {
+      // Чёткий сухой щелчок подошвы и гравия по расчищенной тропинке / бетонному тротуару
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf(.065, 4.5);
+      const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 1950 + Math.random() * 450; bf.Q.value = 1.4;
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(.22 * volMul, t); ng.gain.exponentialRampToValueAtTime(.001, t + .065);
+      n.connect(bf); bf.connect(ng); ng.connect(sfxBus); n.start(t);
+    } else if (surface === 'wet') {
+      // Лёгкий плеск воды по мокрому асфальту/луже
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf(.14, 3.0);
+      const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 3100 + Math.random() * 600; bf.Q.value = 1.1;
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(.20 * volMul, t); ng.gain.exponentialRampToValueAtTime(.001, t + .14);
+      n.connect(bf); bf.connect(ng); ng.connect(sfxBus); n.start(t);
+    }
   }
 
   // ---- синтез: выстрел, перезарядка, удары ----

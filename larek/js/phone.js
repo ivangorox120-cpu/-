@@ -69,9 +69,10 @@ export function createPhone({ scene, camera, std, audio, color = 0x9a2b22 }) {
       for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2, h = add(new THREE.CircleGeometry(.0026, 6), new THREE.MeshBasicMaterial({ color: 0x050505 }), sx * .106 + Math.cos(a) * .011, -.0368, Math.sin(a) * .011, handset); h.rotation.x = Math.PI / 2; } }
   }
   const restLocal = new THREE.Vector3(0, .158, -.05), restQ = new THREE.Quaternion(); // трубка лежит на рычагах, чашками вниз
-  const socketLocal = new THREE.Vector3(-.105, .03, -.08), handSocket = new THREE.Vector3(-.118, -.03, 0); // гнёзда шнура: в корпусе и в микрофонной чашке
+  const socketLocal = new THREE.Vector3(-.112, .026, -.08), handSocket = new THREE.Vector3(-.118, -.03, 0); // гнёзда шнура: сбоку корпуса и в микрофонной чашке
   // ---------- витой шнур: мягкое тело ----------
-  const N = 26, REST = .019, pts = Array.from({ length: N }, () => new THREE.Vector3()), old = Array.from({ length: N }, () => new THREE.Vector3()); let cordInit = false;
+  const N = 26, REST = .019, pts = Array.from({ length: N }, () => new THREE.Vector3()), old = Array.from({ length: N }, () => new THREE.Vector3());
+  let cordInit = false, settleTimer = .5;
   const COILS = 110, RING = 5, M = COILS * 6, cR = .0055, wR = .0016;
   const cordGeo = new THREE.BufferGeometry(); const cPos = new Float32Array((M + 1) * RING * 3), cNor = new Float32Array((M + 1) * RING * 3), cIdx = [];
   for (let j = 0; j < M; j++) for (let r = 0; r < RING; r++) { const a = j * RING + r, b = j * RING + (r + 1) % RING, c = (j + 1) * RING + r, d = (j + 1) * RING + (r + 1) % RING; cIdx.push(a, c, b, b, c, d); }
@@ -80,34 +81,91 @@ export function createPhone({ scene, camera, std, audio, color = 0x9a2b22 }) {
   const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _t = new THREE.Vector3(), _n = new THREE.Vector3(), _bn = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _p = new THREE.Vector3();
   const spline = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   let floorY = 0, counterY = 1.005, counterBox = null;
-  function cordTick(dt, a, b) {
-    if (!cordInit) { for (let i = 0; i < N; i++) { pts[i].lerpVectors(a, b, i / (N - 1)); pts[i].y = Math.min(pts[i].y, counterY + .01) - Math.sin(i / (N - 1) * Math.PI) * .08; old[i].copy(pts[i]); } cordInit = true; }
-    const h = Math.min(dt, 1 / 30), g = -9.8 * h * h;
-    for (let i = 1; i < N - 1; i++) { _p.subVectors(pts[i], old[i]).multiplyScalar(.97); old[i].copy(pts[i]); pts[i].add(_p); pts[i].y += g; }
-    pts[0].copy(a); pts[N - 1].copy(b);
-    for (let it = 0; it < 8; it++) {
-      for (let i = 0; i < N - 1; i++) { _p.subVectors(pts[i + 1], pts[i]); const L = _p.length() || 1e-6; // витой шнур тянется: мягкая пружина до 3.5× и жёсткий предел
-        const target = L < REST ? REST : L > REST * 3.5 ? REST * 3.5 : L - (L - REST) * .08; const diff = (L - target) / L;
-        const wa = i === 0 ? 0 : .5, wb = i + 1 === N - 1 ? 0 : .5, s = wa + wb || 1; pts[i].addScaledVector(_p, diff * wa / s * (wa && wb ? 1 : 1)); pts[i + 1].addScaledVector(_p, -diff * wb / s); }
-      for (let i = 1; i < N - 1; i++) { const p = pts[i]; // коллизии: прилавок, пол, корпус телефона
-        const onCounter = counterBox && p.x > counterBox.x1 && p.x < counterBox.x2 && p.z > counterBox.z1 && p.z < counterBox.z2;
-        const fl = onCounter ? counterY + cR : floorY + cR; if (p.y < fl && (onCounter ? old[i].y >= counterY - .03 : true)) { p.y = fl; old[i].x += (p.x - old[i].x) * .4; old[i].z += (p.z - old[i].z) * .4; }
-        _c.copy(p); root.worldToLocal(_c); if (Math.abs(_c.x) < .11 && Math.abs(_c.z) < .12 && _c.y < .12 && _c.y > -.01) { _c.y = .12; root.localToWorld(_c); p.copy(_c); } }
+
+  function stepCordPhysics(dt, a, b) {
+    const h = Math.min(dt, 1 / 45), g = -9.8 * h * h;
+    for (let i = 1; i < N - 1; i++) {
+      _p.subVectors(pts[i], old[i]).multiplyScalar(.88);
+      old[i].copy(pts[i]);
+      pts[i].add(_p);
+      pts[i].y += g;
     }
-    // спираль вокруг сплайна через частицы (в одном буфере, без пересоздания геометрии)
+    pts[0].copy(a); pts[N - 1].copy(b);
+    old[0].copy(a); old[N - 1].copy(b);
+    for (let it = 0; it < 8; it++) {
+      for (let i = 0; i < N - 1; i++) {
+        _p.subVectors(pts[i + 1], pts[i]);
+        const L = _p.length() || 1e-6;
+        const target = L < REST ? REST : L > REST * 3.2 ? REST * 3.2 : L - (L - REST) * .12;
+        const diff = (L - target) / L;
+        const wa = i === 0 ? 0 : .5, wb = i + 1 === N - 1 ? 0 : .5, s = wa + wb || 1;
+        pts[i].addScaledVector(_p, diff * wa / s);
+        pts[i + 1].addScaledVector(_p, -diff * wb / s);
+      }
+      for (let i = 1; i < N - 1; i++) {
+        const p = pts[i];
+        const onCounter = counterBox && p.x > counterBox.x1 && p.x < counterBox.x2 && p.z > counterBox.z1 && p.z < counterBox.z2;
+        const fl = onCounter ? counterY + cR : floorY + cR;
+        if (p.y < fl && (onCounter ? old[i].y >= counterY - .03 : true)) {
+          p.y = fl;
+          old[i].y = fl;
+          old[i].x += (p.x - old[i].x) * .65;
+          old[i].z += (p.z - old[i].z) * .65;
+        }
+        // Мягкое выталкивание шнура влево от боковой стенки корпуса телефона (без подбрасывания вверх к y = .12)
+        _c.copy(p); root.worldToLocal(_c);
+        if (Math.abs(_c.x) < .105 && Math.abs(_c.z) < .11 && _c.y < .10 && _c.y > -.01) {
+          _c.x = _c.x <= 0 ? -.108 : .108;
+          root.localToWorld(_c);
+          p.copy(_c);
+          old[i].copy(_c);
+        }
+      }
+    }
+  }
+
+  function rebuildCordMesh() {
     spline.updateArcLengths && (spline.needsUpdate = true); spline.arcLengthDivisions = 60;
     _n.set(0, 1, 0);
     for (let j = 0; j <= M; j++) {
       const u = j / M; spline.getPoint(u, _a); spline.getPoint(Math.min(1, u + .002), _b); if (u >= .998) spline.getPoint(u - .002, _t), _b.copy(_a).multiplyScalar(2).sub(_t);
       _t.subVectors(_b, _a).normalize(); _bn.crossVectors(_t, _n); if (_bn.lengthSq() < 1e-6) _bn.set(1, 0, 0); _bn.normalize(); _n.crossVectors(_bn, _t).normalize();
-      const ang = j / 6 * Math.PI * 2, ex = Math.min(1, Math.min(u, 1 - u) * 30); // у концов шнур прямой
+      const ang = j / 6 * Math.PI * 2, ex = Math.min(1, Math.min(u, 1 - u) * 30);
       _c.copy(_a).addScaledVector(_n, Math.cos(ang) * cR * ex).addScaledVector(_bn, Math.sin(ang) * cR * ex);
-      // направление витка — касательная спирали
       const tx = -Math.sin(ang), ty = Math.cos(ang); _p.copy(_t).multiplyScalar(.002).addScaledVector(_n, tx * cR * .9 * ex).addScaledVector(_bn, ty * cR * .9 * ex).normalize();
       const n2 = _q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), _p);
       for (let r = 0; r < RING; r++) { const ra = r / RING * Math.PI * 2; _b.set(Math.cos(ra), Math.sin(ra), 0).applyQuaternion(n2); const k = (j * RING + r) * 3; cPos[k] = _c.x + _b.x * wR; cPos[k + 1] = _c.y + _b.y * wR; cPos[k + 2] = _c.z + _b.z * wR; cNor[k] = _b.x; cNor[k + 1] = _b.y; cNor[k + 2] = _b.z; }
     }
     cordGeo.attributes.position.needsUpdate = true; cordGeo.attributes.normal.needsUpdate = true;
+  }
+
+  function cordTick(dt, a, b) {
+    if (!cordInit) {
+      for (let i = 0; i < N; i++) {
+        const t = i / (N - 1);
+        pts[i].lerpVectors(a, b, t);
+        // Естественная петля шнура слева от корпуса телефона на столе
+        _c.copy(pts[i]); root.worldToLocal(_c);
+        _c.x -= Math.sin(t * Math.PI) * .045;
+        _c.y = Math.max(.012, _c.y - Math.sin(t * Math.PI) * .06);
+        root.localToWorld(_c);
+        pts[i].copy(_c);
+        old[i].copy(pts[i]);
+      }
+      for (let k = 0; k < 35; k++) stepCordPhysics(1 / 60, a, b);
+      for (let i = 0; i < N; i++) old[i].copy(pts[i]);
+      rebuildCordMesh();
+      cordInit = true;
+      settleTimer = 0;
+      return;
+    }
+    if (!call && settleTimer <= 0) return;
+    if (!call) settleTimer -= dt;
+    stepCordPhysics(dt, a, b);
+    if (!call && settleTimer <= 0) {
+      for (let i = 0; i < N; i++) old[i].copy(pts[i]);
+    }
+    rebuildCordMesh();
   }
   // ---------- анимации: снятие трубки, набор, отбой ----------
   let call = null; const dialQ = []; let dialState = null, wheelAng = 0;
@@ -123,8 +181,8 @@ export function createPhone({ scene, camera, std, audio, color = 0x9a2b22 }) {
     handset.position.y += lift * .03; handset.quaternion.copy(restRot).slerp(earRot, clamp(kk * 1.15, 0, 1));
     if (lift > 0 && k < .15) { tmpQ.setFromAxisAngle(_t.set(0, 0, 1), lift * .35); handset.quaternion.multiply(tmpQ); }
   }
-  function startCall() { call = { t: 0, phase: 'lift' }; audio && audio.click(600, .5, 0, .05); }
-  function hangUp() { if (call && call.phase !== "hang") { call.phase = "hang"; call.ht = 0; dialQ.length = 0; dialQ.done = null; dialState = null; } }
+  function startCall() { call = { t: 0, phase: 'lift' }; settleTimer = .6; audio && audio.click(600, .5, 0, .05); }
+  function hangUp() { if (call && call.phase !== "hang") { call.phase = "hang"; call.ht = 0; settleTimer = .6; dialQ.length = 0; dialQ.done = null; dialState = null; } }
   // набор номера: каждая цифра — завод колеса до упора и возврат с щелчками 10 имп/с
   function dialNumber(digits, done) { for (const d of String(digits)) dialQ.push(+d); dialQ.done = done; }
   function dialTick(dt) {
@@ -141,14 +199,14 @@ export function createPhone({ scene, camera, std, audio, color = 0x9a2b22 }) {
     if (call) { call.t += dt;
       if (call.phase === 'lift') { const k = clamp(call.t / .85, 0, 1), lift = clamp(call.t / .2, 0, 1); setHandset(k, lift); plungers.forEach(p => p.position.y += (.122 - p.position.y) * Math.min(1, dt * 30)); if (k >= 1) call.phase = 'ear'; }
       else if (call.phase === 'ear') { setHandset(1, 0); handset.position.y += Math.sin(call.t * 1.7) * .002; }
-      else if (call.phase === 'hang') { call.ht += dt; const k = 1 - clamp(call.ht / .7, 0, 1); setHandset(k, k * .5); if (call.ht >= .7) { call = null; audio && audio.click(300, .8, 0, .07); } }
+      else if (call.phase === 'hang') { call.ht += dt; const k = 1 - clamp(call.ht / .7, 0, 1); setHandset(k, k * .5); if (call.ht >= .7) { call = null; settleTimer = .45; audio && audio.click(300, .8, 0, .07); } }
       dialTick(dt);
     }
     if (!call) { handset.position.copy(restPos); handset.quaternion.copy(restRot); plungers.forEach(p => p.position.y += (.113 - p.position.y) * Math.min(1, dt * 30)); wheelAng = Math.max(0, wheelAng - dt * 5); wheel.rotation.y = -wheelAng; }
     cordTick(dt, root.localToWorld(_a.copy(socketLocal)).clone(), handset.localToWorld(_b.copy(handSocket)).clone());
   }
   return {
-    root, handset, cord, tick, startCall, hangUp, dialNumber, setCounter(box, y) { counterBox = box; counterY = y; }, get calling() { return !!call; },
+    root, handset, cord, tick, startCall, hangUp, dialNumber, setCounter(box, y) { counterBox = box; counterY = y; cordInit = false; }, get calling() { return !!call; },
     get busy() { return !!dialState || dialQ.length > 0; }, get dialAngle() { return wheelAng; },
     box() { root.updateMatrixWorld(true); return new THREE.Box3().setFromObject(root).union(new THREE.Box3().setFromObject(handset)).expandByScalar(.03); },
   };

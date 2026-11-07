@@ -45,10 +45,10 @@ const TRACK = [['#1d2f6b', '#ffffff'], ['#151515', '#ffffff'], ['#5a1a1a', '#fff
 // ---------- генерация внешности ----------
 export function makeLook(kind) {
   const L = { kind };
-  const male = kind !== 'babka' && kind !== 'neighbor' && !(kind === 'vendor' && Math.random() < .45);
+  const male = kind !== 'babka' && kind !== 'neighbor' && kind !== 'dedushka' ? (!(kind === 'vendor' && Math.random() < .45) && !(kind === 'school' && Math.random() < .45)) : (kind === 'dedushka');
   L.male = male;
-  L.age = { worker: rnd(30, 55), babka: rnd(58, 76), neighbor: rnd(50, 70), youth: rnd(17, 25), school: rnd(12, 15), gopnik: rnd(18, 30), vendor: rnd(35, 60), police: rnd(28, 50), newrus: rnd(28, 45), racket: rnd(22, 35), chelnok: rnd(30, 50) }[kind] || rnd(25, 50);
-  L.height = (male ? rnd(1.68, 1.9) : rnd(1.52, 1.68)) * (kind === 'school' ? .86 : 1) * (L.age > 60 ? .97 : 1);
+  L.age = { worker: rnd(30, 55), dedushka: rnd(68, 80), babka: rnd(65, 78), neighbor: rnd(50, 70), youth: rnd(17, 25), school: rnd(10, 14), gopnik: rnd(18, 30), vendor: rnd(35, 60), police: rnd(28, 50), newrus: rnd(28, 45), racket: rnd(22, 35), chelnok: rnd(30, 50) }[kind] || rnd(25, 50);
+  L.height = kind === 'school' ? rnd(1.30, 1.45) : (male ? rnd(1.68, 1.88) : rnd(1.52, 1.66)) * (kind === 'dedushka' ? .92 : L.age > 60 ? .95 : 1);
   L.build = { worker: rnd(1, 1.2), gopnik: rnd(1.05, 1.25), youth: rnd(.85, 1.05), school: rnd(.8, .95), babka: rnd(.9, 1.15), vendor: rnd(1, 1.25), newrus: rnd(1.1, 1.35), racket: rnd(1.1, 1.3), police: rnd(1, 1.15), neighbor: rnd(1, 1.2), chelnok: rnd(1, 1.2) }[kind] || 1;
   L.stoop = L.age > 55 ? rnd(.12, .25) : kind === 'worker' ? rnd(.03, .1) : kind === 'gopnik' ? rnd(.04, .1) : rnd(0, .05);
   L.skin = pick(SKIN); L.headScale = rnd(.95, 1.08); L.jaw = rnd(.9, 1.12);
@@ -59,10 +59,14 @@ export function makeLook(kind) {
   L.scarf = Math.random() < (kind === 'babka' ? .8 : .45) ? pick(SCARF) : null;
   L.bag = null; L.stripes = null;
   switch (kind) {
+    case 'dedushka':
+      L.top = pick(['#3a3228', '#42382e', '#2c2822', '#4a4034']); L.coat = true; L.pants = '#282522';
+      L.boots = '#1c1a18'; L.hat = pick(['ushanka', 'ushanka', 'kepka']); L.hatC = pick(['#4a3a2a', '#2b2b2b', '#3d3024']);
+      L.hair = pick(GRAY); L.facial = pick(['beard', 'mustache']); L.cane = true; L.stoop = rnd(.22, .34); break;
     case 'babka': case 'neighbor':
       L.top = pick(OLD_COATS); L.coat = true; L.pants = '#2a2622'; L.boots = pick(['#2a1f18', '#1c1a18']);
-      L.hat = kind === 'babka' && Math.random() < .55 ? 'platok' : pick(['beret', 'shapka']); L.hatC = L.hat === 'platok' ? pick(['#7a2a2a', '#5a4a6a', '#8a7a5a', '#3a4a6a']) : pick(HATS);
-      L.bag = pick(['avoska', 'sumka']); break;
+      L.hat = kind === 'babka' ? 'platok' : pick(['beret', 'shapka']); L.hatC = L.hat === 'platok' ? pick(['#7a2a2a', '#5a4a6a', '#8a7a5a', '#3a4a6a']) : pick(HATS);
+      L.bag = 'avoska'; L.stoop = rnd(.18, .30); break;
     case 'worker': case 'chelnok':
       L.top = Math.random() < .5 ? pick(BOLONYA) : pick(DARK_COATS); L.puffy = Math.random() < .5; L.pants = pick(['#22252a', '#2d2a26', '#33302b']);
       L.boots = pick(['#1c1a18', '#2a1f18']); L.hat = pick(['shapka', 'shapka', 'ushanka', 'kepka', 'none']); L.hatC = pick(HATS);
@@ -91,7 +95,7 @@ export function makeLook(kind) {
       L.top = pick(DARK_COATS); L.pants = '#2a2a2a'; L.boots = '#1c1a18'; L.hat = 'shapka'; L.hatC = pick(HATS);
   }
   // характер
-  L.walkSpeed = { babka: rnd(.75, .95), neighbor: rnd(.8, 1), school: rnd(1.25, 1.45), youth: rnd(1.2, 1.4), gopnik: rnd(1.05, 1.25) }[kind] || rnd(1.05, 1.3);
+  L.walkSpeed = { dedushka: rnd(.65, .82), babka: rnd(.72, .90), neighbor: rnd(.8, 1), school: rnd(1.35, 1.6), youth: rnd(1.2, 1.4), gopnik: rnd(1.05, 1.25) }[kind] || rnd(1.05, 1.3);
   L.aggression = kind === 'gopnik' || kind === 'racket' ? rnd(.35, 1) : kind === 'youth' ? rnd(0, .45) : rnd(0, .15);
   L.nerve = kind === 'gopnik' ? rnd(.2, .9) : rnd(0, .4); // смелость против угроз
   L.swagger = kind === 'gopnik' || kind === 'racket' ? rnd(.5, 1) : kind === 'youth' ? rnd(0, .5) : 0;
@@ -225,8 +229,11 @@ export function splitParts(prims, cfg) {
       let p = 'torso';
       if (force) p = force;
       else if (cy > cfg.headCut && Math.abs(cx) < (cfg.headHalfW || 9)) p = 'head';
-      else if (cy < cfg.legCut && legsOK !== false) p = cx > 0 ? 'legL' : 'legR';
+      // Любые детали у щиколоток и ботинок (cy < 0.48, включая манжеты/носки в слое *_2) всегда крепятся к соответствующей ноге, чтобы не летать в воздухе
+      else if (cy < .48) p = cx > 0 ? 'legL' : 'legR';
+      // Руки, рукава и варежки (|cx| > armCut при cy > armBottom) проверяем до legCut, чтобы кисти рук не попадали в ноги или туловище
       else if (Math.abs(cx) > cfg.armCut && cy < cfg.armTop && cy > cfg.armBottom) p = cx > 0 ? 'armL' : 'armR';
+      else if (cy < cfg.legCut && legsOK !== false) p = cx > 0 ? 'legL' : 'legR';
       parts[p].push([geo, t]);
     }
   }
@@ -294,8 +301,9 @@ export function preparePeople(sceneRoot, outfit = 'winter') {
       const bb = g.boundingBox, sx = bb.max.x - bb.min.x, sy = bb.max.y - bb.min.y, sz = bb.max.z - bb.min.z, C_ = PEOPLE_CFG;
       let force = null;
       if (bb.min.y > C_.headCut - .08) force = 'head'; // шапка, помпон, волосы, лицо, предметы у лица
-      else if (bb.max.y < C_.headCut + .1 && bb.min.y > C_.legCut - .2 && sy < .25) force = 'torso'; // пояс, низ куртки, сумка на поясе
-      else if (Math.max(sx, sy, sz) < .32) { const cy = (bb.min.y + bb.max.y) / 2, cx = (bb.min.x + bb.max.x) / 2; force = cy > C_.headCut ? 'head' : cy < C_.legCut ? null : 'torso'; } // ниже бёдер (обувь) — по треугольникам на две ноги // шарф и мелочь
+      // Внимание: широкие слои (sx >= 0.36) содержат варежки/кисти обеих рук по бокам (|x| > 0.205) — их нельзя принудительно сливать в torso!
+      else if (bb.max.y < C_.headCut + .1 && bb.min.y > C_.legCut - .2 && sy < .25 && sx < .36) force = 'torso'; // узкий пояс или сумка на животе
+      else if (Math.max(sx, sy, sz) < .32 && sx < .36) { const cy = (bb.min.y + bb.max.y) / 2; force = cy > C_.headCut ? 'head' : cy < C_.legCut ? null : 'torso'; }
       prims.push({ geo: g, legsOK: bb.max.y < 1.06, force });
     });
     if (!prims.length) continue;

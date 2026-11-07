@@ -28,8 +28,10 @@ export class Ragdoll {
     this.C = C;
     this.minD = [[FTL, PELV, .35], [FTR, PELV, .35], [HDL, CHEST, .2], [HDR, CHEST, .2], [FTL, FTR, .12], [HEAD, PELV, .5]]; // колени не выворачиваются в корпус
     this.shin = shin; this.fore = fore;
-    // окончательно выключаем анимацию суставов
+    // окончательно выключаем анимацию суставов и убираем круглую тень/зонт у стоячего корня, чтобы они не вставали ребром в воздухе при падении тела
     R.body.position.set(0, 0, 0); R.body.rotation.set(0, 0, 0);
+    h.obj.children.forEach(ch => { if (ch !== R.body) ch.visible = false; });
+    if (R.elR) R.elR.children.forEach(ch => { if (ch.type === "Group") ch.visible = false; });
   }
   step(dt) {
     this.t += dt; if (this.sleep > 1.5) return false;

@@ -58,9 +58,9 @@ export function createWorld(ctx) {
   const halfOk = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
   const rt = new THREE.WebGLRenderTarget(4, 4, { type: halfOk ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: gl2 ? 4 : 0 });
   const post = new THREE.ShaderMaterial({
-    uniforms: { tDiffuse: { value: rt.texture }, time: { value: 0 }, exposure: { value: 1 }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 1 }, sat: { value: .72 }, hurt: { value: 0 }, blur: { value: 0 }, dbl: { value: 0 }, smoke: { value: 0 }, dbt: { value: 0 }, retro: { value: 0 } },
+    uniforms: { tDiffuse: { value: rt.texture }, time: { value: 0 }, exposure: { value: 1 }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 1 }, sat: { value: .72 }, hurt: { value: 0 }, blur: { value: 0 }, dbl: { value: 0 }, smoke: { value: 0 }, dbt: { value: 0 }, retro: { value: 0 }, blink: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
-    fragmentShader: `uniform sampler2D tDiffuse; uniform float time, exposure, vig, sat, hurt, blur, dbl, smoke, dbt, retro; uniform vec2 res; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float time, exposure, vig, sat, hurt, blur, dbl, smoke, dbt, retro, blink; uniform vec2 res; varying vec2 vUv;
       vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0., 1.); }
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
       void main(){
@@ -90,6 +90,16 @@ export function createWorld(ctx) {
           float dust = hash(floor(vUv * res / 3.0) + fr * 7.7); col = mix(col, vec3(.08), step(.9993, dust)); col = mix(col, vec3(.95), step(.99975, hash(floor(vUv * res / 4.0) + fr * 3.1)));
           col *= 1.0 - .55 * pow(length(d * vec2(1.0, .8)) * 1.25, 2.6);
           float bar = .075; col *= step(bar, vUv.y) * step(vUv.y, 1.0 - bar);
+        }
+        if (blink > 0.001) {
+          float bCurve = (vUv.x - 0.5) * (vUv.x - 0.5) * 0.24;
+          float topLid = 1.0 - blink * 0.58 - bCurve * (1.0 - blink * 0.45);
+          float botLid = blink * 0.44 + bCurve * (1.0 - blink * 0.45);
+          float bFeather = 0.045 + (1.0 - blink) * 0.04;
+          float lidOpen = smoothstep(botLid - bFeather, botLid + bFeather, vUv.y)
+                        * (1.0 - smoothstep(topLid - bFeather, topLid + bFeather, vUv.y));
+          if (blink > 0.96) lidOpen *= clamp((1.0 - blink) * 25.0, 0.0, 1.0);
+          col *= lidOpen;
         }
         gl_FragColor = vec4(clamp(col, 0., 1.), 1.0);
       }`,
@@ -201,7 +211,7 @@ vec2 hdUV(out vec3 T, out vec3 B, out vec3 N){ vec3 a = abs(vHN);
   if (a.x >= a.z) { T = vec3(0,0,-sign(vHN.x)); B = vec3(0,1,0); N = vec3(sign(vHN.x),0,0); return vec2(-sign(vHN.x) * vHW.z, vHW.y) * hdScale; }
   T = vec3(sign(vHN.z),0,0); B = vec3(0,1,0); N = vec3(0,0,sign(vHN.z)); return vec2(sign(vHN.z) * vHW.x, vHW.y) * hdScale; }`)
         .replace('#include <map_fragment>', `vec3 hT, hB, hN; vec2 hUv = hdUV(hT, hB, hN); diffuseColor *= texture2D(tCol, hUv);`)
-        .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness * texture2D(tRgh, hUv).g;`)
+        .replace('#include <roughnessmap_fragment>', `float roughnessFactor = max(roughness * 0.82, roughness * texture2D(tRgh, hUv).g);`)
         .replace('#include <normal_fragment_maps>', `{ vec3 tn = texture2D(tNrm, hUv).xyz * 2.0 - 1.0; tn.xy *= hdN; vec3 nw = normalize(hT * tn.x + hB * tn.y + hN * tn.z); normal = normalize((viewMatrix * vec4(nw, 0.0)).xyz); }`);
     };
     const key = 'hd' + (++hdN_); m.customProgramCacheKey = () => key; return m; // у каждого свои uniform-текстуры — свой ключ программы
@@ -209,7 +219,7 @@ vec2 hdUV(out vec3 T, out vec3 B, out vec3 N){ vec3 a = abs(vHN);
   const MAT = {
     kiosk: hdMat('kiosk', { scale: 1.6, rough: 1, metal: .45 }),
     wallpaper: std({ map: makeWallpaper(null), roughness: .92 }),
-    floor: hdMat('floor', { scale: 1.4, rough: .9, rotY: 1 }),
+    floor: hdMat('floor', { scale: 1.4, rough: .96, nrm: .35, rotY: 1, color: 0xc8a888 }),
     ceiling: hdMat('plaster', { scale: 1.5, color: 0xe8e2d4 }),
     roofTin: hdMat('metal', { scale: 1.2, metal: .6, color: 0xb0b0ac }),
     wood: hdMat('panel', { scale: .9, color: 0xb59a80, rough: .9 }),
@@ -269,7 +279,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   sun.shadow.bias = -0.0005; sun.shadow.normalBias = .04;
   Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 150 });
   scene.add(sun); scene.add(sun.target);
-  const bulbLight = new THREE.PointLight(0xffc98a, 7, 7, 2); bulbLight.position.set(0, 2.25, -.1); scene.add(bulbLight);
+  const bulbLight = new THREE.PointLight(0xffaa32, 3.8, 5.2, 1.8); bulbLight.position.set(0, 2.22, -.1); scene.add(bulbLight);
   bulbLight.shadow.mapSize.set(256, 256); bulbLight.shadow.bias = -0.004; bulbLight.shadow.radius = 3; bulbLight.shadow.camera.far = 3.6; // кубическая тень рисует сцену 6 раз — только ближний радиус
   const fillLight = new THREE.PointLight(0xffe0b0, 1.2, 4, 2); fillLight.position.set(0, 1.0, .2); scene.add(fillLight); // «отражённый» свет от прилавка
   const streetLights = [];
@@ -308,35 +318,35 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // ---------- земля ----------
   const winterGround = [], summerGround = [], drainSpots = [];
-  const groundSnow = plane(340, 340, std({ map: repTex(TX.snow, 70, 70), roughness: .95 }), 0, 0, 0); winterGround.push(groundSnow);
-  const groundDirt = plane(340, 340, std({ map: repTex(TX.asphalt, 60, 60), color: 0x8a8678 }), 0, -.001, 0); summerGround.push(groundDirt);
-  const road = plane(170, 8, std({ map: repTex(TX.road, 34, 1.6), roughness: .9 }), 3, .012, 10.2);
-  for (const z of [6.55, 13.85]) { const ds = plane(170, .9, std({ map: repTex(TX.dirtySnow, 40, 1), transparent: true, opacity: .95, roughness: .95 }), 3, .02, z); if (z > 10) ds.rotation.z = Math.PI; winterGround.push(ds); }
-  const walk = plane(170, 4.9, std({ map: repTex(TX.snow, 40, 1.2), color: 0xb9bcbe }), 3, .008, 3.75); winterGround.push(walk);
-  const walkS = plane(170, 4.9, std({ map: repTex(TX.asphalt, 40, 1.2), color: 0xa09c94 }), 3, .007, 3.75); summerGround.push(walkS);
+  const groundSnow = plane(540, 380, std({ map: repTex(TX.snow, 110, 80), roughness: .95 }), -177, 0, 0); winterGround.push(groundSnow);
+  const groundDirt = plane(540, 380, std({ map: repTex(TX.asphalt, 100, 70), color: 0x8a8678 }), -177, -.001, 0); summerGround.push(groundDirt);
+  const road = plane(560, 8, std({ map: repTex(TX.road, 112, 1.6), roughness: .9 }), -175, .012, 10.2);
+  for (const z of [6.55, 13.85]) { const ds = plane(560, .9, std({ map: repTex(TX.dirtySnow, 120, 1), transparent: true, opacity: .95, roughness: .95 }), -175, .02, z); if (z > 10) ds.rotation.z = Math.PI; winterGround.push(ds); }
+  const walk = plane(560, 4.9, std({ map: repTex(TX.snow, 120, 1.2), color: 0xb9bcbe }), -175, .008, 3.75); winterGround.push(walk);
+  const walkS = plane(560, 4.9, std({ map: repTex(TX.asphalt, 120, 1.2), color: 0xa09c94 }), -175, .007, 3.75); summerGround.push(walkS);
   winterGround.push(road);
   // ---------- бесснежные сезоны: PBR-текстуры ambientCG (CC0) — изношенный асфальт, тротуары, двор (земля с травой), бетон ----------
   const pbrT = (name, rx, ry) => { const ld = (suf, srgb) => { const t = TL.load('assets/tex/pbr/' + name + '_' + suf + '.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = Q.aniso || 4; return regTex(t); };
     return { map: ld('col', true), normalMap: ld('nrm'), roughnessMap: ld('rgh') }; };
-  Object.assign(groundDirt.material, pbrT('ground', 110, 110), { color: new THREE.Color(0xffffff), roughness: 1 }); groundDirt.material.needsUpdate = true;
-  const roadS = plane(170, 8, std({ ...pbrT('road', 40, 2), roughness: 1 }), 3, .012, 10.2); summerGround.push(roadS);
-  Object.assign(walkS.material, pbrT('walk', 50, 1.5), { color: new THREE.Color(0xb8b4ac), roughness: 1 }); walkS.material.needsUpdate = true;
+  Object.assign(groundDirt.material, pbrT('ground', 140, 120), { color: new THREE.Color(0xffffff), roughness: 1 }); groundDirt.material.needsUpdate = true;
+  const roadS = plane(560, 8, std({ ...pbrT('road', 112, 2), roughness: 1 }), -175, .012, 10.2); summerGround.push(roadS);
+  Object.assign(walkS.material, pbrT('walk', 120, 1.5), { color: new THREE.Color(0xb8b4ac), roughness: 1 }); walkS.material.needsUpdate = true;
   // северный тротуар (вдоль домов за дорогой)
-  const walkN = plane(170, 4.1, walk.material, 3, .008, 16.3); winterGround.push(walkN);
-  const walkNS = plane(170, 4.1, walkS.material, 3, .007, 16.3); summerGround.push(walkNS);
-  const curbMat = std({ ...pbrT('concrete', 60, 1), color: 0xc8c4bc, roughness: 1 });
-  box(170, .15, .25, curbMat, 3, .075, 6.25, scene, false); box(170, .15, .25, curbMat, 3, .075, 14.15, scene, false); box(170, .1, .15, curbMat, 3, .05, 18.4, scene, false);
+  const walkN = plane(560, 4.1, walk.material, -175, .008, 16.3); winterGround.push(walkN);
+  const walkNS = plane(560, 4.1, walkS.material, -175, .007, 16.3); summerGround.push(walkNS);
+  const curbMat = std({ ...pbrT('concrete', 140, 1), color: 0xc8c4bc, roughness: 1 });
+  box(560, .15, .25, curbMat, -175, .075, 6.25, scene, false); box(560, .15, .25, curbMat, -175, .075, 14.15, scene, false); box(560, .1, .15, curbMat, -175, .05, 18.4, scene, false);
   // ливнёвки: чугунные решётки в лотке у бордюра + водоприёмник в бордюре (советский образец), шаг ~16 м
   { const grTex = regTex(ctex(128, 64, (g, w, h) => { g.fillStyle = '#1a1816'; g.fillRect(0, 0, w, h); g.fillStyle = '#4a4540'; g.fillRect(0, 0, w, 5); g.fillRect(0, h - 5, w, 5); g.fillRect(0, 0, 5, h); g.fillRect(w - 5, 0, 5, h);
       for (let x = 12; x < w - 6; x += 11) g.fillRect(x, 5, 4, h - 10); g.fillStyle = '#5a5249'; g.font = '700 9px Arial'; for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(${120 + Math.random() * 60},${60 + Math.random() * 30},30,.35)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
     const grMat = std({ map: grTex, roughness: .6, metalness: .6 }), grGeo = new THREE.PlaneGeometry(.8, .4); grGeo.rotateX(-Math.PI / 2);
     const inletGeo = new THREE.PlaneGeometry(.8, .1), inletMat = std({ color: 0x0a0a0a, roughness: 1 });
-    const pos = []; for (let x = -76; x < 84; x += 16) { if (Math.abs(x + 2) < 4) continue; pos.push([x, 6.55, 0]); pos.push([x + 8, 13.85, Math.PI]); }
+    const pos = []; for (let x = -430; x < 84; x += 16) { if (Math.abs(x + 2) < 4 || Math.abs(x - (-334)) < 6) continue; pos.push([x, 6.55, 0]); pos.push([x + 8, 13.85, Math.PI]); }
     const gi = new THREE.InstancedMesh(grGeo, grMat, pos.length), ii = new THREE.InstancedMesh(inletGeo, inletMat, pos.length), M4 = new THREE.Matrix4(), Qn = new THREE.Quaternion();
     pos.forEach(([x, z, r], i) => { gi.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .018, z), Qn.setFromEuler(new THREE.Euler(0, r, 0)), new THREE.Vector3(1, 1, 1))); ii.setMatrixAt(i, M4.compose(new THREE.Vector3(x, .07, z + (r ? .23 : -.23)), Qn.setFromEuler(new THREE.Euler(0, r, 0)), new THREE.Vector3(1, 1, 1))); });
     gi.receiveShadow = true; scene.add(gi, ii); drainSpots.push(...pos); }
   const lineMat = std({ color: 0xc9c4b0, roughness: .9 });
-  for (let x = -78; x < 84; x += 6) plane(3, .14, lineMat, x, .016, 10.2);
+  for (let x = -436; x < 84; x += 6) plane(3, .14, lineMat, x, .016, 10.2);
   { const zm = std({ color: 0xc9c4b0, roughness: .9, transparent: true, opacity: .75 }); for (let i = 0; i < 8; i++) plane(4, .5, zm, -2, .017, 6.75 + i * 1); } // «зебра»: полосы вдоль движения машин, чередуются поперёк дороги
 
   // ---------- сугробы: валы вдоль дороги после грейдера, наносы у стен ----------
@@ -354,27 +364,28 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         g.fillStyle = `rgba(${150 + Math.random() * 40},${155 + Math.random() * 40},${165 + Math.random() * 35},${.12 * Math.max(0, 1 - d * d)})`; g.beginPath(); g.ellipse(x, y, r, r * .6, Math.random() * 3, 0, 7); g.fill(); }
       for (let i = 0; i < 26; i++) { const x = w * .3 + Math.random() * w * .4, y = 20 + Math.random() * (h - 40), a = (Math.random() - .5) * .5; // отпечатки подошв вдоль тропы
         g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = 'rgba(95,104,118,.32)'; g.beginPath(); g.ellipse(0, 0, 5, 11, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(95,104,118,.22)'; g.fillRect(-4, 12, 8, 6); g.restore(); } }));
-    const mat = std({ map: tex, transparent: true, depthWrite: false, roughness: .8, polygonOffset: true, polygonOffsetFactor: -3 });
+    const mat = std({ map: tex, transparent: true, depthWrite: false, roughness: .8, polygonOffset: true, polygonOffsetFactor: -1 });
     const geo = new THREE.PlaneGeometry(1.5, 2.6); geo.rotateX(-Math.PI / 2);
     const spots = [];
     const track = (x1, z1, x2, z2) => { const d = Math.hypot(x2 - x1, z2 - z1), n = Math.ceil(d / 2.1); for (let i = 0; i <= n; i++) { const t = i / n; spots.push([x1 + (x2 - x1) * t + R(-.3, .3), z1 + (z2 - z1) * t + R(-.3, .3), Math.atan2(x2 - x1, z2 - z1) + R(-.25, .25), R(.8, 1.15)]); } };
     track(-6, 1.1, -10, -28); track(4, 1.1, 2, -30); track(14, 1.1, 18, -26); track(-30, 18.6, -30, 24); track(28, 18.6, 30, 24); track(-14, 18.6, -18, 24); track(-40, 1.1, -52, -10); track(40, 1.1, 58, -6);
-    for (const [x, z, n] of [[0, 1.6, 5], [8, 1.4, 4], [-3.4, 2.6, 3], [3.2, 2.4, 3]]) for (let i = 0; i < n; i++) spots.push([x + R(-1.2, 1.2), z + R(-.6, .6), R(0, 6.28), R(.9, 1.3)]); // у ларька и остановки
-    const im = new THREE.InstancedMesh(geo, mat, spots.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), sc = new THREE.Vector3();
-    spots.forEach(([x, z, a, k], i) => { q.setFromAxisAngle(up, a); sc.set(k, 1, k); m4.compose(new THREE.Vector3(x, .025, z), q, sc); im.setMatrixAt(i, m4); });
-    im.receiveShadow = true; im.renderOrder = 1; im.userData.winter = im.userData.dyn = true; scene.add(im); winterGround.push(im);
-    // неровности: невысокие бугры снега во дворах (обходим здания, площадки и тропы)
+    for (const [x, z, n] of [[0, 3.2, 4], [8, 2.4, 4], [-3.6, 3.0, 3], [3.4, 2.9, 3]]) for (let i = 0; i < n; i++) spots.push([x + R(-1.0, 1.0), z + R(-.4, .4), R(0, 6.28), R(.85, 1.15)]); // у ларька и остановки (снаружи)
+    const safeSpots = spots.filter(([x, z]) => !(Math.abs(x) < 3.2 && z > -2.8 && z < 2.8));
+    const im = new THREE.InstancedMesh(geo, mat, safeSpots.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), sc = new THREE.Vector3();
+    safeSpots.forEach(([x, z, a, k], i) => { q.setFromAxisAngle(up, a); sc.set(k, 1, k); m4.compose(new THREE.Vector3(x, .005, z), q, sc); im.setMatrixAt(i, m4); });
+    im.receiveShadow = true; im.renderOrder = 0; im.userData.winter = im.userData.dyn = true; scene.add(im); winterGround.push(im);
+    // неровности: невысокие бугры снега во дворах (обходим здания, ларёк, площадки и тропы)
     const bump = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), pts = [];
-    const freeAt = (x, z) => !colliders.some(b => x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1) && !spots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 1.6);
-    for (let tries = 0; pts.length < 140 && tries < 2000; tries++) { const x = R(-62, 66), z = Math.random() < .5 ? R(-34, .2) : R(19.5, 30); if (Math.abs(x) < 3 && z > -3) continue; if (freeAt(x, z)) pts.push([x, z]); }
+    const freeAt = (x, z) => !colliders.some(b => x > b.x1 - 1.4 && x < b.x2 + 1.4 && z > b.z1 - 1.4 && z < b.z2 + 1.4) && !safeSpots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 1.6);
+    for (let tries = 0; pts.length < 140 && tries < 2000; tries++) { const x = R(-62, 66), z = Math.random() < .5 ? R(-34, .2) : R(19.5, 30); if (Math.abs(x) < 3.6 && z > -3.4 && z < 3.4) continue; if (freeAt(x, z)) pts.push([x, z]); }
     const bm = new THREE.InstancedMesh(bump, driftMat, pts.length);
     pts.forEach(([x, z], i) => { q.setFromAxisAngle(up, R(0, 6.28)); sc.set(R(.6, 1.7), R(.07, .22), R(.5, 1.3)); m4.compose(new THREE.Vector3(x, -.02, z), q, sc); bm.setMatrixAt(i, m4); });
     bm.receiveShadow = true; bm.castShadow = true; bm.userData.winter = bm.userData.dyn = true; scene.add(bm); winterGround.push(bm);
   }
   function flushDrifts() { if (!driftGeos.length) return; const m = new THREE.Mesh(mergeGeometries(driftGeos.map(g => { g.deleteAttribute('uv'); return g; })), driftMat); m.receiveShadow = true; m.castShadow = true; m.userData.winter = true; m.userData.dyn = true; scene.add(m); winterGround.push(m); driftGeos.length = 0; return m; }
-  { const gaps = [[-6, 2], [3, 13.5]]; // «зебра», остановка
-    let x = -80; while (x < 86) { const L = R(9, 18); let a = x, b = Math.min(86, x + L); const gp = gaps.find(([g1, g2]) => b > g1 && a < g2); if (gp) { if (a < gp[0]) drift(a, 5.85, gp[0] - .4, 5.85, 1.1, .38, x); x = gp[1] + .4; continue; } drift(a, 5.85 + R(-.1, .1), b, 5.85 + R(-.1, .1), R(.9, 1.2), R(.3, .45), x); x = b + R(.8, 2.5); }
-    x = -80; while (x < 86) { const L = R(10, 22); const a = x, b = Math.min(86, x + L); if (!(b > -6 && a < 2)) drift(a, 14.6 + R(-.1, .1), b, 14.6 + R(-.1, .1), R(1, 1.4), R(.35, .55), x + 3); x = b + R(1, 3); }
+  { const gaps = [[-342, -322], [-6, 2], [3, 13.5]]; // остановка «Завод» и проходная, «зебра», остановка «Ларёк»
+    let x = -434; while (x < 86) { const L = R(9, 18); let a = x, b = Math.min(86, x + L); const gp = gaps.find(([g1, g2]) => b > g1 && a < g2); if (gp) { if (a < gp[0]) drift(a, 5.85, gp[0] - .4, 5.85, 1.1, .38, x); x = gp[1] + .4; continue; } drift(a, 5.85 + R(-.1, .1), b, 5.85 + R(-.1, .1), R(.9, 1.2), R(.3, .45), x); x = b + R(.8, 2.5); }
+    x = -434; while (x < 86) { const L = R(10, 22); const a = x, b = Math.min(86, x + L); if (!(b > -6 && a < 2)) drift(a, 14.6 + R(-.1, .1), b, 14.6 + R(-.1, .1), R(1, 1.4), R(.35, .55), x + 3); x = b + R(1, 3); }
   }
   flushDrifts();
   { const ld = (f, srgb, rx = 1, ry = 1) => { const t = TL.load('assets/tex/snow/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = Q.aniso || 4; return regTex(t); };
@@ -387,7 +398,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- ЛАРЁК ----------
   const K = new THREE.Group(); scene.add(K); const seasonHooks = [];
   const KW = 1.5, KD = 1.2, KH = 2.5, T_ = .06;
-  drift(KW + .45, -KD + .3, KW + .45, KD - .3, .9, .42, 1); drift(-KW - .45, -KD + .3, -KW - .45, KD - .3, .9, .38, 2); flushDrifts(); // наносы у боковых стен ларька
+  drift(KW + .98, -KD + .3, KW + .98, KD - .3, .55, .36, 1); drift(-KW - .98, -KD + .3, -KW - .98, KD - .3, .55, .34, 2); flushDrifts(); // наносы снаружи у боковых стен ларька (не заходят внутрь)
   const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : MAT.kiosk);
   const kioskWalls = [];
   const kw = (...a) => { const m = box(...a); kioskWalls.push(m); occ(m); return m; };
@@ -397,7 +408,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   kw(T_, KH, KD * 2, wm(0), -KW, KH / 2, 0, K); kw(T_, KH, KD * 2, wm(1), KW, KH / 2, 0, K);
   box(KW * 2 + .3, .1, KD * 2 + .3, MAT.roofTin, 0, KH + .05, 0, K);
   box(KW * 2 - .02, .02, KD * 2 - .02, MAT.ceiling, 0, KH - .01, 0, K, false);
-  box(KW * 2, .02, KD * 2, MAT.floor, 0, .01, 0, K, false);
+  box(KW * 2 - .04, .03, KD * 2 - .04, MAT.floor, 0, .02, 0, K, false);
   // коллизии стен с дверным проёмом x 0.4..1.2
   addCol(-KW - .04, .4, -KD - .04, -KD + .04); addCol(1.2, KW + .04, -KD - .04, -KD + .04);
   addCol(-KW - .04, KW + .04, KD - .04, KD + .04); addCol(-KW - .04, -KW + .04, -KD, KD); addCol(KW - .04, KW + .04, -KD, KD);
@@ -441,22 +452,208 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       box(.86, .012, .006, edge, x, y, KD - .272, K, false); box(.86, .012, .006, edge, x, y, KD - .038, K, false); box(.006, .012, .24, edge, x - .43, y, KD - .155, K, false); box(.006, .012, .24, edge, x + .43, y, KD - .155, K, false);
       for (const dx of [-.4, .4]) for (const dz of [-.25, -.06]) { box(.02, .022, .02, chrome, x + dx, y - .012, KD + dz, K, false); } }
     for (const sx of [-1, 1]) for (const ox of [.47, 1.33]) for (const dz of [-.25, -.06]) cyl(.006, .006, 1.13, chrome, sx * ox, 1.575, KD + dz, 8, K); } // стойки витрины
-  box(.36, .08, .2, MAT.steel, 0, 1.02, KD - .05, K);
   const stool = new THREE.Group(); K.add(stool); stool.position.set(0, 0, .25); stool.userData.dyn = true; // временная табуретка до загрузки модели стула — не сливать с батчами
   cyl(.19, .19, .05, MAT.wood, 0, .62, 0, 16, stool);
   for (let a = 0; a < 3; a++) { const l = cyl(.018, .018, .62, MAT.steel, Math.cos(a * 2.1) * .14, .31, Math.sin(a * 2.1) * .14, 6, stool); l.rotation.z = Math.cos(a * 2.1) * .12; l.rotation.x = -Math.sin(a * 2.1) * .12; }
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.05, 12, 8), MAT.bulb); bulb.position.set(0, 2.32, -.1); K.add(bulb); cyl(.004, .004, .14, MAT.dark, 0, 2.42, -.1, 4, K);
-  box(.3, .12, .22, std({ color: 0x9a968a, roughness: .5 }), -.55, 1.07, KD - .25, K); box(.22, .02, .1, MAT.dark, -.55, 1.135, KD - .28, K);
-  box(.28, .02, .16, MAT.wood, .5, 1.015, KD - .3, K);
-  // календарь, плакат
-  const calTex = regTex(ctex(256, 320, () => {}));
-  const cal = new THREE.Mesh(new THREE.PlaneGeometry(.34, .42), std({ map: calTex })); cal.position.set(KW - .035, 1.65, .3); cal.rotation.y = -Math.PI / 2; K.add(cal);
+  // Советская «лампочка Ильича» на чёрном витом шнуре: патрон из карболита, каплевидная стеклянная колба и светящаяся вольфрамовая спираль
+  cyl(.003, .003, .22, MAT.dark, 0, 2.39, -.1, 6, K); // шнур
+  cyl(.022, .018, .048, MAT.dark, 0, 2.30, -.1, 10, K); // патрон
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.036, 12, 10), MAT.bulb);
+  bulb.scale.set(1, 1.35, 1); bulb.position.set(0, 2.22, -.1); K.add(bulb);
+  const filament = new THREE.Mesh(new THREE.TorusGeometry(.010, .002, 6, 12), std({ color: 0xffe888, emissive: 0xffd244, emissiveIntensity: 4 }));
+  filament.position.set(0, 2.22, -.1); filament.rotation.x = Math.PI / 2; K.add(filament);
+
+  // Рой анимированных мух вокруг лампочки и под потолком ларька
+  const kioskFlies = [];
+  const flyBodyGeo = new THREE.SphereGeometry(0.0035, 6, 4);
+  const flyWingGeo = new THREE.PlaneGeometry(0.0055, 0.003);
+  const flyMat = new THREE.MeshBasicMaterial({ color: 0x181410 });
+  const flyWingMat = new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  for (let i = 0; i < 7; i++) {
+    const fg = new THREE.Group();
+    fg.userData = {
+      keep: true, dyn: true,
+      radius: 0.12 + (i % 4) * 0.075 + (i * 0.03),
+      baseY: 2.16 + (i % 3) * 0.06,
+      speed: (3.2 + (i * 0.6)) * (i % 2 === 0 ? 1 : -1),
+      angle: (i / 7) * Math.PI * 2,
+      flutter: i * 2.3,
+      cx: (i % 2 === 0 ? 0.04 : -0.04),
+      cz: -0.1 + (i % 3 === 0 ? 0.05 : -0.04)
+    };
+    const body = new THREE.Mesh(flyBodyGeo, flyMat); fg.add(body);
+    const wL = new THREE.Mesh(flyWingGeo, flyWingMat); wL.position.set(-0.003, 0.002, 0); wL.rotation.y = 0.25; fg.add(wL);
+    const wR = new THREE.Mesh(flyWingGeo, flyWingMat); wR.position.set(0.003, 0.002, 0); wR.rotation.y = -0.25; fg.add(wR);
+    fg.position.set(
+      fg.userData.cx + Math.cos(fg.userData.angle) * fg.userData.radius,
+      fg.userData.baseY,
+      fg.userData.cz + Math.sin(fg.userData.angle) * fg.userData.radius
+    );
+    K.add(fg);
+    kioskFlies.push(fg);
+  }
+  function kioskFliesTick(dt) {
+    for (let i = 0; i < kioskFlies.length; i++) {
+      const fg = kioskFlies[i];
+      const u = fg.userData;
+      u.angle += u.speed * dt;
+      u.flutter += dt * 40.0;
+      const r = u.radius + Math.sin(u.flutter * 0.4) * 0.035;
+      const x = u.cx + Math.cos(u.angle) * r;
+      const z = u.cz + Math.sin(u.angle) * r;
+      const y = u.baseY + Math.sin(u.flutter * 0.6 + i) * 0.03;
+      fg.position.set(x, y, z);
+      fg.rotation.y = -u.angle + (u.speed > 0 ? Math.PI / 2 : -Math.PI / 2);
+    }
+  }
+
+  // Липкая лента от мух в углу ларька
+  {
+    const tapeStrip = new THREE.Group();
+    tapeStrip.position.set(KW - 0.15, 2.39, -0.6);
+    tapeStrip.userData.dyn = true;
+    const tapeMat = std({ color: 0x96723b, roughness: 0.2, metalness: 0.1 });
+    for (let s = 0; s < 12; s++) {
+      const seg = new THREE.Mesh(new THREE.PlaneGeometry(0.038, 0.032), tapeMat);
+      seg.position.y = -s * 0.028;
+      seg.rotation.y = s * 0.55;
+      tapeStrip.add(seg);
+      if (s % 2 === 0) {
+        const stuckFly = new THREE.Mesh(new THREE.SphereGeometry(0.003, 4, 4), MAT.dark);
+        stuckFly.position.set(0.012 * (s % 4 === 0 ? 1 : -1), -s * 0.028, 0.002);
+        tapeStrip.add(stuckFly);
+      }
+    }
+    K.add(tapeStrip);
+  }
+
+  // Советский гранёный стакан с чаем в металлическом подстаканнике на прилавке
+  {
+    const pod = new THREE.Group();
+    pod.position.set(-0.48, 1.015, KD - 0.26);
+    pod.userData.dyn = true;
+    const podMat = std({ color: 0x9a9890, metalness: 0.85, roughness: 0.25 });
+    cyl(0.038, 0.036, 0.055, podMat, 0, 0.028, 0, 16, pod);
+    cyl(0.041, 0.041, 0.006, podMat, 0, 0.003, 0, 16, pod);
+    cyl(0.039, 0.039, 0.006, podMat, 0, 0.055, 0, 16, pod);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.004, 6, 12, Math.PI), podMat);
+    handle.position.set(-0.042, 0.032, 0);
+    handle.rotation.z = Math.PI / 2;
+    pod.add(handle);
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, roughness: 0.08, clearcoat: 1 });
+    cyl(0.035, 0.031, 0.095, glassMat, 0, 0.048, 0, 14, pod);
+    const teaMat = std({ color: 0x8b3a0e, roughness: 0.15, transparent: true, opacity: 0.82 });
+    cyl(0.033, 0.030, 0.068, teaMat, 0, 0.036, 0, 12, pod);
+    const spoonMat = std({ color: 0xb5b7b8, metalness: 0.9, roughness: 0.2 });
+    const spoon = cyl(0.002, 0.002, 0.12, spoonMat, 0.008, 0.075, 0.005, 6, pod);
+    spoon.rotation.z = 0.32;
+    spoon.rotation.x = -0.15;
+    K.add(pod);
+  }
+
+  // Штырь для товарных чеков на деревянной подставке
+  {
+    const spindle = new THREE.Group();
+    spindle.position.set(0.46, 1.015, KD - 0.26);
+    spindle.userData.dyn = true;
+    box(0.075, 0.014, 0.075, MAT.wood, 0, 0.007, 0, spindle);
+    cyl(0.0022, 0.0012, 0.13, MAT.steel, 0, 0.072, 0, 6, spindle);
+    const receiptMat = std({ color: 0xede6d4, roughness: 0.85 });
+    for (let r = 0; r < 5; r++) {
+      const rec = new THREE.Mesh(new THREE.PlaneGeometry(0.048, 0.040), receiptMat);
+      rec.rotation.x = -Math.PI / 2 + (r * 0.04 - 0.08);
+      rec.rotation.z = r * 0.65;
+      rec.position.set((r % 2 === 0 ? 0.002 : -0.002), 0.025 + r * 0.008, (r % 3 === 0 ? 0.002 : -0.002));
+      spindle.add(rec);
+    }
+    K.add(spindle);
+  }
+
+  // Паутина по углам ларька
+  {
+    const webTex = regTex(ctex(256, 256, (g, w, h) => {
+      g.clearRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(235, 235, 235, 0.55)';
+      g.lineWidth = 1.2;
+      for (let a = 0; a <= Math.PI / 2; a += 0.14) {
+        g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * w * 1.1, Math.sin(a) * h * 1.1); g.stroke();
+      }
+      for (let r = 25; r < w; r += 28) {
+        g.beginPath();
+        for (let a = 0; a <= Math.PI / 2; a += 0.05) {
+          const sag = Math.sin(a * 4.0) * 3.5;
+          const px = Math.cos(a) * (r + sag);
+          const py = Math.sin(a) * (r + sag);
+          if (a === 0) g.moveTo(px, py); else g.lineTo(px, py);
+        }
+        g.stroke();
+      }
+    }));
+    const webMat = new THREE.MeshBasicMaterial({ map: webTex, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false });
+    const web1 = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), webMat);
+    web1.position.set(-KW + 0.16, 2.22, -KD + 0.16);
+    web1.rotation.x = Math.PI / 2;
+    K.add(web1);
+    const web2 = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), webMat);
+    web2.position.set(KW - 0.14, 2.24, -KD + 0.14);
+    web2.rotation.x = Math.PI / 2;
+    web2.rotation.z = Math.PI / 2;
+    K.add(web2);
+  }
+  // календарь, плакат и настенные часы на правой стене (рядом с ружьём)
+  const calTex = regTex(ctex(512, 680, () => {}));
+  const cal = new THREE.Mesh(new THREE.PlaneGeometry(.40, .53), std({ map: calTex, roughness: .82 })); cal.position.set(KW - .034, 1.24, .56); cal.rotation.y = -Math.PI / 2; cal.userData.dyn = true; K.add(cal);
+  const calBox = new THREE.Box3(new THREE.Vector3(KW - .12, .96, .34), new THREE.Vector3(KW + .04, 1.52, .78));
   const posterTex = regTex(ctex(256, 360, (g, w, h) => {
     g.fillStyle = '#1b1b24'; g.fillRect(0, 0, w, h); const gr = g.createRadialGradient(w / 2, h * .4, 10, w / 2, h * .4, 160); gr.addColorStop(0, '#c0392b'); gr.addColorStop(1, '#1b1b24'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
     g.fillStyle = '#f2e6c9'; g.font = '900 34px Arial'; g.textAlign = 'center'; g.fillText('ГРУППА', w / 2, 60); g.font = '900 38px Arial'; g.fillText('«КИНОПЛЁНКА»', w / 2, 110); g.font = '700 22px Arial'; g.fillText('ТУР 1992', w / 2, h - 40);
     g.fillStyle = '#0008'; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(50 + i * 52, 210, 26, 0, 7); g.fill(); } speckle(g, w, h, 3000, ['#0003', '#fff2'], 2);
   }));
   const poster = new THREE.Mesh(new THREE.PlaneGeometry(.45, .63), std({ map: posterTex })); poster.position.set(KW - .035, 1.55, -.55); poster.rotation.y = -Math.PI / 2; K.add(poster);
+  // Настенные кварцевые часы на правой стене (рядом с ружьём и над календарём)
+  const clockDialTex = regTex(ctex(512, 512, (g, w, h) => {
+    const cx = w / 2, cy = h / 2, r = w * .45;
+    g.fillStyle = '#f3efe2'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+    const gr = g.createRadialGradient(cx, cy, r * .1, cx, cy, r);
+    gr.addColorStop(0, 'rgba(255,252,242,0)'); gr.addColorStop(.85, 'rgba(210,198,172,.18)'); gr.addColorStop(1, 'rgba(90,75,55,.45)');
+    g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+    for (let i = 0; i < 60; i++) {
+      const a = i / 60 * Math.PI * 2 - Math.PI / 2;
+      const maj = i % 5 === 0;
+      const r1 = r * (maj ? .81 : .86), r2 = r * .92;
+      g.strokeStyle = maj ? '#1d1b18' : '#5a554c';
+      g.lineWidth = maj ? 6 : 2.2;
+      g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
+    }
+    g.fillStyle = '#1a1815'; g.font = '900 42px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let n = 1; n <= 12; n++) {
+      const a = n / 12 * Math.PI * 2 - Math.PI / 2;
+      g.fillText(String(n), cx + Math.cos(a) * r * .67, cy + Math.sin(a) * r * .67 + 2);
+    }
+    g.fillStyle = '#4a453d'; g.font = '700 20px Arial, sans-serif'; g.fillText('КВАРЦ', cx, cy - r * .30);
+    g.font = '700 14px Arial, sans-serif'; g.fillText('СДЕЛАНО В СССР', cx, cy + r * .34);
+  }));
+  const wallClock = new THREE.Group(); wallClock.userData.dyn = true;
+  wallClock.position.set(KW - .038, 1.78, .56); wallClock.rotation.y = -Math.PI / 2; K.add(wallClock);
+  const wcRim = new THREE.Mesh(new THREE.CylinderGeometry(.175, .182, .038, 32), std({ color: 0x4a2c18, roughness: .42, metalness: .15 }));
+  wcRim.rotation.x = Math.PI / 2; wcRim.castShadow = true; wallClock.add(wcRim);
+  const wcInnerRim = new THREE.Mesh(new THREE.TorusGeometry(.162, .009, 10, 32), std({ color: 0xc8a858, roughness: .28, metalness: .78 }));
+  wcInnerRim.position.z = .018; wallClock.add(wcInnerRim);
+  const wcFace = new THREE.Mesh(new THREE.CircleGeometry(.158, 32), std({ map: clockDialTex, roughness: .65 }));
+  wcFace.position.z = .0195; wallClock.add(wcFace);
+  const wcHandMat = std({ color: 0x161616, roughness: .35, metalness: .5 });
+  const wcSecMat = std({ color: 0xb82018, roughness: .35, metalness: .3 });
+  const clockHourHand = new THREE.Group(); clockHourHand.position.z = .022; wallClock.add(clockHourHand);
+  const hhMesh = new THREE.Mesh(new THREE.BoxGeometry(.011, .092, .003), wcHandMat); hhMesh.position.y = .034; clockHourHand.add(hhMesh);
+  const clockMinHand = new THREE.Group(); clockMinHand.position.z = .024; wallClock.add(clockMinHand);
+  const mhMesh = new THREE.Mesh(new THREE.BoxGeometry(.0075, .132, .003), wcHandMat); mhMesh.position.y = .050; clockMinHand.add(mhMesh);
+  const clockSecHand = new THREE.Group(); clockSecHand.position.z = .026; wallClock.add(clockSecHand);
+  const shMesh = new THREE.Mesh(new THREE.BoxGeometry(.0032, .145, .002), wcSecMat); shMesh.position.y = .052; clockSecHand.add(shMesh);
+  const wcCap = new THREE.Mesh(new THREE.CylinderGeometry(.009, .009, .008, 12), std({ color: 0xd4b254, roughness: .25, metalness: .85 }));
+  wcCap.rotation.x = Math.PI / 2; wcCap.position.z = .027; wallClock.add(wcCap);
+  const wcGlass = new THREE.Mesh(new THREE.CircleGeometry(.16, 28), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .08, metalness: .1, transparent: true, opacity: .18, depthWrite: false }));
+  wcGlass.position.z = .029; wallClock.add(wcGlass);
+  const clockBox = new THREE.Box3().setFromObject(wallClock).expandByScalar(.06);
 
   // ---------- полки с советскими продуктами (инстансинг) ----------
   function label(w, h, bg, fg, top, mid, bot, stripe) {
@@ -485,48 +682,13 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     { id: 'hleb', geo: new THREE.BoxGeometry(.2, .1, .1), lab: null, color: 0x9a6a38, h: .1 },
     { id: 'baton', geo: new THREE.CapsuleGeometry(.045, .2, 4, 8), lab: null, color: 0xc89a5a, h: .09, rotZ: Math.PI / 2 },
   ];
-  const foodGroup = new THREE.Group(); K.add(foodGroup);
+  const foodGroup = new THREE.Group(); foodGroup.userData.dyn = true; K.add(foodGroup);
   const shelfMat = MAT.shelf;
-  // задняя стена (за продавцом): x -1.45..0.3, три полки; боковая левая стена: z -0.85..0.4, три полки
+  // задняя стена (за продавцом): x -1.45..0.3, четыре полки; боковая левая стена: z -0.85..0.4, три полки
   const SH_BACK = [], SH_SIDE = [];
   for (const y of [.75, 1.2, 1.65, 2.05]) { box(1.72, .025, .3, shelfMat, -.57, y, -KD + .17, K); SH_BACK.push(y); }
   box(.025, 1.5, .3, shelfMat, .29, 1.35, -KD + .17, K); box(.025, 1.5, .3, shelfMat, -1.43, 1.35, -KD + .17, K);
   for (const y of [.85, 1.3, 1.75]) { box(.3, .025, 1.2, shelfMat, -KW + .17, y, -.2, K); SH_SIDE.push(y); }
-  function buildFood() {
-    foodGroup.clear();
-    const placements = new Map(FOOD.map(f => [f.id, []]));
-    const rows = [];
-    SH_BACK.forEach((y, i) => rows.push({ y, x0: -1.4, x1: .24, z: -KD + .17, axis: 'x', set: [['tushonka', 'sgush', 'kilka'], ['grechka', 'makarony', 'sahar'], ['chai', 'sol', 'spichki', 'kefir'], ['buratino', 'buratino', 'kefir']][i] }));
-    SH_SIDE.forEach((y, i) => rows.push({ y, z0: -.78, z1: .38, x: -KW + .17, axis: 'z', set: [['hleb', 'baton'], ['makarony', 'grechka', 'chai'], ['tushonka', 'sgush']][i] }));
-    for (const r of rows) {
-      let p = r.axis === 'x' ? r.x0 : r.z0; const end = r.axis === 'x' ? r.x1 : r.z1; let gi = 0;
-      while (p < end) {
-        const id = r.set[gi % r.set.length]; const f = FOOD.find(q => q.id === id);
-        const bb = (f.geo.boundingBox || (f.geo.computeBoundingBox(), f.geo.boundingBox)); const w = (bb.max.x - bb.min.x) * (f.rotZ ? 2.2 : 1) + .012;
-        const n = RI(3, 6);
-        for (let k = 0; k < n && p < end; k++) {
-          if (Math.random() < .12) { p += w; continue; } // пустое место — живой магазин
-          const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, R(-.25, .25) + (r.axis === 'z' ? Math.PI / 2 : 0), f.rotZ || 0));
-          const pos = r.axis === 'x' ? new THREE.Vector3(p + w / 2, r.y + .013 + f.h / 2, r.z + R(-.06, .06)) : new THREE.Vector3(r.x + R(-.06, .06), r.y + .013 + f.h / 2, p + w / 2);
-          if (f.id === 'buratino' || f.id === 'kefir') pos.y = r.y + .013 + f.h / 2;
-          m.compose(pos, q, new THREE.Vector3(1, 1, 1));
-          placements.get(id).push(m);
-          if ((id === 'tushonka' || id === 'sgush') && Math.random() < .6) { const m2 = m.clone(); m2.elements[13] += f.h + .002; placements.get(id).push(m2); } // стопкой
-          p += w;
-        }
-        gi++; p += .02;
-      }
-    }
-    for (const f of FOOD) {
-      const arr = placements.get(f.id); if (!arr.length) continue;
-      let mat;
-      if (f.model) mat = f.model;
-      else if (f.lab) { const side = std({ map: f.lab, roughness: f.metal ? .35 : .8, metalness: f.metal ? .5 : 0 }); mat = f.geo.type.startsWith('Cylinder') ? [side, std({ color: 0xb8bcc0, metalness: .9, roughness: .3 }), std({ color: 0xb8bcc0, metalness: .9, roughness: .3 })] : [side, side, side, side, side, side]; }
-      else mat = f.glass ? new THREE.MeshStandardMaterial({ color: f.color, roughness: .1, transparent: true, opacity: .85 }) : std({ color: f.color, roughness: .7 });
-      const im = new THREE.InstancedMesh(f.geo, mat, arr.length); arr.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = true; im.receiveShadow = true; foodGroup.add(im);
-    }
-  }
-  buildFood();
 
   // ---------- дверь ----------
   const doorPivot = new THREE.Group(); doorPivot.position.set(1.2, 0, -KD); K.add(doorPivot); doorPivot.userData.dyn = true;
@@ -537,72 +699,937 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   let doorOpen = 0, doorTarget = 0;
   addCol(-KW - .05, KW + .05, KD - .02, KD + .06); // перед окном снаружи — стена
 
-  // ---------- товар на витрине (из игры) ----------
-  const SLOT_POS = [[-1.12, .99], [1.12, .99], [-.7, .99], [.7, .99], [-1.12, 1.37], [1.12, 1.37], [-.7, 1.37], [.7, 1.37], [-1.12, 1.77]];
+  // ---------- товар на витрине (стеклянные полки у окна) и на складских полках (только реально купленный товар!) ----------
+  const SLOT_POS = [
+    [-1.12, 1.37], [-.68, 1.37], [.68, 1.37], [1.12, 1.37],
+    [-1.12, 1.77], [-.68, 1.77], [.68, 1.77], [1.12, 1.77],
+    [.88, .995]
+  ];
   const shelfGroup = new THREE.Group(); K.add(shelfGroup); shelfGroup.userData.dyn = true;
-  function itemMesh(id) {
-    const g = new THREE.Group(); const lbl = c => std({ color: c, roughness: .5 });
-    const bottle = (h, r, body, cap) => { const bm = new THREE.MeshStandardMaterial({ color: body, roughness: .15, metalness: .1, transparent: true, opacity: .88 }); cyl(r, r, h * .7, bm, 0, h * .35, 0, 10, g); cyl(r * .4, r * .9, h * .2, bm, 0, h * .8, 0, 8, g); cyl(r * .45, r * .45, h * .07, lbl(cap), 0, h * .93, 0, 8, g); cyl(r * 1.02, r * 1.02, h * .25, lbl(0xe8e0c8), 0, h * .35, 0, 10, g); };
+  const itemProto = {};
+  function getItemMesh(id) { return (itemProto[id] || (itemProto[id] = buildItemProto(id))).clone(); }
+  function itemMesh(id) { return getItemMesh(id); }
+
+  // Вспомогательные генераторы чётких русских этикеток для упаковок и бутылок
+  function packFaceMat(wPx, hPx, bg, border, topBand, title, sub, note, accent = '#b0281c') {
+    const tx = regTex(ctex(wPx, hPx, (g, w, h) => {
+      g.fillStyle = bg; g.fillRect(0, 0, w, h);
+      if (topBand) { g.fillStyle = topBand; g.fillRect(0, 0, w, Math.round(h * .30)); }
+      g.strokeStyle = border; g.lineWidth = Math.max(4, Math.round(w * .03));
+      g.strokeRect(4, 4, w - 8, h - 8);
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      if (note) {
+        g.fillStyle = topBand ? '#ffffff' : accent;
+        g.font = `900 ${Math.round(w * .13)}px Arial, sans-serif`;
+        g.fillText(note, w / 2, Math.round(h * .16));
+      }
+      g.fillStyle = accent;
+      g.font = `900 ${Math.round(w * .19)}px Arial, sans-serif`;
+      g.fillText(title, w / 2, Math.round(h * .52));
+      if (sub) {
+        g.fillStyle = '#1e1b18';
+        g.font = `900 ${Math.round(w * .12)}px Arial, sans-serif`;
+        g.fillText(sub, w / 2, Math.round(h * .80));
+      }
+    }));
+    return std({ map: tx, roughness: .52 });
+  }
+  function cylWrapMat(bg, border, title, sub, badge, accent = '#b0281c') {
+    const tx = regTex(ctex(512, 192, (g, w, h) => {
+      g.fillStyle = bg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = border; g.lineWidth = 8; g.strokeRect(5, 5, w - 10, h - 10);
+      g.strokeStyle = accent; g.lineWidth = 3; g.strokeRect(15, 15, w - 30, h - 30);
+      for (const cx of [128, 384]) {
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        if (badge) {
+          g.fillStyle = border; g.font = '900 22px Arial, sans-serif';
+          g.fillText(badge, cx, 36);
+        }
+        g.fillStyle = accent; g.font = '900 42px Arial, sans-serif';
+        g.fillText(title, cx, 92);
+        if (sub) {
+          g.fillStyle = '#1c1814'; g.font = '900 24px Arial, sans-serif';
+          g.fillText(sub, cx, 146);
+        }
+      }
+    }));
+    return std({ map: tx, roughness: .48 });
+  }
+
+  function buildItemProto(id) {
+    const g = new THREE.Group();
+    const lbl = c => std({ color: c, roughness: .5 });
+    const bottleWithLabel = (h, r, bodyCol, capCol, wrapMat, neckCol = null, cork = false) => {
+      const bm = new THREE.MeshStandardMaterial({
+        color: bodyCol, roughness: cork ? .28 : .14, metalness: .08, transparent: true, opacity: cork ? .80 : .88
+      });
+      cyl(r, r, h * .64, bm, 0, h * .32, 0, 14, g);
+      cyl(r * .38, r * .94, h * .20, bm, 0, h * .74, 0, 12, g);
+      cyl(r * .36, r * .36, h * .10, bm, 0, h * .89, 0, 10, g);
+      if (cork) {
+        // Деревянно-сургучная пробка самогона и бечёвка на горлышке
+        cyl(r * .34, r * .28, h * .08, lbl(capCol), 0, h * .95, 0, 10, g);
+        cyl(r * .42, r * .42, h * .025, lbl(0x8c734b), 0, h * .83, 0, 10, g);
+      } else {
+        cyl(r * .41, r * .41, h * .055, std({ color: capCol, metalness: .7, roughness: .3 }), 0, h * .94, 0, 12, g);
+      }
+      if (neckCol !== null) cyl(r * .44, r * .55, h * .06, lbl(neckCol), 0, h * .81, 0, 10, g);
+      const lbGeo = new THREE.CylinderGeometry(r * 1.025, r * 1.025, h * .34, 16, 1, true);
+      const lb = new THREE.Mesh(lbGeo, wrapMat);
+      lb.position.y = h * .34;
+      lb.castShadow = true;
+      g.add(lb);
+    };
     switch (id) {
-      case 'gum': box(.08, .05, .025, lbl(0xd14a8a), 0, .025, 0, g); box(.081, .015, .026, lbl(0xf2d34b), 0, .03, 0, g); break;
-      case 'paper': box(.24, .02, .17, lbl(0xd8d2c0), 0, .01, 0, g); box(.2, .002, .04, lbl(0x9a2a20), 0, .021, -.05, g); break;
-      case 'soda': bottle(.22, .032, 0xd98a2b, 0xc0392b); break;
-      case 'choc': box(.13, .035, .025, lbl(0x5a2d1a), 0, .018, 0, g); box(.06, .036, .026, lbl(0xc0392b), 0, .018, 0, g); break;
-      case 'cig': box(.055, .085, .022, lbl(0xe8e4dc), 0, .043, 0, g); box(.056, .03, .023, lbl(0xb0302a), 0, .07, 0, g); break;
-      case 'beer': bottle(.24, .033, 0x5a3112, 0xd4a72c); break;
-      case 'batt': box(.07, .1, .015, lbl(0x1c1c1c), 0, .05, 0, g); box(.05, .06, .02, lbl(0xd4a72c), 0, .045, 0, g); break;
-      case 'vodka': bottle(.28, .036, 0xcfe0e0, 0xc0392b); break;
-      case 'tape': box(.1, .065, .016, lbl(0x1a1a1a), 0, .033, 0, g); box(.07, .025, .017, lbl(0xe7c84a), 0, .042, 0, g); break;
-      case 'tushonka': cyl(.045, .045, .09, std({ color: 0xd8c8a0, metalness: .4, roughness: .4 }), 0, .045, 0, 14, g); cyl(.046, .046, .05, lbl(0xa8352a), 0, .05, 0, 14, g); break;
-      case 'kilka': cyl(.045, .045, .03, std({ color: 0xc9a227, metalness: .6, roughness: .35 }), 0, .015, 0, 14, g); break;
-      case 'bread': { const b = new THREE.Mesh(new THREE.CapsuleGeometry(.05, .1, 4, 8), lbl(0x7a4a24)); b.rotation.z = Math.PI / 2; b.position.y = .05; g.add(b); break; }
-      case 'mag': case 'mag2': { const c = document.createElement('canvas'); c.width = 128; c.height = 160; const x = c.getContext('2d'); const gr = x.createLinearGradient(0, 0, 128, 160); gr.addColorStop(0, id === 'mag' ? '#e04a8a' : '#2a7ad8'); gr.addColorStop(1, id === 'mag' ? '#f2c94c' : '#e8e8e8'); x.fillStyle = gr; x.fillRect(0, 0, 128, 160); x.fillStyle = '#fff'; x.font = '900 22px Arial'; x.fillText(id === 'mag' ? 'MODE' : 'AUTO', 8, 30); x.font = '700 12px Arial'; x.fillText(id === 'mag' ? 'INTERNATIONAL' : 'WELT · 1992', 8, 46); x.fillStyle = '#0003'; x.beginPath(); x.ellipse(64, 105, 34, 44, 0, 0, 7); x.fill();
-        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; const m = new THREE.Mesh(new THREE.BoxGeometry(.15, .19, .006), [lbl(0xeeeeee), lbl(0xeeeeee), lbl(0xeeeeee), lbl(0xeeeeee), new THREE.MeshStandardMaterial({ map: t, roughness: .25, metalness: .05 }), lbl(0xeeeeee)]); m.position.y = .095; m.rotation.x = -.2; m.castShadow = true; g.add(m); break; }
-      case 'toy': { const e = new THREE.Mesh(new THREE.SphereGeometry(.035, 12, 10), lbl(0xe57bb0)); e.scale.y = 1.3; e.position.y = .045; g.add(e); box(.03, .02, .005, lbl(0x9fb88a), 0, .05, .033, g); break; }
+      case 'vodka': {
+        const wm = cylWrapMat('#f5efe0', '#c49a38', 'ВОДКА', 'СПИРТ «КОРОЛЬ»', '0.5 Л · 40°', '#b82418');
+        bottleWithLabel(.28, .036, 0x2d5a36, 0xd4b254, wm, 0xd4b254, false);
+        break;
+      }
+      case 'beer': {
+        const wm = cylWrapMat('#f2d06b', '#7a2814', 'ПИВО', 'ЗАВОДСКОЕ', 'СВЕТЛОЕ · 0.5 Л', '#8a1e12');
+        bottleWithLabel(.24, .034, 0x5c3214, 0xd4a72c, wm, 0xd4a72c, false);
+        break;
+      }
+      case 'samogon': {
+        const wm = cylWrapMat('#dfd1b4', '#4a3520', 'САМОГОН', 'ПЕРВАЧ · 60°', 'ДОМАШНИЙ', '#7a1e14');
+        bottleWithLabel(.26, .038, 0xc8d2c4, 0x5c3c24, wm, null, true);
+        break;
+      }
+      case 'soda': {
+        const wm = cylWrapMat('#f7df64', '#c42b1c', 'ЛИМОНАД', 'БУРАТИНО', 'ГОСТ · 0.5 Л', '#b81e14');
+        bottleWithLabel(.23, .032, 0xc97b28, 0xc0392b, wm, 0xf7df64, false);
+        break;
+      }
+      case 'cig': {
+        const fm = packFaceMat(256, 360, '#f4f0e6', '#b02820', '#b82820', 'СИГАРЕТЫ', 'КОСМОНАВТ', '20 ШТ · ФИЛЬТР', '#b82820');
+        const sideM = lbl(0xefeae0), topM = lbl(0xb82820), foilM = std({ color: 0xd8d8d4, metalness: .75, roughness: .28 });
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.058, .088, .024), [sideM, sideM, topM, sideM, fm, fm]);
+        m.position.y = .044; m.castShadow = true; g.add(m);
+        box(.059, .005, .025, foilM, 0, .064, 0, g);
+        break;
+      }
+      case 'kontra': {
+        const fm = packFaceMat(320, 240, '#192d4e', '#d4a72c', '#d4a72c', 'СИГАРЕТЫ', 'ИМПОРТ · БЛОК', 'FILTER KINGS', '#f5d062');
+        const sideM = lbl(0x192d4e), goldM = std({ color: 0xd4a72c, metalness: .6, roughness: .32 });
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.115, .086, .046), [sideM, sideM, goldM, sideM, fm, fm]);
+        m.position.y = .043; m.castShadow = true; g.add(m);
+        break;
+      }
+      case 'gum': {
+        const fm = packFaceMat(256, 180, '#fce24c', '#d42c78', '#d42c78', 'ЖВАЧКА', 'ТУРБИНА', 'ВКЛАДЫШ ВНУТРИ', '#b81858');
+        const sideM = lbl(0xd42c78), foilM = std({ color: 0xe2e4e6, metalness: .7, roughness: .3 });
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.082, .052, .026), [foilM, foilM, fm, sideM, fm, fm]);
+        m.position.y = .026; m.castShadow = true; g.add(m);
+        break;
+      }
+      case 'choc': {
+        const fm = packFaceMat(320, 140, '#442214', '#d4a72c', '#b8281c', 'ШОКОЛАД', 'МАРСЪ · ПЛИТКА', 'МОЛОЧНЫЙ', '#f4cc5c');
+        const sideM = lbl(0x442214), foilM = std({ color: 0xdcded8, metalness: .78, roughness: .25 });
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.125, .038, .026), [foilM, sideM, fm, sideM, fm, fm]);
+        m.position.y = .019; m.castShadow = true; g.add(m);
+        box(.018, .034, .023, foilM, .066, .019, 0, g);
+        break;
+      }
+      case 'bread': {
+        const crust = std({ color: 0xb87634, roughness: .82 });
+        const loaf = new THREE.Mesh(new THREE.CapsuleGeometry(.044, .115, 6, 12), crust);
+        loaf.rotation.z = Math.PI / 2; loaf.scale.set(1, 1, 1.12); loaf.position.y = .044; loaf.castShadow = true; g.add(loaf);
+        // Поджаристые надрезы на корке батона и бумажная лента «ХЛЕБ»
+        for (const xOff of [-.045, -.015, .015, .045]) {
+          const slash = box(.010, .012, .072, lbl(0xe4b878), xOff, .084, 0, g);
+          slash.rotation.y = .32;
+        }
+        const bandMat = packFaceMat(256, 128, '#f4ecda', '#8a2818', null, 'ХЛЕБ', 'ГОСТ · СВЕЖИЙ', 'ХЛЕБОЗАВОД № 2', '#9e2014');
+        const band = new THREE.Mesh(new THREE.BoxGeometry(.056, .089, .104), [crust, crust, bandMat, bandMat, bandMat, bandMat]);
+        band.position.y = .044; g.add(band);
+        break;
+      }
+      case 'tushonka': {
+        const tinM = std({ color: 0xcfc4a8, metalness: .68, roughness: .32 });
+        const wm = cylWrapMat('#efe6ce', '#8a2216', 'ТУШЁНКА', 'ГОВЯДИНА ГОСТ', 'ВЫСШИЙ СОРТ', '#9e1e14');
+        cyl(.046, .046, .094, tinM, 0, .047, 0, 16, g);
+        cyl(.0475, .0475, .005, tinM, 0, .092, 0, 16, g);
+        cyl(.0475, .0475, .005, tinM, 0, .004, 0, 16, g);
+        const lb = new THREE.Mesh(new THREE.CylinderGeometry(.0468, .0468, .068, 16, 1, true), wm);
+        lb.position.y = .047; lb.castShadow = true; g.add(lb);
+        break;
+      }
+      case 'kilka': {
+        const tinM = std({ color: 0xd4aa3c, metalness: .65, roughness: .34 });
+        const wm = cylWrapMat('#e66428', '#5a180c', 'КИЛЬКА', 'В ТОМАТЕ', 'БАЛТИЙСКАЯ', '#ffffff');
+        const topTx = regTex(ctex(256, 256, (c, w, h) => {
+          c.fillStyle = '#d95322'; c.beginPath(); c.arc(128, 128, 124, 0, Math.PI * 2); c.fill();
+          c.strokeStyle = '#f4d068'; c.lineWidth = 8; c.beginPath(); c.arc(128, 128, 114, 0, Math.PI * 2); c.stroke();
+          c.fillStyle = '#fff5dc'; c.font = '900 38px Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText('КИЛЬКА', 128, 108);
+          c.font = '900 24px Arial, sans-serif'; c.fillStyle = '#ffe082';
+          c.fillText('В ТОМАТЕ', 128, 150);
+        }));
+        const topM = std({ map: topTx, roughness: .42, metalness: .2 });
+        const can = new THREE.Mesh(new THREE.CylinderGeometry(.050, .050, .034, 16), [wm, topM, tinM]);
+        can.position.y = .017; can.castShadow = true; g.add(can);
+        break;
+      }
+      case 'batt': {
+        const cardM = packFaceMat(256, 320, '#f2c638', '#1c1c1c', '#1c1c1c', 'БАТАРЕЙКИ', 'КВАНТ · 1.5V', '2 ШТ · АЛКАЛИН', '#b01e14');
+        const backM = lbl(0xd8d2c4), cellM = std({ color: 0x202226, metalness: .45, roughness: .35 }), brassM = std({ color: 0xd8b43c, metalness: .85, roughness: .22 });
+        const card = new THREE.Mesh(new THREE.BoxGeometry(.082, .104, .005), [backM, backM, backM, backM, cardM, backM]);
+        card.position.set(0, .052, -.006); card.castShadow = true; g.add(card);
+        for (const sx of [-.018, .018]) {
+          cyl(.012, .012, .054, cellM, sx, .038, .006, 12, g);
+          cyl(.0122, .0122, .016, lbl(0xd4a72c), sx, .052, .006, 12, g);
+          cyl(.0045, .0045, .005, brassM, sx, .067, .006, 8, g);
+        }
+        break;
+      }
+      case 'tape': {
+        const fm = packFaceMat(320, 220, '#222428', '#e6c238', '#c42b1c', 'КАССЕТА', 'МК-60 · СТЕРЕО', 'АУДИО 1992', '#f5d248');
+        const sideM = lbl(0x1b1d20), reelM = lbl(0xf2efe8);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.102, .066, .016), [sideM, sideM, sideM, sideM, fm, fm]);
+        m.position.y = .033; m.castShadow = true; g.add(m);
+        for (const rx of [-.022, .022]) {
+          const r = cyl(.009, .009, .018, reelM, rx, .034, 0, 10, g);
+          r.rotation.x = Math.PI / 2;
+        }
+        break;
+      }
+      case 'paper': {
+        const topTx = regTex(ctex(512, 360, (c, w, h) => {
+          c.fillStyle = '#e5dec9'; c.fillRect(0, 0, w, h);
+          c.fillStyle = '#b02418'; c.fillRect(16, 14, w - 32, 68);
+          c.fillStyle = '#ffffff'; c.font = '900 44px Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText('ГАЗЕТА «ГУДОК»', w / 2, 48);
+          c.fillStyle = '#1c1a17'; c.font = '900 28px Arial, sans-serif';
+          c.fillText('СВЕЖИЙ ВЫПУСК · 1992', w / 2, 108);
+          c.fillStyle = '#787266'; c.fillRect(24, 134, 210, 180);
+          c.fillStyle = '#2b2824';
+          for (let y = 140; y < 320; y += 18) c.fillRect(250, y, 236, 8);
+        }));
+        const topM = std({ map: topTx, roughness: .88 }), sideM = lbl(0xdad2bc);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.22, .018, .16), [sideM, sideM, topM, sideM, sideM, sideM]);
+        m.position.y = .009; m.castShadow = true; g.add(m);
+        break;
+      }
+      case 'mag': case 'mag2': {
+        const isM1 = id === 'mag';
+        const c = document.createElement('canvas'); c.width = 256; c.height = 320;
+        const x = c.getContext('2d');
+        const gr = x.createLinearGradient(0, 0, 256, 320);
+        gr.addColorStop(0, isM1 ? '#c82458' : '#184b9e');
+        gr.addColorStop(1, isM1 ? '#f2c138' : '#32a8d8');
+        x.fillStyle = gr; x.fillRect(0, 0, 256, 320);
+        x.fillStyle = 'rgba(0,0,0,0.65)'; x.fillRect(10, 12, 236, 92);
+        x.fillStyle = '#ffeb68'; x.font = '900 28px Arial, sans-serif'; x.textAlign = 'center';
+        x.fillText('ЖУРНАЛ', 128, 46);
+        x.fillStyle = '#ffffff'; x.font = '900 34px Arial, sans-serif';
+        x.fillText(isM1 ? 'РОВЕСНИК' : 'ВИДЕО-АСС', 128, 88);
+        x.fillStyle = 'rgba(255,255,255,0.22)'; x.beginPath(); x.ellipse(128, 205, 70, 82, 0, 0, 7); x.fill();
+        x.fillStyle = '#181818'; x.font = '900 22px Arial, sans-serif';
+        x.fillText(isM1 ? 'РОК · МОДА · 1992' : 'ИГРЫ · КИНО · 1992', 128, 298);
+        const t = regTex(new THREE.CanvasTexture(c)); t.colorSpace = THREE.SRGBColorSpace;
+        const covM = new THREE.MeshStandardMaterial({ map: t, roughness: .24, metalness: .05 });
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.15, .19, .010), [lbl(0xeeeeee), lbl(0xeeeeee), lbl(0xeeeeee), lbl(0xeeeeee), covM, covM]);
+        m.position.y = .095; m.rotation.x = -.16; m.castShadow = true; g.add(m);
+        break;
+      }
+      case 'toy': {
+        const fm = packFaceMat(256, 384, '#d83a28', '#8a1c10', '#242830', 'ТЕТРИС', 'ИГРУШКА 99 В 1', 'BRICK GAME', '#ffdf48');
+        const bodyM = lbl(0xd83a28), scrM = lbl(0x8fa87a), btnM = lbl(0xf2c938);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(.076, .136, .022), [bodyM, bodyM, bodyM, bodyM, fm, bodyM]);
+        m.position.y = .068; m.castShadow = true; g.add(m);
+        box(.052, .048, .004, scrM, 0, .092, .011, g);
+        for (const [bx, by] of [[-.016, .042], [0, .042], [.016, .038], [.016, .052]]) {
+          box(.010, .010, .005, btnM, bx, by, .011, g);
+        }
+        break;
+      }
     }
     return g;
   }
-  function priceTag(id, price, q) {
-    const t = ctex(160, 80, (g, w, h) => { g.fillStyle = '#f3efe2'; g.fillRect(0, 0, w, h); g.strokeStyle = '#b03a2e'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); g.fillStyle = '#1a1a1a'; g.font = '700 22px Arial'; g.textAlign = 'center'; g.fillText(ctx.GOODS[id].short, w / 2, 28); g.fillStyle = '#b03a2e'; g.font = '900 30px Arial'; g.fillText(ctx.fmt(price) + ' р', w / 2, 62); if (!q) { g.fillStyle = '#0009'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = '900 26px Arial'; g.fillText('НЕТ', w / 2, 50); } });
-    return new THREE.Mesh(new THREE.PlaneGeometry(.13, .065), std({ map: t, roughness: .9 }));
+
+  function goodTitleOf(id) {
+    if (ctx.GOODS && ctx.GOODS[id]) return ctx.GOODS[id].name;
+    if (id === 'samogon') return 'Самогон';
+    if (id === 'kontra') return 'Сигареты «Импорт» (блок)';
+    return id || 'Товар';
   }
+  function goodShortOf(id) {
+    if (ctx.GOODS && ctx.GOODS[id]) return ctx.GOODS[id].short;
+    if (id === 'samogon') return 'Самогон';
+    if (id === 'kontra') return 'Импорт';
+    return id || 'Товар';
+  }
+  function packKindOf(id) {
+    if (id === 'cig' || id === 'kontra') return 'carton';
+    if (id === 'paper' || id === 'mag' || id === 'mag2') return 'bundle';
+    if (['gum', 'choc', 'batt', 'tape', 'toy'].includes(id)) return 'showbox';
+    return 'tray';
+  }
+  function packTitleOf(data) {
+    const id = (data && data.goodId) || 'cig';
+    const cnt = (data && data.count) || 5;
+    const pk = packKindOf(id);
+    const prefix = pk === 'carton' ? 'Блок' : pk === 'bundle' ? 'Пачка' : pk === 'showbox' ? 'Бокс' : 'Упаковка';
+    return `${prefix}: ${goodTitleOf(id)} (${cnt} шт.)`;
+  }
+  function getPackMesh(id, count = 5, maxCount = 5, opened = false) {
+    const g = new THREE.Group();
+    const pk = packKindOf(id);
+    const lbl = c => std({ color: c, roughness: .55 });
+    const cnt = clamp(count, 1, maxCount || 5);
+
+    if (pk === 'bundle') {
+      // Стопка сложенных газет / журналов, перевязанная крест-накрест джутовой бечёвкой (верёвкой) с узлом сверху
+      const isPaper = id === 'paper';
+      const W = isPaper ? .22 : .15;
+      const D = isPaper ? .16 : .19;
+      const layerH = isPaper ? .018 : .014;
+      const stackH = cnt * layerH;
+      for (let k = 0; k < cnt; k++) {
+        const layer = new THREE.Group();
+        const im = getItemMesh(id);
+        if (!isPaper) {
+          // Укладываем журнал горизонтально обложкой вверх в стопку
+          im.position.set(0, .007, 0);
+          im.traverse(o => {
+            if (o.isMesh && o.geometry && o.geometry.type === 'BoxGeometry') {
+              o.rotation.set(Math.PI / 2, 0, 0);
+              o.position.set(0, 0, 0);
+            }
+          });
+        }
+        layer.add(im);
+        layer.position.set((k % 2 ? .002 : -.002), k * layerH, ((k >> 1) % 2 ? .002 : -.002));
+        layer.rotation.y = (k % 2 ? .022 : -.018) * (opened ? 1.4 : 0.6);
+        g.add(layer);
+      }
+      const ropeM = std({ color: 0x9c7a4c, roughness: .92 });
+      const knotM = std({ color: 0x86653a, roughness: .95 });
+      if (!opened) {
+        // Продольная и две поперечные верёвки вокруг пачки газет + узел с кончиками бечёвки сверху
+        const rThick = .0055;
+        // Продольный обхват (вдоль Z)
+        box(rThick, stackH + .005, D + .006, ropeM, 0, stackH / 2, 0, g);
+        // Поперечные обхваты (вдоль X)
+        for (const rz of [-.034, .034]) {
+          box(W + .006, stackH + .005, rThick, ropeM, 0, stackH / 2, rz, g);
+        }
+        // Узел сверху на перекрестии верёвок
+        const knot = new THREE.Mesh(new THREE.SphereGeometry(.0095, 8, 6), knotM);
+        knot.position.set(0, stackH + .004, .034);
+        knot.scale.set(1.2, .75, 1.2);
+        g.add(knot);
+        for (const [dx, dz, ang] of [[-.016, .042, .45], [.018, .026, -.55]]) {
+          const tail = box(.026, .004, .004, ropeM, dx, stackH + .004, dz, g);
+          tail.rotation.y = ang;
+        }
+      } else {
+        // Развязанная бечёвка лежит рядом у основания стопки, чтобы было видно, что пачка распечатана
+        box(W + .012, .0035, .005, ropeM, 0, .002, D / 2 + .006, g);
+        box(.005, .0035, D + .012, ropeM, W / 2 + .006, .002, 0, g);
+      }
+      return g;
+    }
+
+    if (pk === 'carton') {
+      // Блок сигарет (как на референсе Magna 5618.jpg): длинный прямоугольный блок, при открытии пачки лежат строго внутри корытца без вылезания
+      const W = .24, H = .054, D = .098;
+      const isK = id === 'kontra';
+      const bg = isK ? '#192d4e' : '#c8241b';
+      const accent = isK ? '#d4a72c' : '#ffffff';
+      const title = isK ? 'ИМПОРТ · USA' : 'КОСМОНАВТ';
+      const sub = 'БЛОК СИГАРЕТ · 5 ПАЧЕК';
+      const topTx = regTex(ctex(512, 200, (c, w, h) => {
+        c.fillStyle = bg; c.fillRect(0, 0, w, h);
+        c.strokeStyle = accent; c.lineWidth = 8; c.strokeRect(8, 8, w - 16, h - 16);
+        c.fillStyle = '#ffffff'; c.beginPath(); c.ellipse(w / 2, h / 2, 140, 64, 0, 0, Math.PI * 2); c.stroke();
+        c.fillStyle = accent; c.font = '900 46px Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText(title, w / 2, h / 2 - 14);
+        c.fillStyle = '#f5ecd8'; c.font = '900 22px Arial, sans-serif';
+        c.fillText(sub, w / 2, h / 2 + 34);
+        c.fillStyle = '#ffffff'; c.fillRect(w - 92, h - 62, 74, 44);
+        c.fillStyle = '#111111';
+        for (let x = w - 86; x < w - 24; x += 5) c.fillRect(x, h - 58, (x % 2 ? 2 : 3), 36);
+      }));
+      const topM = std({ map: topTx, roughness: .42 });
+      const sideM = std({ color: isK ? 0x192d4e : 0xc8241b, roughness: .48 });
+      const inM = std({ color: 0xebe6dc, roughness: .85 });
+      if (!opened) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [sideM, sideM, topM, sideM, topM, topM]);
+        m.position.y = H / 2; m.castShadow = true; g.add(m);
+      } else {
+        const t = .005;
+        box(W, t, D, inM, 0, t / 2, 0, g);
+        box(W, H * .78, t, sideM, 0, H * .39, D / 2 - t / 2, g);
+        box(W, H * .88, t, sideM, 0, H * .44, -D / 2 + t / 2, g);
+        box(t, H * .84, D - t * 2, sideM, -W / 2 + t / 2, H * .42, 0, g);
+        box(t, H * .84, D - t * 2, sideM, W / 2 - t / 2, H * .42, 0, g);
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(W, t, D * .86), [sideM, sideM, inM, topM, sideM, sideM]);
+        lid.position.set(0, H * .84 + .026, -D / 2 - .012);
+        lid.rotation.x = -1.18;
+        lid.castShadow = true; g.add(lid);
+        for (let k = 0; k < cnt; k++) {
+          const pkMesh = getItemMesh(id);
+          // Пачка лежит ровно плашмя внутри корытца блока: центрирована по Z и X с отступом от стенок
+          if (isK) pkMesh.scale.set(.35, .86, .45);
+          else pkMesh.scale.set(.68, .86, .86);
+          pkMesh.rotation.set(-Math.PI / 2, 0, 0);
+          pkMesh.position.set(-.086 + k * .043, .014, .038);
+          g.add(pkMesh);
+        }
+      }
+      return g;
+    }
+
+    if (pk === 'showbox') {
+      // Шоу-бокс с вертикальным фигурным задником (как на референсе жвачки 5621.jpg)
+      const W = .19, H = .084, D = .146;
+      const cfg = id === 'gum'
+        ? { c: 0x1e88e5, bg: '#1e88e5', hdr: '#e53935', title: 'ТУРБИНА', sub: 'ЖВАЧКА · БЛОК' }
+        : id === 'choc'
+        ? { c: 0x4e2614, bg: '#4e2614', hdr: '#d4a72c', title: 'МАРСЪ', sub: 'ШОКОЛАД · БОКС' }
+        : id === 'batt'
+        ? { c: 0xe6b828, bg: '#e6b828', hdr: '#1c1c1c', title: 'КВАНТ', sub: 'БАТАРЕЙКИ · БОКС' }
+        : id === 'tape'
+        ? { c: 0x26282e, bg: '#26282e', hdr: '#c8281c', title: 'МК-60', sub: 'КАССЕТЫ · БОКС' }
+        : { c: 0xc83220, bg: '#c83220', hdr: '#ffca28', title: 'ТЕТРИС', sub: 'ИГРУШКИ · БОКС' };
+      const boxTx = regTex(ctex(256, 180, (c, w, h) => {
+        c.fillStyle = cfg.bg; c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#ffffff'; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12);
+        c.fillStyle = cfg.hdr;
+        c.beginPath(); c.arc(w / 2, h * .45, 48, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#ffffff'; c.font = '900 34px Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText(cfg.title, w / 2, h * .42);
+        c.fillStyle = '#fff59d'; c.font = '900 20px Arial, sans-serif';
+        c.fillText(cfg.sub, w / 2, h * .80);
+      }));
+      const sideM = std({ map: boxTx, roughness: .48 });
+      const plainM = lbl(cfg.c);
+      const inM = std({ color: 0xe8e4dc, roughness: .85 });
+      if (!opened) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [plainM, plainM, sideM, plainM, sideM, sideM]);
+        m.position.y = H / 2; m.castShadow = true; g.add(m);
+      } else {
+        const t = .005;
+        box(W, t, D, inM, 0, t / 2, 0, g);
+        box(W, H * .68, t, sideM, 0, H * .34, D / 2 - t / 2, g);
+        box(W, H, t, sideM, 0, H / 2, -D / 2 + t / 2, g);
+        box(t, H * .84, D - t * 2, plainM, -W / 2 + t / 2, H * .42, 0, g);
+        box(t, H * .84, D - t * 2, plainM, W / 2 - t / 2, H * .42, 0, g);
+        const backCard = new THREE.Mesh(new THREE.BoxGeometry(W, H * 1.02, .005), [plainM, plainM, plainM, plainM, sideM, plainM]);
+        backCard.position.set(0, H + H * .48, -D / 2 + .003);
+        backCard.castShadow = true; g.add(backCard);
+        for (let k = 0; k < cnt; k++) {
+          const im = getItemMesh(id);
+          if (id === 'choc' || id === 'tape' || id === 'gum') {
+            // Длинной стороной вдоль Z (вглубь коробки), узкой вдоль X — 5 штук в аккуратный ряд строго внутри стенок
+            im.rotation.set(0, Math.PI / 2, 0);
+            im.scale.setScalar(id === 'choc' ? .64 : id === 'tape' ? .68 : .68);
+            im.position.set(-.064 + k * .032, .007, 0);
+          } else {
+            // Высокие блистеры (batt, toy) лежат с наклоном назад вдоль Z внутри лотка
+            im.rotation.set(-.92, 0, 0);
+            im.scale.setScalar(id === 'toy' ? .52 : .58);
+            im.position.set(-.060 + k * .030, .012, .026);
+          }
+          g.add(im);
+        }
+      }
+      return g;
+    }
+
+    // Картонный лоток-поддон с бутылками / банками / хлебом внутри (как на референсе пива 5620.jpg)
+    const W = .26, H = .072, D = .18, t = .006;
+    const trayTx = regTex(ctex(512, 140, (c, w, h) => {
+      c.fillStyle = '#c8aa78'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = '#6e522c'; c.lineWidth = 5; c.strokeRect(4, 4, w - 8, h - 8);
+      c.fillStyle = '#1b1815'; c.font = '900 40px Arial, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+      c.fillText(goodShortOf(id).toUpperCase(), 22, h * .46);
+      c.font = '800 22px Arial, sans-serif'; c.fillStyle = '#3a2c1a';
+      c.textAlign = 'right';
+      c.fillText(`${maxCount || 5} ШТ. · УПАКОВКА`, w - 22, h * .68);
+    }));
+    const wallM = std({ map: trayTx, roughness: .85 });
+    const kraftM = std({ color: 0xb89866, roughness: .88 });
+    box(W, t, D, kraftM, 0, t / 2, 0, g);
+    box(W, H, t, wallM, 0, H / 2, D / 2 - t / 2, g);
+    box(W, H, t, wallM, 0, H / 2, -D / 2 + t / 2, g);
+    box(t, H, D - t * 2, kraftM, -W / 2 + t / 2, H / 2, 0, g);
+    box(t, H, D - t * 2, kraftM, W / 2 - t / 2, H / 2, 0, g);
+
+    let maxItemH = .082;
+    if (id === 'bread') {
+      // 5 батонов хлеба развёрнуты поперёк лотка (длинной осью вдоль Z) и уложены в ряд без вылезания за стенки!
+      maxItemH = .074;
+      for (let k = 0; k < cnt; k++) {
+        const im = getItemMesh(id);
+        im.rotation.y = Math.PI / 2;
+        im.scale.set(.74, .74, .46);
+        im.position.set(-.088 + k * .044, t, 0);
+        g.add(im);
+      }
+    } else {
+      const positions = [
+        [-.070, -.034], [0, -.034], [.070, -.034],
+        [-.036,  .034], [.036,  .034]
+      ];
+      if (['vodka', 'beer', 'samogon', 'soda'].includes(id)) maxItemH = .224;
+      else if (id === 'tushonka') maxItemH = .084;
+      else if (id === 'kilka') maxItemH = .068;
+      for (let k = 0; k < Math.min(cnt, positions.length); k++) {
+        const im = getItemMesh(id);
+        const [px, pz] = positions[k];
+        im.position.set(px, t, pz);
+        im.scale.setScalar(.76);
+        g.add(im);
+      }
+    }
+    if (!opened) {
+      // Полиэтиленовая термоусадочная плёнка и упаковочная лента поверх нераспакованного лотка (строго в габаритах W × D)
+      const wrapM = new THREE.MeshStandardMaterial({ color: 0xe6eff2, roughness: .16, metalness: .05, transparent: true, opacity: .34, depthWrite: false });
+      const wrap = new THREE.Mesh(new THREE.BoxGeometry(W - .002, maxItemH, D - .002), wrapM);
+      wrap.position.y = maxItemH / 2 + .004;
+      g.add(wrap);
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(W, .014, .036), wallM);
+      strap.position.y = maxItemH + .004;
+      g.add(strap);
+    }
+    return g;
+  }
+
+  const SHELF_ROWS = [
+    { y: SH_BACK[0], x0: -1.12, x1: .22,  z: -KD + .17, axis: 'x' },
+    { y: SH_BACK[1], x0: -1.12, x1: .22,  z: -KD + .17, axis: 'x' },
+    { y: SH_BACK[2], x0: -1.12, x1: .22,  z: -KD + .17, axis: 'x' },
+    { y: SH_BACK[3], x0: -1.12, x1: .22,  z: -KD + .17, axis: 'x' },
+    { y: SH_SIDE[0], z0: -.76,  z1: .35,  x: -KW + .17, axis: 'z' },
+    { y: SH_SIDE[1], z0: -.40,  z1: .35,  x: -KW + .17, axis: 'z' },
+    { y: SH_SIDE[2], z0: -.76,  z1: .35,  x: -KW + .17, axis: 'z' },
+  ];
+
+  // Невидимые зоны полок (задних SH_BACK и боковых SH_SIDE справа от окна ларька) для установки предмета в любую точку полки
+  // Важно: keep = true и dyn = true, чтобы batchStatic(scene) не удалял и не сливал хитбоксы полок!
+  const shelfHitTargets = [];
+  {
+    const invisM = new THREE.MeshBasicMaterial({ visible: false });
+    SHELF_ROWS.forEach((r, idx) => {
+      const m = r.axis === 'x'
+        ? new THREE.Mesh(new THREE.BoxGeometry(1.52, .38, .34), invisM)
+        : new THREE.Mesh(new THREE.BoxGeometry(.34, .38, 1.22), invisM);
+      if (r.axis === 'x') m.position.set(-.45, r.y + .16, r.z);
+      else m.position.set(r.x, r.y + .16, -.2);
+      m.userData.isStorageShelf = true;
+      m.userData.shelfRowIdx = idx;
+      m.userData.keep = true;
+      m.userData.dyn = true;
+      K.add(m); shelfHitTargets.push(m);
+    });
+  }
+
+  const SHELF_SPECS = {
+    paper:    { w: .22,  d: .16,  h: .018, stackable: true,  maxStack: 8, autoStack: true },
+    mag:      { w: .15,  d: .19,  h: .014, stackable: true,  maxStack: 8, autoStack: true },
+    mag2:     { w: .15,  d: .19,  h: .014, stackable: true,  maxStack: 8, autoStack: true },
+    cig:      { w: .066, d: .030, h: .088, stackable: true,  maxStack: 3, autoStack: false },
+    kontra:   { w: .120, d: .050, h: .086, stackable: true,  maxStack: 3, autoStack: false },
+    gum:      { w: .088, d: .032, h: .052, stackable: true,  maxStack: 4, autoStack: false },
+    choc:     { w: .132, d: .032, h: .038, stackable: true,  maxStack: 5, autoStack: false },
+    bread:    { w: .206, d: .108, h: .088, stackable: true,  maxStack: 3, autoStack: false },
+    tushonka: { w: .100, d: .100, h: .094, stackable: true,  maxStack: 3, autoStack: false },
+    kilka:    { w: .106, d: .106, h: .034, stackable: true,  maxStack: 5, autoStack: true },
+    batt:     { w: .088, d: .030, h: .104, stackable: true,  maxStack: 3, autoStack: false },
+    tape:     { w: .108, d: .022, h: .066, stackable: true,  maxStack: 4, autoStack: false },
+    toy:      { w: .084, d: .028, h: .136, stackable: true,  maxStack: 2, autoStack: false },
+    vodka:    { w: .084, d: .084, h: .280, stackable: false, maxStack: 1, autoStack: false },
+    beer:     { w: .080, d: .080, h: .240, stackable: false, maxStack: 1, autoStack: false },
+    samogon:  { w: .086, d: .086, h: .260, stackable: false, maxStack: 1, autoStack: false },
+    soda:     { w: .076, d: .076, h: .230, stackable: false, maxStack: 1, autoStack: false },
+  };
+  const shelfSpecOf = id => SHELF_SPECS[id] || { w: .095, d: .08, h: .08, stackable: true, maxStack: 3, autoStack: false };
+  const shelfItemW = id => shelfSpecOf(id).w;
+
+  function getShelfRowObstacles(placements, r, baseY) {
+    const out = [];
+    for (const p of placements) {
+      const sameWall = r.axis === 'x' ? Math.abs(p.z - r.z) < .11 : Math.abs(p.x - r.x) < .11;
+      if (sameWall && p.y >= baseY - .02 && p.y < baseY + .35) {
+        const sp = shelfSpecOf(p.id);
+        out.push({ isShelfPlacement: true, id: p.id, x: p.x, y: p.y, z: p.z, ry: p.ry, w: sp.w, h: sp.h, stackable: sp.stackable });
+      }
+    }
+    if (typeof life !== 'undefined' && life && Array.isArray(life.items)) {
+      for (const it of life.items) {
+        if (it.state !== 'rest' || it.inBoxId || it === life.held) continue;
+        const pos = it.obj.position;
+        const sameWall = r.axis === 'x' ? Math.abs(pos.z - r.z) < .14 : Math.abs(pos.x - r.x) < .14;
+        if (sameWall && pos.y >= baseY - .02 && pos.y < baseY + .35) {
+          const c = Math.abs(Math.cos(it.obj.rotation.y || 0)), s = Math.abs(Math.sin(it.obj.rotation.y || 0));
+          const hx = ((it.half && it.half.x) || .06) * c + ((it.half && it.half.z) || .06) * s;
+          const hz = ((it.half && it.half.x) || .06) * s + ((it.half && it.half.z) || .06) * c;
+          const spanAlong = r.axis === 'x' ? hx * 2 : hz * 2;
+          const h = ((it.half && it.half.y) || .04) * 2;
+          out.push({ isShelfPlacement: false, id: it.kind, x: pos.x, y: pos.y, z: pos.z, ry: it.obj.rotation.y, w: spanAlong, h, stackable: false });
+        }
+      }
+    }
+    return out;
+  }
+
+  function findFreeShelfSpot(placements, id, preferPos = null, preferRowIdx = null) {
+    const spec = shelfSpecOf(id);
+    const w = spec.w;
+    if (preferPos) {
+      let bestR = (preferRowIdx != null && SHELF_ROWS[preferRowIdx]) ? SHELF_ROWS[preferRowIdx] : null;
+      if (!bestR) {
+        let bestD = 999;
+        for (const r of SHELF_ROWS) {
+          const cx = r.axis === 'x' ? clamp(preferPos.x, r.x0 + w / 2, r.x1 - w / 2) : r.x;
+          const cz = r.axis === 'x' ? r.z : clamp(preferPos.z, r.z0 + w / 2, r.z1 - w / 2);
+          const cy = r.y + .013;
+          const d = Math.hypot(preferPos.x - cx, (preferPos.y - cy) * 1.35, preferPos.z - cz);
+          if (d < bestD) { bestD = d; bestR = r; }
+        }
+      }
+      const baseY = bestR.y + .013;
+      const ry = bestR.axis === 'x' ? 0 : Math.PI / 2;
+      const minC = (bestR.axis === 'x' ? bestR.x0 : bestR.z0) + w / 2;
+      const maxC = (bestR.axis === 'x' ? bestR.x1 : bestR.z1) - w / 2;
+      const rawC = clamp(bestR.axis === 'x' ? preferPos.x : preferPos.z, minC, maxC);
+
+      // Находим ВСЕ препятствия на этой полке (и товары S.shelfPlacements, и физические упаковки/бутылки life.items!)
+      const rowItems = getShelfRowObstacles(placements, bestR, baseY);
+
+      const overlapping = rowItems.filter(p => {
+        const pC = bestR.axis === 'x' ? p.x : p.z;
+        const minDist = (w + p.w) * .50 + .008;
+        return Math.abs(pC - rawC) < minDist;
+      });
+
+      if (overlapping.length > 0) {
+        overlapping.sort((a, b) => (b.y + b.h) - (a.y + a.h));
+        const topP = overlapping[0];
+        const stackCount = overlapping.filter(p => Math.hypot(p.x - topP.x, p.z - topP.z) < .04).length;
+        const nextY = topP.y + topP.h;
+        // Складывать стопкой вверх по одной на полке можно одинаковые штучные товары (или совместимые плоские товары)
+        if (spec.stackable && topP.stackable && topP.id === id && stackCount < (spec.maxStack || 4) && (nextY + spec.h <= baseY + .35)) {
+          return { x: +topP.x.toFixed(3), y: +nextY.toFixed(3), z: +topP.z.toFixed(3), ry: +(topP.ry ?? ry).toFixed(3) };
+        }
+        // Иначе ищем ближайшее свободное место вдоль этой же полки без наложения моделек
+        for (let step = .02; step <= 1.65; step += .02) {
+          for (const dir of [1, -1]) {
+            const candC = rawC + dir * step;
+            if (candC < minC || candC > maxC) continue;
+            const hit = rowItems.some(p => {
+              const pC = bestR.axis === 'x' ? p.x : p.z;
+              return Math.abs(pC - candC) < (w + p.w) * .50 + .008;
+            });
+            if (!hit) {
+              const x = bestR.axis === 'x' ? candC : bestR.x;
+              const z = bestR.axis === 'x' ? bestR.z : candC;
+              return { x: +x.toFixed(3), y: +baseY.toFixed(3), z: +z.toFixed(3), ry: +ry.toFixed(3) };
+            }
+          }
+        }
+      } else {
+        const x = bestR.axis === 'x' ? rawC : bestR.x;
+        const z = bestR.axis === 'x' ? bestR.z : rawC;
+        return { x: +x.toFixed(3), y: +baseY.toFixed(3), z: +z.toFixed(3), ry: +ry.toFixed(3) };
+      }
+    }
+
+    // Автоматическая раскладка (при старте игры): газеты, журналы и килька складываются аккуратной стопкой вверх по одной!
+    if (spec.autoStack) {
+      const existingSame = placements.filter(p => p.id === id);
+      if (existingSame.length > 0) {
+        for (const baseP of existingSame) {
+          const col = existingSame.filter(p => Math.hypot(p.x - baseP.x, p.z - baseP.z) < .03);
+          if (col.length < (spec.maxStack || 6)) {
+            const topY = Math.max(...col.map(p => p.y)) + spec.h;
+            return { x: +baseP.x.toFixed(3), y: +topY.toFixed(3), z: +baseP.z.toFixed(3), ry: +(baseP.ry || 0).toFixed(3) };
+          }
+        }
+      }
+    }
+
+    for (const r of SHELF_ROWS) {
+      const start = r.axis === 'x' ? r.x0 + w / 2 : r.z0 + w / 2;
+      const end = r.axis === 'x' ? r.x1 - w / 2 : r.z1 - w / 2;
+      const baseY = r.y + .013;
+      const rowObs = getShelfRowObstacles(placements, r, baseY);
+      for (let c = start; c <= end; c += .025) {
+        const x = r.axis === 'x' ? c : r.x;
+        const z = r.axis === 'x' ? r.z : c;
+        const busy = rowObs.some(p => {
+          const pC = r.axis === 'x' ? p.x : p.z;
+          return Math.abs(pC - c) < (w + p.w) * .50 + .008;
+        });
+        if (!busy) {
+          const ry = r.axis === 'x' ? 0 : Math.PI / 2;
+          return { x: +x.toFixed(3), y: +baseY.toFixed(3), z: +z.toFixed(3), ry: +ry.toFixed(3) };
+        }
+      }
+    }
+    const r0 = SHELF_ROWS[0];
+    return { x: +(r0.x0 + .15).toFixed(3), y: +(r0.y + .013).toFixed(3), z: +r0.z.toFixed(3), ry: 0 };
+  }
+
+  function sanitizeShelfPlacements(placements) {
+    if (!placements || !placements.length) return;
+    const clean = [];
+    const worldObs = [];
+    if (typeof life !== 'undefined' && life && Array.isArray(life.items)) {
+      for (const it of life.items) {
+        if (it.state !== 'rest' || it.inBoxId || it === life.held) continue;
+        const pos = it.obj.position;
+        const c = Math.abs(Math.cos(it.obj.rotation.y || 0)), s = Math.abs(Math.sin(it.obj.rotation.y || 0));
+        const hx = ((it.half && it.half.x) || .06) * c + ((it.half && it.half.z) || .06) * s;
+        const hz = ((it.half && it.half.x) || .06) * s + ((it.half && it.half.z) || .06) * c;
+        const h = ((it.half && it.half.y) || .04) * 2;
+        worldObs.push({ x: pos.x, y: pos.y, z: pos.z, w: Math.max(hx, hz) * 2, h });
+      }
+    }
+    for (const p of placements) {
+      const sp = shelfSpecOf(p.id);
+      const inCorner = (p.z < -KD + .34 && p.x < -1.14);
+      const conflictClean = clean.find(q => {
+        const sq = shelfSpecOf(q.id);
+        const horizOverlap = Math.hypot(p.x - q.x, p.z - q.z) < (sp.w + sq.w) * .48;
+        const vertOverlap = (p.y < q.y + sq.h - .004) && (p.y + sp.h > q.y + .004);
+        return horizOverlap && vertOverlap;
+      });
+      const conflictWorld = worldObs.find(w => {
+        const horizOverlap = Math.hypot(p.x - w.x, p.z - w.z) < (sp.w + w.w) * .48;
+        const vertOverlap = (p.y < w.y + w.h - .004) && (p.y + sp.h > w.y + .004);
+        return horizOverlap && vertOverlap;
+      });
+      if (!inCorner && !conflictClean && !conflictWorld) {
+        clean.push(p);
+      } else {
+        const fixed = findFreeShelfSpot(clean, p.id, { x: p.x, y: p.y, z: p.z });
+        p.x = fixed.x; p.y = fixed.y; p.z = fixed.z; p.ry = fixed.ry;
+        clean.push(p);
+      }
+    }
+  }
+
+  function syncShelfPlacements(S) {
+    if (!S || !ctx.GOODS) return;
+    S.shelfPlacements = S.shelfPlacements || [];
+    S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
+    for (let i = 0; i < S.slots.length; i++) {
+      if (!S.slots[i]) S.slotCounts[i] = 0;
+      else if (!S.slotCounts[i] || S.slotCounts[i] < 0) S.slotCounts[i] = 1;
+    }
+    const allIds = [...Object.keys(ctx.GOODS), 'samogon', 'kontra'];
+    for (const id of allIds) {
+      const totalQ = (id === 'samogon' || id === 'kontra') ? ((S.hidden && S.hidden[id]) || 0) : (ctx.qOf(id) || 0);
+      let onVit = 0;
+      for (let i = 0; i < S.slots.length; i++) {
+        if (S.slots[i] === id) {
+          if (S.slotCounts[i] > totalQ - onVit) S.slotCounts[i] = Math.max(0, totalQ - onVit);
+          if (S.slotCounts[i] <= 0) S.slots[i] = null;
+          onVit += S.slotCounts[i];
+        }
+      }
+      const targetOnShelf = Math.max(0, totalQ - onVit);
+      const curList = S.shelfPlacements.filter(p => p.id === id);
+      if (curList.length > targetOnShelf) {
+        let toRemove = curList.length - targetOnShelf;
+        // Снимаем в первую очередь верхние предметы из стопок
+        curList.sort((a, b) => b.y - a.y);
+        for (let k = 0; k < curList.length && toRemove > 0; k++) {
+          const idx = S.shelfPlacements.indexOf(curList[k]);
+          if (idx >= 0) {
+            S.shelfPlacements.splice(idx, 1);
+            toRemove--;
+          }
+        }
+      } else if (curList.length < targetOnShelf) {
+        let toAdd = targetOnShelf - curList.length;
+        while (toAdd > 0) {
+          const sp = findFreeShelfSpot(S.shelfPlacements, id, null);
+          S.shelfPlacements.push({
+            uid: 'sh_' + Math.random().toString(36).slice(2, 9),
+            id, x: sp.x, y: sp.y, z: sp.z, ry: sp.ry
+          });
+          toAdd--;
+        }
+      }
+    }
+    sanitizeShelfPlacements(S.shelfPlacements);
+  }
+
+  const invisHitMat = new THREE.MeshBasicMaterial({ visible: false });
+  function buildFood() {
+    foodGroup.children.slice().forEach(c => foodGroup.remove(c));
+    const S = ctx.getS(); if (!S || !ctx.GOODS) return;
+    syncShelfPlacements(S);
+    // Каждая единица товара на полках рисуется строго на своём индивидуальном месте (включая вертикальные стопки)
+    for (const entry of S.shelfPlacements) {
+      const id = entry.id;
+      const spec = shelfSpecOf(id);
+      const m = itemMesh(id);
+      m.position.set(entry.x, entry.y, entry.z);
+      m.rotation.y = entry.ry || 0;
+      const w = Math.max(.07, spec.w);
+      const h = Math.max(.035, spec.h);
+      const d = Math.max(.07, spec.d);
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), invisHitMat);
+      hit.position.set(0, h / 2, 0);
+      m.add(hit);
+      m.userData.shelfGoodId = id;
+      m.userData.shelfUid = entry.uid;
+      m.traverse(o => {
+        if (o.isMesh) {
+          o.userData.shelfGoodId = id;
+          o.userData.shelfUid = entry.uid;
+          o.userData.shelfRoot = m;
+        }
+      });
+      foodGroup.add(m);
+    }
+  }
+  function priceTag(id, price, q) {
+    const t = ctex(160, 80, (g, w, h) => { g.fillStyle = '#f3efe2'; g.fillRect(0, 0, w, h); g.strokeStyle = '#b03a2e'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); g.fillStyle = '#1a1a1a'; g.font = '700 22px Arial'; g.textAlign = 'center'; g.fillText(goodShortOf(id), w / 2, 28); g.fillStyle = '#b03a2e'; g.font = '900 30px Arial'; g.fillText(ctx.fmt(price) + ' р', w / 2, 62); if (!q) { g.fillStyle = '#0009'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = '900 26px Arial'; g.fillText('НЕТ', w / 2, 50); } });
+    const paperBack = std({ color: 0xebe4d2, roughness: .92 });
+    const frontMat = std({ map: t, roughness: .9 });
+    return new THREE.Mesh(new THREE.BoxGeometry(.13, .065, .003), [paperBack, paperBack, paperBack, paperBack, frontMat, paperBack]);
+  }
+  const emptySlotMat = new THREE.MeshStandardMaterial({ color: 0xd8efe6, roughness: .25, metalness: .1, transparent: true, opacity: .28, depthWrite: false });
+  const slotHitMat = new THREE.MeshBasicMaterial({ visible: false });
   let shelfSig = '';
   function updateShelves() {
     const S = ctx.getS(); if (!S) return;
-    const sig = S.slots.join(',') + '|' + S.slots.map(id => id ? Math.min(3, Math.ceil(ctx.qOf(id) / 5)) + ':' + ctx.sellPrice(id) : '').join(',') + '|' + Math.ceil(ctx.stockTotal() / 6) + '|' + S.day;
+    syncShelfPlacements(S);
+    const maxSlots = ctx.slotCount ? ctx.slotCount() : 6;
+    const stockKey = Object.keys(ctx.GOODS || {}).map(k => k + ':' + ctx.qOf(k)).join(',') + '|h:' + ((S.hidden && S.hidden.samogon) || 0) + ',' + ((S.hidden && S.hidden.kontra) || 0);
+    const plcKey = (S.shelfPlacements || []).map(p => p.uid).join(',');
+    const scKey = (S.slotCounts || []).slice(0, maxSlots).join(',');
+    const sig = S.slots.slice(0, maxSlots).join(',') + '|' + scKey + '|' + S.slots.slice(0, maxSlots).map(id => id ? ctx.qOf(id) + ':' + ctx.sellPrice(id) : '').join(',') + '|' + stockKey + '|' + plcKey + '|' + S.day + '|' + maxSlots;
     if (sig === shelfSig) return; shelfSig = sig;
-    shelfGroup.children.slice().forEach(c => { shelfGroup.remove(c); c.traverse(o => { if (o.material && o.material.map) o.material.map.dispose(); if (o.geometry) o.geometry.dispose(); }); });
-    S.slots.forEach((id, i) => {
-      if (!id || i >= SLOT_POS.length) return;
-      const [x, y] = SLOT_POS[i], q = ctx.qOf(id), n = q ? Math.min(3, Math.ceil(q / 5)) : 0;
-      for (let k = 0; k < n; k++) { const m = itemMesh(id); m.position.set(x + (k - (n - 1) / 2) * .11, y + .01, KD - .12 + (k % 2) * .05); m.rotation.y = R(-.2, .2); shelfGroup.add(m); }
-      const tag = priceTag(id, ctx.sellPrice(id), q); tag.position.set(x, y - .035, KD - .275); tag.rotation.y = Math.PI; tag.rotation.x = -.15; shelfGroup.add(tag);
-    });
+    shelfGroup.children.slice().forEach(c => { shelfGroup.remove(c); if (c.userData.isTag) { if (Array.isArray(c.material)) c.material.forEach(m => m.map && m.map.dispose()); else if (c.material && c.material.map) c.material.map.dispose(); if (c.geometry) c.geometry.dispose(); } });
+    for (let i = 0; i < Math.min(maxSlots, SLOT_POS.length); i++) {
+      const [x, y] = SLOT_POS[i];
+      const id = S.slots[i];
+      // Объём слота стеклянной витрины
+      const hitBox = new THREE.Mesh(new THREE.BoxGeometry(.34, .22, .22), slotHitMat);
+      hitBox.position.set(x, y + .11, KD - .14);
+      hitBox.userData.showcaseSlot = i;
+      shelfGroup.add(hitBox);
+      if (!id) {
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(.22, .005, .14), emptySlotMat);
+        pad.position.set(x, y + .006, KD - .14);
+        pad.userData.showcaseSlot = i;
+        shelfGroup.add(pad);
+        continue;
+      }
+      // На витрине рисуется ровно столько штук (n), сколько игрок сам туда поставил рукой:
+      // плоские/широкие предметы (газеты, шоколад, жвачка, килька, хлеб, кассеты) складываются стопкой вверх по одной без наложения!
+      const n = Math.min(5, Math.max(1, (S.slotCounts && S.slotCounts[i]) || 1));
+      const q = ctx.qOf(id);
+      const spec = shelfSpecOf(id);
+      const stackOnVit = ['paper', 'choc', 'gum', 'kilka', 'tape', 'bread', 'kontra'].includes(id);
+      for (let k = 0; k < n; k++) {
+        const m = itemMesh(id);
+        if (stackOnVit) {
+          m.position.set(x + (k % 2 ? .003 : -.003), y + .01 + k * spec.h, KD - .14);
+          m.rotation.y = Math.PI + (k % 2 ? .04 : -.04);
+        } else {
+          const stepX = Math.min(.075, .26 / Math.max(1, n - 1));
+          m.position.set(x + (k - (n - 1) / 2) * stepX, y + .01, KD - .14 + (k % 2 ? .022 : -.018));
+          m.rotation.y = Math.PI + (k % 2 ? .06 : -.06);
+        }
+        m.traverse(o => { if (o.isMesh) { o.userData.showcaseSlot = i; o.userData.showcaseGoodId = id; } });
+        shelfGroup.add(m);
+      }
+      // Ценники развёрнуты лицевой стороной наружу (+Z, к окну витрины и покупателям на улице)
+      const tag = priceTag(id, ctx.sellPrice(id), q); tag.userData.isTag = true;
+      const tagY = y < 1.1 ? (y + .038) : (y - .028);
+      tag.position.set(x, tagY, KD - .052);
+      tag.rotation.set(-.12, 0, 0);
+      tag.userData.showcaseSlot = i;
+      tag.userData.showcaseGoodId = id;
+      shelfGroup.add(tag);
+    }
+    buildFood();
     drawCalendar(); drawRateBoard();
   }
+  let lastCalDay = -1;
+  function calInfoOf(S) {
+    const d0 = S ? S.day : 0;
+    const mIdx = ctx.monthOf(d0), yr = ctx.yearOf(d0);
+    const mName = ctx.MONTHS[mIdx].toUpperCase();
+    const GEN = ['ЯНВАРЯ','ФЕВРАЛЯ','МАРТА','АПРЕЛЯ','МАЯ','ИЮНЯ','ИЮЛЯ','АВГУСТА','СЕНТЯБРЯ','ОКТЯБРЯ','НОЯБРЯ','ДЕКАБРЯ'];
+    // Каждый игровой день отчётливо продвигает дату на календаре (начиная со 2-го числа месяца, 15 дней = 1 месяц)
+    const dayInMonth = d0 % 15;
+    const curDate = Math.min(30, 2 + dayInMonth * 2);
+    const gameDayNum = d0 + 1;
+    return { d0, mIdx, yr, mName, mGen: GEN[mIdx] || mName, curDate, gameDayNum };
+  }
   function drawCalendar() {
-    const S = ctx.getS(), g = calTex.userData.canvas.getContext('2d');
-    g.fillStyle = '#efe8d6'; g.fillRect(0, 0, 256, 320);
-    const gr = g.createLinearGradient(0, 0, 0, 150); gr.addColorStop(0, '#6c8fb0'); gr.addColorStop(1, '#d8b080'); g.fillStyle = gr; g.fillRect(10, 10, 236, 140);
-    g.fillStyle = '#2c3e50'; g.beginPath(); g.moveTo(10, 150); g.lineTo(80, 90); g.lineTo(140, 130); g.lineTo(200, 70); g.lineTo(246, 150); g.fill();
-    g.fillStyle = '#b03a2e'; g.font = '900 34px Arial'; g.textAlign = 'center'; g.fillText(ctx.MONTHS[ctx.monthOf(S.day)].toUpperCase(), 128, 190);
-    g.fillStyle = '#333'; g.font = '700 26px Arial'; g.fillText(String(ctx.yearOf(S.day)), 128, 222);
-    g.font = '14px Arial'; for (let r = 0; r < 4; r++) for (let k = 0; k < 7; k++) g.fillText(String(r * 7 + k + 1), 30 + k * 33, 250 + r * 18);
+    const S = ctx.getS(), c = calTex.userData.canvas, g = c.getContext('2d'), w = c.width, h = c.height;
+    const info = calInfoOf(S);
+    g.fillStyle = '#f3ecda'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#8b7e66'; g.lineWidth = 6; g.strokeRect(8, 8, w - 16, h - 16);
+    // Верхняя иллюстрация с зимними горами и крупным отрывным блоком текущего дня
+    const gr = g.createLinearGradient(0, 18, 0, 165); gr.addColorStop(0, '#547899'); gr.addColorStop(1, '#d9b382');
+    g.fillStyle = gr; g.fillRect(20, 20, w - 40, 145);
+    g.fillStyle = '#283848'; g.beginPath(); g.moveTo(20, 165); g.lineTo(145, 78); g.lineTo(255, 132); g.lineTo(375, 62); g.lineTo(w - 20, 165); g.fill();
+    // Плашка текущего игрового дня и точной даты
+    g.fillStyle = 'rgba(245, 238, 222, 0.94)'; g.fillRect(34, 30, w - 68, 76);
+    g.strokeStyle = '#b02a1e'; g.lineWidth = 4; g.strokeRect(34, 30, w - 68, 76);
+    g.fillStyle = '#b02a1e'; g.font = '900 34px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(`${info.curDate} ${info.mGen} ${info.yr}`, w / 2, 54);
+    g.fillStyle = '#1e1c18'; g.font = '900 24px Arial, sans-serif';
+    g.fillText(`ДЕНЬ ${info.gameDayNum}`, w / 2, 88);
+    // Заголовок месяца и года
+    g.fillStyle = '#b02a1e'; g.font = '900 46px Arial, sans-serif';
+    g.fillText(`${info.mName} ${info.yr}`, w / 2, 205);
+    // Дни недели
+    const DOW = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+    const gx0 = 54, dx = 67, gy0 = 252, dy = 68;
+    g.font = '900 22px Arial, sans-serif';
+    for (let k = 0; k < 7; k++) {
+      g.fillStyle = k >= 5 ? '#b02a1e' : '#4a453d';
+      g.fillText(DOW[k], gx0 + k * dx, gy0);
+    }
+    g.strokeStyle = '#b5a88e'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(24, gy0 + 22); g.lineTo(w - 24, gy0 + 22); g.stroke();
+    // Сетка 30 дней с отчётливо зачёркнутыми прошедшими днями и обведённым сегодняшним числом
+    const startDow = (info.mIdx * 2) % 7;
+    for (let dayNum = 1; dayNum <= 30; dayNum++) {
+      const cell = (dayNum - 1) + startDow;
+      const col = cell % 7, row = Math.floor(cell / 7);
+      const cx = gx0 + col * dx, cy = gy0 + 62 + row * dy;
+      if (dayNum === info.curDate) {
+        g.fillStyle = 'rgba(192, 42, 28, 0.16)';
+        g.beginPath(); g.arc(cx, cy, 29, 0, Math.PI * 2); g.fill();
+      }
+      g.fillStyle = dayNum === info.curDate ? '#b01e14' : (col >= 5 ? '#9c2c20' : '#1c1a17');
+      g.font = dayNum === info.curDate ? '900 34px Arial, sans-serif' : '800 30px Arial, sans-serif';
+      g.fillText(String(dayNum), cx, cy);
+      if (dayNum < info.curDate) {
+        // Прошедший день зачёркнут красным крестом фломастером
+        g.strokeStyle = 'rgba(188, 28, 20, 0.88)';
+        g.lineWidth = 5;
+        g.beginPath();
+        g.moveTo(cx - 20, cy - 18); g.lineTo(cx + 20, cy + 18);
+        g.moveTo(cx + 20, cy - 18); g.lineTo(cx - 20, cy + 18);
+        g.stroke();
+      } else if (dayNum === info.curDate) {
+        // Текущий день жирно обведён красным кружком
+        g.strokeStyle = '#c41e14';
+        g.lineWidth = 5.5;
+        g.beginPath(); g.arc(cx, cy, 29, 0, Math.PI * 2); g.stroke();
+      }
+    }
     calTex.needsUpdate = true;
   }
 
-  // ---------- обменник ----------
-  const BOOTH = { x: 12, z: -1.5 };
-  const booth = new THREE.Group(); booth.position.set(BOOTH.x, 0, BOOTH.z); scene.add(booth);
-  occ(box(2, 2.4, 2, std({ color: 0xd9d6cc, roughness: .6 }), 0, 1.2, 0, booth));
-  box(2.2, .1, 2.2, MAT.roofTin, 0, 2.45, 0, booth); box(2.2, .06, 2.2, MAT.snow, 0, 2.52, 0, booth, false).userData.winter = true;
-  box(1.2, .6, .05, std({ color: 0x223, roughness: .1, metalness: .3 }), 0, 1.45, 1.01, booth);
-  const exSign = textTex(512, 96, 'ОБМЕН ВАЛЮТ', '#1f3a68', '#f2e6c9', '900 56px Arial');
-  const exS = new THREE.Mesh(new THREE.PlaneGeometry(1.9, .36), std({ map: exSign, emissive: 0xffffff, emissiveMap: exSign, emissiveIntensity: 0 })); exS.position.set(0, 2.1, 1.02); booth.add(exS);
-  const rateTex = regTex(ctex(256, 128, () => {}));
-  const rateBoard = new THREE.Mesh(new THREE.PlaneGeometry(.8, .4), std({ map: rateTex, emissive: 0xffffff, emissiveMap: rateTex, emissiveIntensity: .35 })); rateBoard.position.set(0, .85, 1.02); booth.add(rateBoard);
-  function drawRateBoard() { const S = ctx.getS(), g = rateTex.userData.canvas.getContext('2d'); g.fillStyle = '#111'; g.fillRect(0, 0, 256, 128); g.fillStyle = '#ff4a2a'; g.font = '700 30px "Courier New", monospace'; g.textAlign = 'left'; g.fillText('USD ' + ctx.fmt(S.rate * 1.04), 14, 50); g.fillStyle = '#ffb43a'; g.fillText('    ' + ctx.fmt(S.rate * .96), 14, 100); rateTex.needsUpdate = true; }
-  addCol(BOOTH.x - 1.05, BOOTH.x + 1.05, BOOTH.z - 1.05, BOOTH.z + 1.05);
+  // ---------- здание обмена валют убрано по запросу (обмен доступен в меню) ----------
+  const BOOTH = { x: 9999, z: 9999 };
+  function drawRateBoard() {}
 
   // ---------- детская площадка (на месте бывшего рынка) ----------
   const MARKET = { x: -23, z: -8 }; // точка площадки (имя оставлено для совместимости графа путей)
@@ -687,23 +1714,24 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const TRASH_BIG = [], TRASH_SMALL = [];
   const binOpenGeo = (() => { const g = new THREE.CylinderGeometry(.86, .74, 1.05, 4, 1, true); g.rotateY(Math.PI / 4); g.scale(1, 1, .72); g.translate(0, .62, 0); return g; })();
   const binInMat = std({ color: 0x15140f, roughness: 1, side: THREE.BackSide });
+  const trashHolders = [];
   function binGroup(x, z, n, ry = 0) {
-    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; g.userData.dyn = true; scene.add(g);
     const pad = new THREE.Mesh(new THREE.BoxGeometry(n * 1.45 + .6, .12, 1.7), concreteMat); pad.position.y = .06; pad.receiveShadow = true; g.add(pad);
-    for (let i = 0; i < n; i++) { const bx = (i - (n - 1) / 2) * 1.45;
-      const b = new THREE.Mesh(binOpenGeo, MAT.bin); b.position.set(bx, .12, 0); b.castShadow = b.receiveShadow = true; g.add(b);
-      const bi = new THREE.Mesh(binOpenGeo, binInMat); bi.position.set(bx, .12, 0); bi.scale.set(.97, 1, .97); g.add(bi); // изнанка стенок
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(1.1, .7), binInMat); floor.material = std({ color: 0x15140f, roughness: 1 }); floor.rotation.x = -Math.PI / 2; floor.position.set(bx, .55, 0); g.add(floor);
-      for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.22, 7, 5), bagMat); m.scale.set(1, .7, 1); m.position.set(bx + R(-.35, .35), .7 + R(0, .12), R(-.18, .18)); g.add(m); } // пакеты внутри
-      for (const s_ of [-1, 1]) { const hinge = new THREE.Group(); hinge.position.set(bx + s_ * .31, 1.3, -.46); hinge.rotation.x = -R(1.85, 2.05); g.add(hinge);
-        const l = new THREE.Mesh(lidGeo, MAT.bin); l.position.z = .475; l.castShadow = true; hinge.add(l); } // крышки откинуты назад на петлях
-      for (const s_ of [-1, 1]) { const h = cyl(.02, .02, .5, MAT.steel, bx + s_ * .8, .9, 0, 5, g); h.rotation.x = Math.PI / 2; }
-      g.updateMatrixWorld(true); const wp = g.localToWorld(new THREE.Vector3(bx, 0, 0)); TRASH_BIG.push({ x: wp.x, z: wp.z, y: 1.15 }); }
+    for (let i = 0; i < n; i++) {
+      const bx = (i - (n - 1) / 2) * 1.45;
+      const slot = new THREE.Group(); slot.position.set(bx, .12, 0); slot.userData.dyn = true; g.add(slot);
+      const b = new THREE.Mesh(binOpenGeo, MAT.bin); b.castShadow = b.receiveShadow = true; slot.add(b);
+      const bi = new THREE.Mesh(binOpenGeo, binInMat); bi.scale.set(.97, 1, .97); slot.add(bi);
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(1.1, .7), std({ color: 0x15140f, roughness: 1 })); floor.rotation.x = -Math.PI / 2; floor.position.set(0, .43, 0); slot.add(floor);
+      for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.22, 7, 5), bagMat); m.scale.set(1, .7, 1); m.position.set(R(-.32, .32), .55 + R(0, .12), R(-.16, .16)); slot.add(m); }
+      trashHolders.push(slot);
+      g.updateMatrixWorld(true); const wp = g.localToWorld(new THREE.Vector3(bx, 0, 0)); TRASH_BIG.push({ x: wp.x, z: wp.z, y: 1.15 });
+    }
     g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(pad); addCol(bb.min.x, bb.max.x, bb.min.z, bb.max.z); occ(pad);
   }
-  // бак через дорогу напротив ларька + контейнерные площадки во дворах (часть лишних убрана)
-  binGroup(4.8, 17.55, 1); binGroup(-6.8, -5.2, 2); binGroup(-13.5, -12.8, 2, .1); binGroup(14.5, -12.5, 2, -.15); binGroup(-24, 21.2, 2); binGroup(22, 21.4, 2);
-  // урны: бетонные «вазоны» с металлической вставкой — у ларька, на остановке, у лавок
+  // Оставлена только одна мусорка — бак через дорогу напротив ларька (заменяется на модель trashcan.glb)
+  binGroup(4.8, 17.55, 1, Math.PI);
   // урны: бетонные «вазоны» с полостью — в них выбрасывается мелкий мусор (окурки, бутылки)
   { const prof = [[.2, 0], [.235, .04], [.26, .56], [.275, .6], [.275, .63], [.215, .63], [.2, .58], [.18, .3]].map(([r, y]) => new THREE.Vector2(r, y));
     const urnGeo = new THREE.LatheGeometry(prof, 14), urnMat = concreteMat.clone(); urnMat.side = THREE.DoubleSide; const urnIn = std({ color: 0x1a1814, roughness: 1 });
@@ -748,12 +1776,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const lampHeads = [], poles = [], lampPools = [];
   const poleMat = std({ color: 0x6a6c68, metalness: .4, roughness: .8 }); const lampBody = hdMat('darkmetal', { scale: .3, metal: .5, color: 0x8a8a84 });
   const lampHeadGeo = (() => { const g = new THREE.SphereGeometry(.28, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2); g.scale(1.25, .45, .7); return g; })();
-  for (let x = -66; x <= 74; x += 20) {
-    const p = cyl(.075, .11, 5.4, poleMat, x, 2.7, 5.95, 8); poles.push(new THREE.Vector3(x, 5.15, 5.95)); // опора ниже: ~5,4 м
-    cyl(.14, .16, .5, poleMat, x, .25, 5.95, 8); // бетонное основание/цоколь
+  for (let x = -426; x <= 74; x += 20) {
+    const p = cyl(.075, .11, 5.4, poleMat, x, 2.7, 5.95, 8); poles.push(new THREE.Vector3(x, 5.15, 5.95));
+    cyl(.14, .16, .5, poleMat, x, .25, 5.95, 8);
     const arm = cyl(.03, .03, 1.3, MAT.steel, x, 5.12, 6.5, 6); arm.rotation.x = Math.PI / 2 - .28;
     const head = new THREE.Mesh(lampHeadGeo, lampBody); head.position.set(x, 5.2, 7.2); head.castShadow = true; scene.add(head);
-    const hd = box(.42, .025, .2, MAT.lampHead, x, 5.1, 7.22); lampHeads.push(hd); // рассеиватель снизу
+    const hd = box(.42, .025, .2, MAT.lampHead, x, 5.1, 7.22); lampHeads.push(hd);
     lampPools.push([x, 7.2]);
     addCol(x - .14, x + .14, 5.82, 6.08);
   }
@@ -763,7 +1791,290 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (let k = 0; k <= 12; k++) { const t = k / 12; pts.push(new THREE.Vector3(lerp(a.x, b.x, t), a.y + dy - Math.sin(t * Math.PI) * .9, a.z)); }
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
   }
-  for (const x of [-6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 20, 1.6); pl.position.set(x, 4.9, 7.2); scene.add(pl); streetLights.push(pl); }
+  for (const x of [-332, -6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 20, 1.6); pl.position.set(x, 4.9, 7.2); scene.add(pl); streetLights.push(pl); }
+
+  // ---------- ПРИДОРОЖНЫЕ УКАЗАТЕЛИ И СТЕЛА КРАСНОЗАВОДСКОГО ЗАВОДА ----------
+  const roadSignGroup = new THREE.Group(); roadSignGroup.userData.dyn = true; scene.add(roadSignGroup);
+  const mkKmSign = (kmText, sx) => {
+    const kmTex = textTex(256, 128, kmText, '#1c4474', '#ffffff', '900 24px Arial', (g, w, h) => {
+      g.strokeStyle = '#ffffff'; g.lineWidth = 4; g.strokeRect(4, 4, w - 8, h - 8);
+    });
+    const sg = box(.72, .38, .04, [std({ color: 0x333 }), std({ color: 0x333 }), std({ color: 0x333 }), std({ color: 0x333 }), std({ map: kmTex, roughness: .5 }), std({ map: kmTex, roughness: .5 })], sx, 2.1, 5.85, roadSignGroup);
+    cyl(.04, .04, 2.1, MAT.steel, sx, 1.05, 5.85, 8, roadSignGroup);
+  };
+  mkKmSign('ЗАВОД · 2 КМ', -170);
+  mkKmSign('ЗАВОД · 1 КМ', -270);
+
+  // Большая светящаяся въездная стела завода у поворота (x = -305, z = 4.2)
+  const steleGroup = new THREE.Group(); steleGroup.position.set(-305, 0, 4.2); roadSignGroup.add(steleGroup);
+  box(2.8, .6, 1.2, std({ color: 0x6e706c, roughness: .9 }), 0, .3, 0, steleGroup);
+  box(1.8, 6.2, .45, std({ color: 0x8a241c, roughness: .6 }), 0, 3.4, 0, steleGroup);
+  cyl(.75, .75, .12, std({ color: 0xd4a72c, metalness: .8, roughness: .3 }), 0, 5.8, 0, 16, steleGroup).rotation.x = Math.PI / 2;
+  box(.38, .38, .16, std({ color: 0xb82018, roughness: .3 }), 0, 5.8, 0, steleGroup); // звезда
+  const steleTex = textTex(256, 512, 'КРАСНОЗАВОДСКИЙ ЗАВОД', '#8a241c', '#f5e8c4', '900 20px Arial');
+  const steleFace = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 3.8), std({ map: steleTex, emissive: 0xffeedd, emissiveMap: steleTex, emissiveIntensity: .35, roughness: .5 }));
+  steleFace.position.set(0, 3.2, .24); steleGroup.add(steleFace);
+  addCol(-306.6, -303.4, 3.4, 5.0);
+
+  // ---------- ДЕРЕВЬЯ И СУГРОБЫ ВДОЛЬ ШОССЕ (x = -65 .. -305) ----------
+  const hwySpots = [];
+  for (let hx = -72; hx >= -300; hx -= 14) {
+    hwySpots.push([hx + R(-2, 2), R(-4.5, -9.5), R(.65, .95), R(0, 6.28)]);
+    hwySpots.push([hx + R(-2, 2), R(20.5, 23.5), R(.65, .95), R(0, 6.28)]);
+  }
+
+  // ---------- ЛОКАЦИЯ «КРАСНОЗАВОДСКИЙ ЗАВОД» (x = -305 .. -375, z = -39 .. +1.2) ----------
+  const factoryGroup = new THREE.Group();
+  factoryGroup.userData.dyn = true;
+  scene.add(factoryGroup);
+  const fBox = (w, h, d, m, x, y, z, cast = true) => box(w, h, d, m, x, y, z, factoryGroup, cast);
+  const fCyl = (rt_, rb, h, m, x, y, z, seg = 14) => cyl(rt_, rb, h, m, x, y, z, seg, factoryGroup);
+
+  const fBrickTex = regTex(ctex(256, 256, (g, w, h) => {
+    g.fillStyle = '#6e3428'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 16) {
+      g.fillStyle = '#4a3e38'; g.fillRect(0, y, w, 2);
+      const off = (y / 16) % 2 ? 16 : 0;
+      for (let x = -off; x < w; x += 32) {
+        g.fillStyle = pick(['#78382a', '#642c20', '#824030', '#5c2a20', '#6d3528']);
+        g.fillRect(x + 2, y + 2, 29, 13);
+      }
+    }
+    speckle(g, w, h, 3500, ['#3a2018', '#8e4c3a', '#281812'], 2);
+    stains(g, w, h, 14, 'rgba(20,15,12,');
+  }, [6, 3]));
+  const fBrickMat = std({ map: fBrickTex, roughness: .9 });
+  const fBrickWallMat = std({ map: repTex(fBrickTex, 10, 4), roughness: .9 });
+  const fConcreteMat = std({ color: 0x7e7c76, roughness: .92 });
+  const fDarkSteelMat = std({ color: 0x2d3236, roughness: .55, metalness: .65 });
+  const fGateMat = std({ color: 0x24362c, roughness: .6, metalness: .5 });
+  const fFloorMat = std({ color: 0x766c5a, roughness: .95 });
+  const fWallInMat = std({ color: 0x829486, roughness: .92 }); // советская светлая фисташково-зелёная штукатурка стен проходной
+  const fWinGlowTex = regTex(ctex(256, 128, (g, w, h) => {
+    g.fillStyle = '#1c2428'; g.fillRect(0, 0, w, h);
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 6; c++) {
+      const lit = (r + c) % 2 === 0 || c === 2;
+      g.fillStyle = lit ? '#d89a48' : '#2a363c';
+      g.fillRect(8 + c * 41, 8 + r * 58, 35, 48);
+      g.strokeStyle = '#14181a'; g.lineWidth = 3;
+      g.strokeRect(8 + c * 41, 8 + r * 58, 35, 48);
+    }
+  }));
+  const fWinMat = std({ map: fWinGlowTex, emissive: 0xffa844, emissiveMap: fWinGlowTex, emissiveIntensity: .55, roughness: .35, metalness: .2 });
+  neons.push({ material: fWinMat });
+
+  // 1) Предзаводская площадь и заводской двор (центр x = -334)
+  const fPlaza = new THREE.Mesh(new THREE.PlaneGeometry(48, 8.2), std({ map: repTex(TX.asphalt, 12, 3), color: 0x5c5d5e, roughness: .9 }));
+  fPlaza.rotation.x = -Math.PI / 2; fPlaza.position.set(-334, .009, -2.5); fPlaza.receiveShadow = true; factoryGroup.add(fPlaza);
+  const fYard = new THREE.Mesh(new THREE.PlaneGeometry(74, 34), std({ map: repTex(TX.asphalt, 18, 10), color: 0x525354, roughness: .92 }));
+  fYard.rotation.x = -Math.PI / 2; fYard.position.set(-338, .006, -19.5); fYard.receiveShadow = true; factoryGroup.add(fYard);
+
+  // 2) Заводской железобетонный периметр и въездные ворота со звёздами
+  const buildFenceSeg = (x1, z1, x2, z2) => {
+    const L = Math.hypot(x2 - x1, z2 - z1), ang = -Math.atan2(z2 - z1, x2 - x1);
+    const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(L, 2.5, .24), fConcreteMat);
+    wall.position.set(cx, 1.25, cz); wall.rotation.y = ang; wall.castShadow = wall.receiveShadow = true; factoryGroup.add(wall);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(L + .08, .12, .34), std({ color: 0x62605a, roughness: .9 }));
+    cap.position.set(cx, 2.56, cz); cap.rotation.y = ang; factoryGroup.add(cap);
+    const nPosts = Math.max(2, Math.round(L / 4));
+    for (let i = 0; i <= nPosts; i++) {
+      const t = i / nPosts, px = lerp(x1, x2, t), pz = lerp(z1, z2, t);
+      fBox(.36, 2.75, .36, std({ color: 0x6a6862, roughness: .9 }), px, 1.375, pz);
+    }
+    addCol(Math.min(x1, x2) - .2, Math.max(x1, x2) + .2, Math.min(z1, z2) - .2, Math.max(z1, z2) + .2);
+  };
+  buildFenceSeg(-375, -0.8, -340.2, -0.8);
+  buildFenceSeg(-320.8, -0.8, -305, -0.8);
+  buildFenceSeg(-375, -37.5, -375, -0.8);
+  buildFenceSeg(-305, -37.5, -305, -0.8);
+  buildFenceSeg(-375, -37.5, -305, -37.5);
+
+  // Ворота завода (x = -328.2 и x = -320.8, проезд открыт!)
+  for (const gx of [-328.2, -320.8]) {
+    fBox(.75, 3.4, .75, fBrickMat, gx, 1.7, -0.8);
+    fBox(.88, .16, .88, fConcreteMat, gx, 3.48, -0.8);
+    fBox(.34, .34, .08, std({ color: 0xb82018, emissive: 0x661008, emissiveIntensity: .35, roughness: .4 }), gx, 2.75, -.38);
+    addCol(gx - .42, gx + .42, -1.22, -.38);
+  }
+  for (const [gx, dir, ang] of [[-327.8, 1, .95], [-321.2, -1, -.95]]) {
+    const leaf = new THREE.Group(); leaf.position.set(gx, 0, -0.8); leaf.rotation.y = ang; factoryGroup.add(leaf);
+    box(3.1, 2.6, .08, fGateMat, dir * 1.55, 1.4, 0, leaf);
+    box(2.7, .08, .12, fDarkSteelMat, dir * 1.55, 2.55, 0, leaf);
+    box(2.7, .08, .12, fDarkSteelMat, dir * 1.55, .35, 0, leaf);
+    box(.55, .55, .10, std({ color: 0xb82018, roughness: .45 }), dir * 1.55, 1.65, 0, leaf);
+  }
+
+  // 3) ЗДАНИЕ ПРОХОДНОЙ С ПОЛНЫМ ВХОДОМ ВНУТРЬ И БЮРО ПРОПУСКОВ (x = -334, z = -3.8)
+  // Внутреннее пространство (x = -340 .. -328, z = -6.8 .. -0.8, h = 4.2). Входной проём (x = -335.6 .. -332.4) ПОЛНОСТЬЮ ОТКРЫТ!
+  fBox(12.0, .04, 6.0, fFloorMat, -334, .02, -3.8, false); // пол проходной
+  fBox(12.0, .04, 6.0, fConcreteMat, -334, 4.2, -3.8, false); // потолок
+  fBox(12.4, .24, 6.4, fConcreteMat, -334, 4.34, -3.8); // крыша
+  fBox(12.3, .10, 6.3, MAT.snow, -334, 4.51, -3.8, false).userData.winter = true; // снег на крыше
+
+  // Северная стена со стороны улицы (z = -0.8):
+  // Левое крыло (x = -340 .. -335.6)
+  fBox(4.4, 4.2, .32, fBrickMat, -337.8, 2.1, -0.8); addCol(-340.2, -335.6, -1.0, -0.6);
+  // Правое крыло (x = -332.4 .. -328.0)
+  fBox(4.4, 4.2, .32, fBrickMat, -330.2, 2.1, -0.8); addCol(-332.4, -327.8, -1.0, -0.6);
+  // Перемычка над входным проёмом (y = 2.45 .. 4.2, вход под ней абсолютно свободен!)
+  fBox(3.2, 1.75, .32, fBrickMat, -334.0, 3.325, -0.8);
+  // Окно в правом крыле проходной со стороны улицы
+  fBox(2.2, 1.4, .12, fWinMat, -330.2, 2.0, -.62);
+
+  // Южная стена со стороны двора завода (z = -6.8):
+  fBox(4.4, 4.2, .32, fBrickMat, -337.8, 2.1, -6.8); addCol(-340.2, -335.6, -7.0, -6.6);
+  fBox(4.4, 4.2, .32, fBrickMat, -330.2, 2.1, -6.8); addCol(-332.4, -327.8, -7.0, -6.6);
+  fBox(3.2, 1.75, .32, fBrickMat, -334.0, 3.325, -6.8);
+
+  // Боковые глухие кирпичные стены (западная и восточная)
+  fBox(.32, 4.2, 6.0, fBrickMat, -340.0, 2.1, -3.8); addCol(-340.2, -339.6, -7.0, -0.6);
+  fBox(.32, 4.2, 6.0, fBrickMat, -328.0, 2.1, -3.8); addCol(-328.4, -327.8, -7.0, -0.6);
+
+  // Внутренняя перегородка БЮРО ПРОПУСКОВ (разделяет проходной коридор и кабинет дежурного)
+  fBox(.16, 1.05, 5.2, std({ color: 0x5a4232, roughness: .85 }), -332.2, .525, -3.8); // нижняя панель
+  fBox(.06, 1.25, 5.2, std({ color: 0xa8c4d0, roughness: .1, transparent: true, opacity: .35, depthWrite: false }), -332.2, 1.675, -3.8); // стекло
+  fBox(.16, 1.25, .08, std({ color: 0x3a2c20, roughness: .9 }), -332.2, 1.675, -3.8);
+  fBox(.16, 1.90, 5.2, fWallInMat, -332.2, 3.25, -3.8); // верхняя глухая часть
+  addCol(-332.4, -331.8, -6.4, -1.2);
+  // Прилавок бюро пропусков с окошком выдачи
+  fBox(.48, .06, 2.8, std({ color: 0x6e4a2c, roughness: .75 }), -332.3, 1.05, -3.4);
+  const passWindowSignTex = textTex(256, 64, 'ОКНО ВЫДАЧИ ПРОПУСКОВ', '#1c2834', '#f5ebd0', '900 18px Arial');
+  const passWinSign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, .32), std({ map: passWindowSignTex, roughness: .5 }));
+  passWinSign.position.set(-332.18, 2.35, -3.4); passWinSign.rotation.y = -Math.PI / 2; factoryGroup.add(passWinSign);
+
+  // Турникеты («вертушки» советской проходной) в центральном проходе
+  for (const tz of [-3.0, -4.6]) {
+    fBox(.36, 1.02, .36, std({ color: 0x8a9296, metalness: .85, roughness: .25 }), -335.2, .51, tz);
+    fCyl(.022, .022, .72, fDarkSteelMat, -334.8, .88, tz, 8).rotation.z = Math.PI / 2;
+    fBox(.36, 1.02, .36, std({ color: 0x8a9296, metalness: .85, roughness: .25 }), -332.6, .51, tz);
+  }
+
+  // Внутреннее освещение проходной (тёплый яркий свет лампы)
+  const fLobbyLight = new THREE.PointLight(0xffdfa0, 4.5, 14, 1.6);
+  fLobbyLight.position.set(-334.0, 3.6, -3.8); scene.add(fLobbyLight);
+  fBox(.8, .08, .3, MAT.lampHead, -334.0, 4.15, -3.8, false);
+
+  // Козырёк над главным входом в проходную
+  fBox(5.6, .18, 2.2, fConcreteMat, -334.0, 3.15, .25);
+  fBox(5.6, .08, 2.2, MAT.snow, -334.0, 3.28, .25, false).userData.winter = true;
+  for (const px of [-336.5, -331.5]) fCyl(.10, .10, 3.15, fDarkSteelMat, px, 1.575, 1.15, 10);
+  const passTex = textTex(512, 96, 'ПРОХОДНАЯ · БЮРО ПРОПУСКОВ', '#1e2b38', '#f2e8c8', '900 32px Arial');
+  const passSign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, .64), std({ map: passTex, roughness: .5 }));
+  passSign.position.set(-334.0, 2.95, -.62); factoryGroup.add(passSign);
+
+  // Большая светящаяся вывеска на крыше проходной: «КРАСНОЗАВОДСКИЙ ЗАВОД»
+  const fMainSignTex = textTex(1024, 160, 'КРАСНОЗАВОДСКИЙ ЗАВОД', '#7a1812', '#f7e6b2', '900 64px Arial', (g, w, h) => {
+    g.strokeStyle = '#e8c252'; g.lineWidth = 8; g.strokeRect(8, 8, w - 16, h - 16);
+  });
+  const fMainSignMat = std({ map: fMainSignTex, emissive: 0xffd27a, emissiveMap: fMainSignTex, emissiveIntensity: .65, roughness: .4 });
+  neons.push({ material: fMainSignMat });
+  const fMainSign = new THREE.Mesh(new THREE.BoxGeometry(10.4, 1.35, .18), [fDarkSteelMat, fDarkSteelMat, fDarkSteelMat, fDarkSteelMat, fMainSignMat, fMainSignMat]);
+  fMainSign.position.set(-334.0, 5.25, -.70); factoryGroup.add(fMainSign);
+
+  // Доска почёта слева от проходной
+  const honorTex = regTex(ctex(512, 256, (g, w, h) => {
+    g.fillStyle = '#7e1a14'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#d8b24c'; g.lineWidth = 6; g.strokeRect(6, 6, w - 12, h - 12);
+    g.fillStyle = '#f8e8b0'; g.font = '900 28px Arial'; g.textAlign = 'center';
+    g.fillText('ДОСКА ПОЧЁТА ЗАВОДА', w / 2, 34);
+    for (let i = 0; i < 6; i++) {
+      const px = 32 + i * 76, py = 62;
+      g.fillStyle = '#e8dfc8'; g.fillRect(px, py, 58, 76);
+      g.fillStyle = '#383430'; g.beginPath(); g.arc(px + 29, py + 28, 14, 0, Math.PI * 2); g.fill();
+      g.fillRect(px + 11, py + 44, 36, 26);
+      g.fillStyle = '#f5d878'; g.fillRect(px + 4, py + 84, 50, 10);
+    }
+    g.fillStyle = '#fff0c4'; g.font = '700 18px Arial';
+    g.fillText('ПЯТИЛЕТКУ — ДОСРОЧНО! · 1991–1992', w / 2, 218);
+  }));
+  fBox(3.8, 1.85, .14, [fDarkSteelMat, fDarkSteelMat, fDarkSteelMat, fDarkSteelMat, std({ map: honorTex, roughness: .55 }), fDarkSteelMat], -344.0, 1.65, -.45);
+  for (const hx of [-345.6, -342.4]) fCyl(.05, .05, 1.6, fDarkSteelMat, hx, .8, -.45, 8);
+
+  // 4) Производственный корпус цеха («ЦЕХ № 1 · МЕХАНОСБОРОЧНЫЙ», x = -342, z = -24)
+  occ(fBox(28, 9.6, 14, fBrickWallMat, -342, 4.8, -24));
+  fBox(28.6, .35, 14.6, fConcreteMat, -342, 9.75, -24);
+  fBox(28.4, .12, 14.4, MAT.snow, -342, 9.98, -24, false).userData.winter = true;
+  fBox(22, 2.2, 5.2, fConcreteMat, -342, 10.9, -24);
+  fBox(21.6, 1.4, 5.32, fWinMat, -342, 10.9, -24);
+  fBox(22.4, .12, 5.5, MAT.snow, -342, 12.06, -24, false).userData.winter = true;
+  for (let wx = -352.5; wx <= -331.5; wx += 4.2) {
+    fBox(3.1, 2.2, .12, fWinMat, wx, 6.8, -16.95);
+    if (wx < -340 || wx > -334) fBox(3.1, 2.0, .12, fWinMat, wx, 3.2, -16.95);
+    fBox(.48, 9.6, .36, fConcreteMat, wx - 2.1, 4.8, -16.9);
+  }
+  fBox(4.8, 4.4, .18, fGateMat, -336.5, 2.2, -16.92);
+  const cehTex = textTex(512, 96, 'ЦЕХ № 1 · МЕХАНОСБОРОЧНЫЙ', '#243038', '#f2df9e', '900 32px Arial');
+  const cehSign = new THREE.Mesh(new THREE.PlaneGeometry(6.2, .85), std({ map: cehTex, roughness: .5 }));
+  cehSign.position.set(-336.5, 5.05, -16.88); factoryGroup.add(cehSign);
+  fBox(8.4, .85, 3.2, fConcreteMat, -336.5, .425, -15.3);
+  fBox(8.5, .06, 3.3, fDarkSteelMat, -336.5, .86, -15.3);
+  addCol(-356.2, -327.8, -31.2, -16.8);
+  addCol(-340.8, -332.2, -16.9, -13.6);
+
+  // 5) Котельная и дымовые трубы с густым дымом (x = -361, z = -25)
+  occ(fBox(8.5, 7.2, 10.5, fBrickMat, -361.2, 3.6, -24.5));
+  fBox(8.8, .28, 10.8, fConcreteMat, -361.2, 7.34, -24.5);
+  addCol(-365.6, -356.8, -29.8, -19.2);
+  const chimneyTops = [[-362.8, 28.5, -26.5], [-359.2, 23.5, -27.2]];
+  for (const [cx, chH, cz] of chimneyTops) {
+    fCyl(1.05, 1.65, chH, fBrickMat, cx, chH / 2, cz, 18);
+    for (let ringY = chH - 6.5; ringY < chH - .8; ringY += 2.2) {
+      fCyl(1.12, 1.16, .95, std({ color: 0xe8e4dc, roughness: .8 }), cx, ringY, cz, 18);
+    }
+    fCyl(1.18, 1.12, .55, fDarkSteelMat, cx, chH - .25, cz, 18);
+    addCol(cx - 1.7, cx + 1.7, cz - 1.7, cz + 1.7);
+  }
+
+  // 6) Склад готовой продукции («ОТДЕЛ СБЫТА», x = -316.5, z = -17.5)
+  occ(fBox(11.5, 5.4, 13.5, fBrickMat, -316.5, 2.7, -17.5));
+  fBox(11.9, .26, 13.9, fConcreteMat, -316.5, 5.53, -17.5);
+  fBox(11.8, .10, 13.8, MAT.snow, -316.5, 5.68, -17.5, false).userData.winter = true;
+  fBox(3.6, 3.2, .16, fGateMat, -322.3, 1.6, -15.2).rotation.y = Math.PI / 2;
+  const sbytTex = textTex(512, 96, 'ОТДЕЛ СБЫТА · СКЛАД ПРОДУКЦИИ', '#1d3b2a', '#f2e8c4', '900 28px Arial');
+  const sbytSign = new THREE.Mesh(new THREE.PlaneGeometry(5.6, .82), std({ map: sbytTex, roughness: .5 }));
+  sbytSign.position.set(-316.5, 4.35, -10.68); factoryGroup.add(sbytSign);
+  addCol(-322.4, -310.6, -24.4, -10.6);
+
+  // Ящики и бочки во дворе
+  const crateMat = std({ map: cardTex, roughness: .9 });
+  const barrelMat = std({ color: 0x2b4c66, roughness: .5, metalness: .45 });
+  for (const [bx, bz, s] of [[-330.5, -5.6, .85], [-329.6, -5.8, .75], [-323.4, -12.2, 1.1], [-323.2, -13.6, .95], [-332.5, -14.2, 1.0]]) {
+    fBox(.9 * s, .8 * s, .9 * s, crateMat, bx, .4 * s, bz);
+    addCol(bx - .45 * s, bx + .45 * s, bz - .45 * s, bz + .45 * s);
+  }
+  for (const [bx, bz] of [[-323.2, -16.8], [-322.5, -17.5], [-330.8, -14.0]]) {
+    fCyl(.32, .32, .92, barrelMat, bx, .46, bz, 12);
+    addCol(bx - .34, bx + .34, bz - .34, bz + .34);
+  }
+
+  // Клубы дыма из труб
+  const fSmokePuffs = [];
+  const fSmokeGeo = new THREE.SphereGeometry(1, 8, 6);
+  const fSmokeMat = new THREE.MeshBasicMaterial({ color: 0xd2d6da, transparent: true, opacity: .34, depthWrite: false });
+  for (let i = 0; i < 20; i++) {
+    const ch = chimneyTops[i % 2];
+    const m = new THREE.Mesh(fSmokeGeo, fSmokeMat.clone());
+    m.userData = { keep: true, dyn: true, cx: ch[0], cy: ch[1] + .3, cz: ch[2], age: (i / 20) * 10.0 };
+    scene.add(m);
+    fSmokePuffs.push(m);
+  }
+  function factorySmokeTick(dt) {
+    for (const p of fSmokePuffs) {
+      const u = p.userData;
+      u.age += dt;
+      if (u.age > 10.0) u.age -= 10.0;
+      const k = u.age / 10.0;
+      const sc = 1.2 + k * 4.8;
+      p.scale.set(sc, sc * .78, sc);
+      p.position.set(
+        u.cx + (windVec.x * .45 + 1.2) * u.age + Math.sin(tAll * .8 + u.age) * .4,
+        u.cy + u.age * 1.65,
+        u.cz + (windVec.y * .45 - .3) * u.age
+      );
+      p.material.opacity = Math.sin(k * Math.PI) * .32 * (1 - nightK * .45);
+    }
+  }
   // световые пятна под всеми фонарями (дёшево вместо десятков источников света)
   const poolTex = regTex(ctex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(255,190,110,.55)'); gr.addColorStop(.45, 'rgba(255,170,90,.22)'); gr.addColorStop(1, 'rgba(255,160,80,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }));
   const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
@@ -795,7 +2106,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- загрузка моделей ----------
   const loader = new GLTFLoader();
   const ASSETS = {};
-  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
+  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   // детализация фасадов панелек: фактура бетона в мировых координатах (без растяжения по UV), потёки от швов и подоконников, сырость и грязь у цоколя
   const facadeTex = (() => { const t = TL.load('assets/tex/pbr/concrete_col.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return regTex(t); })();
@@ -848,22 +2159,75 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         g.putImageData(d, 0, 0); const nt = new THREE.CanvasTexture(c); nt.colorSpace = THREE.SRGBColorSpace; nt.flipY = t.flipY; nt.magFilter = THREE.NearestFilter; maskCache.set(t, nt); return nt; };
       A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
       { const done = new Set(); A.scene.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (!done.has(m)) { done.add(m); facadeDetail(m); } }); }); }
-      for (const [x, z, r] of [[-32, 27, Math.PI / 2], [30, 27, Math.PI / 2], [0, -36, -Math.PI / 2], [-66, -10, 0], [70, -6, Math.PI]]) {
+      for (const [x, z, r] of [[-95, 27, 0], [-32, 27, 0], [30, 27, 0], [0, -36, -Math.PI / 2], [-156, -6, 0], [70, -6, Math.PI]]) {
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o); reflectLayer(o);
         { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
       }
       trampleSnow();
       flushDrifts(); season = -1; // пересчитать видимость сезонных объектов
     } else fallbackBuildings();
-    // остановка
-    if (ASSETS.busstop) { // открытая сторона модели смотрит в +X локально → поворот −90°, к дороге (+Z)
-      const o = placeModel(ASSETS.busstop, STOP.x, 4.15, -Math.PI / 2); busStopObj = o;
-      o.traverse(m => { if (m.isMesh) { const ms = Array.isArray(m.material) ? m.material : [m.material]; ms.forEach(mt => { if (/glass/i.test(mt.name)) { mt.transparent = true; mt.opacity = .35; mt.depthWrite = false; mt.side = THREE.FrontSide; m.castShadow = false; } }); } });
-      occ(o); const b = new THREE.Box3().setFromObject(o); addCol(b.min.x, b.max.x, b.min.z, b.min.z + .2); addCol(b.min.x, b.min.x + .15, b.min.z, b.max.z - .3); addCol(b.max.x - .15, b.max.x, b.min.z, b.max.z - .3);
-      // вторая остановка — «Завод»
-      const o2 = placeModel(ASSETS.busstop, STOPS.factory.x, 4.15, -Math.PI / 2); o2.traverse(m => { if (m.isMesh) (Array.isArray(m.material) ? m.material : [m.material]).forEach(mt => { if (/glass/i.test(mt.name)) { mt.transparent = true; mt.opacity = .35; mt.depthWrite = false; } }); });
-      occ(o2); const b2 = new THREE.Box3().setFromObject(o2); addCol(b2.min.x, b2.max.x, b2.min.z, b2.min.z + .2); }
-    for (const st of Object.values(STOPS)) { const tx = textTex(256, 128, 'А', '#d9b23a', '#1a1a1a', '900 90px Arial', (g, w, h) => { g.font = '700 16px Arial'; g.fillText(st.name.split(' ')[0].toUpperCase(), w / 2, h - 14); }); cyl(.04, .04, 2.8, MAT.steel, st.x + 2.2, 1.4, 5.7, 6); const sg = new THREE.Mesh(new THREE.PlaneGeometry(.6, .3), std({ map: tx, side: THREE.DoubleSide })); sg.position.set(st.x + 2.2, 2.75, 5.7); scene.add(sg); addCol(st.x + 2.1, st.x + 2.3, 5.6, 5.8); }
+    // Остановки автобуса №7 с обеих сторон дороги (южная сторона z = 4.15 к Заводу, северная сторона z = 16.3 к Ларьку)
+    for (const st of Object.values(STOPS)) {
+      const isNorth = !!st.north;
+      const shelterZ = isNorth ? 16.3 : 4.15;
+      const shelterRot = isNorth ? Math.PI / 2 : -Math.PI / 2;
+      if (ASSETS.busstop) {
+        const o = placeModel(ASSETS.busstop, st.x, shelterZ, shelterRot);
+        if (st.x === 8 && !isNorth) busStopObj = o;
+        o.traverse(m => { if (m.isMesh) (Array.isArray(m.material) ? m.material : [m.material]).forEach(mt => { if (/glass/i.test(mt.name)) { mt.transparent = true; mt.opacity = .35; mt.depthWrite = false; } }); });
+        occ(o);
+        const b = new THREE.Box3().setFromObject(o);
+        if (isNorth) {
+          addCol(b.min.x, b.max.x, b.max.z - .2, b.max.z);
+          addCol(b.min.x, b.min.x + .15, b.min.z + .3, b.max.z);
+          addCol(b.max.x - .15, b.max.x, b.min.z + .3, b.max.z);
+        } else {
+          addCol(b.min.x, b.max.x, b.min.z, b.min.z + .2);
+          addCol(b.min.x, b.min.x + .15, b.min.z, b.max.z - .3);
+          addCol(b.max.x - .15, b.max.x, b.min.z, b.max.z - .3);
+        }
+      }
+      // Двусторонний дорожный знак остановки
+      const sx = isNorth ? (st.x - 2.2) : (st.x + 2.2);
+      const sz = isNorth ? 14.75 : 5.65;
+      cyl(.065, .075, .28, MAT.dark, sx, .14, sz, 8);
+      cyl(.036, .036, 2.85, MAT.steel, sx, 1.425, sz, 10);
+      cyl(.046, .046, .04, MAT.dark, sx, 2.85, sz, 10);
+      const signTex = regTex(ctex(256, 320, (g, w, h) => {
+        g.fillStyle = '#1c4b82'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#f2efe6'; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10);
+        g.fillStyle = '#f4f1e8'; g.fillRect(14, 14, w - 28, 136);
+        g.fillStyle = '#181818';
+        g.beginPath(); g.roundRect ? g.roundRect(42, 34, 172, 72, 10) : g.rect(42, 34, 172, 72); g.fill();
+        g.fillStyle = '#f4f1e8';
+        for (let wx = 52; wx <= 162; wx += 36) g.fillRect(wx, 44, 28, 28);
+        g.fillRect(190, 44, 16, 34);
+        g.fillStyle = '#181818';
+        g.beginPath(); g.arc(78, 110, 14, 0, Math.PI * 2); g.arc(176, 110, 14, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#f4f1e8';
+        g.beginPath(); g.arc(78, 110, 6, 0, Math.PI * 2); g.arc(176, 110, 6, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#1c4b82'; g.font = '900 22px Arial'; g.textAlign = 'center';
+        g.fillText('ОСТАНОВКА АВТОБУСА', w / 2, 142);
+        g.fillStyle = '#e2b43b'; g.fillRect(14, 158, w - 28, 148);
+        g.strokeStyle = '#1c1a17'; g.lineWidth = 3; g.strokeRect(18, 162, w - 36, 140);
+        g.fillStyle = '#a82418'; g.font = '900 44px Arial'; g.fillText('А  № 7', w / 2, 206);
+        g.fillStyle = '#181818'; g.font = '900 19px Arial';
+        g.fillText(st.name.toUpperCase(), w / 2, 240);
+        g.font = '700 16px Arial';
+        g.fillText(isNorth ? 'НАПРАВЛЕНИЕ: В ГОРОД' : 'НАПРАВЛЕНИЕ: НА ЗАВОД', w / 2, 266);
+        g.font = '700 14px Arial';
+        g.fillText('06:00–23:00 · ИНТ. 15 МИН', w / 2, 290);
+        speckle(g, w, h, 350, ['#0002', '#fff2'], 2);
+      }));
+      const signFaceM = std({ map: signTex, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: .22, roughness: .55, metalness: .15 });
+      const signEdgeM = std({ color: 0x3a4046, roughness: .6, metalness: .6 });
+      const sg = new THREE.Mesh(new THREE.BoxGeometry(.52, .65, .028), [signEdgeM, signEdgeM, signEdgeM, signEdgeM, signFaceM, signFaceM]);
+      sg.position.set(sx, 2.46, sz);
+      sg.castShadow = true;
+      scene.add(sg);
+      for (const by of [2.24, 2.66]) box(.09, .035, .045, signEdgeM, sx, by, sz);
+      addCol(sx - .12, sx + .12, sz - .12, sz + .12);
+    }
     // бетонный забор из плит (инстансинг)
     if (ASSETS.beton) {
       const ms = meshesOf(ASSETS.beton); const m0 = ms[0]; const geo = m0.geometry.clone().applyMatrix4(m0.matrixWorld);
@@ -892,8 +2256,23 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       const g = big.geometry.clone().applyMatrix4(big.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox, c = bb.getCenter(new THREE.Vector3()); g.translate(-c.x, -bb.min.y, -c.z); const sc = .55 / (bb.max.y - bb.min.y); g.scale(sc, sc, sc);
       const m = new THREE.Mesh(g, big.material); m.position.set(-.35, 1.25, -KD + .04); m.rotation.y = Math.abs(bb.max.x - bb.min.x) < Math.abs(bb.max.z - bb.min.z) ? Math.PI / 2 : 0; scene.add(m); }
     if (ASSETS.stew) { const sm = meshesOf(ASSETS.stew)[0]; if (sm) { const f = FOOD.find(q => q.id === 'tushonka'); const g = sm.geometry.clone().applyMatrix4(sm.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox; g.translate(0, -(bb.min.y + bb.max.y) / 2, 0); f.geo = g; f.model = sm.material; buildFood(); } }
+    if (ASSETS.trashcan) {
+      for (const slot of trashHolders) {
+        while (slot.children.length) slot.remove(slot.children[0]);
+        const tc = ASSETS.trashcan.scene.clone(true);
+        prepMats(tc);
+        slot.add(tc);
+        for (let k = 0; k < 4; k++) {
+          const m = new THREE.Mesh(new THREE.SphereGeometry(.20, 7, 5), bagMat);
+          m.scale.set(1, .68, 1);
+          m.position.set(R(-.28, .28), .62 + R(0, .12), R(-.16, .16));
+          slot.add(m);
+        }
+      }
+    }
     if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld)); gunMat = gm.material; weapon.setModel(gunHoldMesh(), life.makeHand); buildWallGun(); }
     spawnMarat();
+    spawnZavodNpc();
     // уличные продавцы стояли неподвижно с позированными руками и выглядели как баг — убраны
     season = -1;
     ctx.onLoaded && ctx.onLoaded();
@@ -942,6 +2321,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         const fl = regTex(ctex(256, 256, (g, w, h) => { for (let k = 0; k < 420; k++) { const r = Math.hypot(Math.random() - .5, Math.random() - .5); if (r > .5) continue; const x = w / 2 + (Math.random() - .5) * w * .9 * (1 - r), y = h / 2 + (Math.random() - .5) * h * .9 * (1 - r); g.fillStyle = pick(['#c8901e', '#b05a1c', '#93301a', '#d8b040', '#7a5a2a']); g.save(); g.translate(x, y); g.rotate(Math.random() * 6.3); g.beginPath(); g.ellipse(0, 0, 5 + Math.random() * 4, 2.5 + Math.random() * 2, 0, 0, 7); g.fill(); g.restore(); } }));
         const lp = new THREE.PlaneGeometry(7, 7); lp.rotateX(-Math.PI / 2); lp.translate(0, .015, 0); inst(lp, new THREE.MeshStandardMaterial({ map: fl, transparent: true, depthWrite: false, roughness: .95 }), spots.map(([x, z, s, r]) => [x, z, 1, r]), ['autumn'], false); }
       spots.forEach(([x, z]) => addCol(x - .3, x + .3, z - .3, z + .3));
+      hwySpots.forEach(([x, z, s, r]) => spots.push([x, z, s, r]));
     }
     if (ASSETS.bush) {
       const bm = meshesOf(ASSETS.bush)[0]; const bg = bm.geometry.clone().applyMatrix4(bm.matrixWorld), img = bm.material.map.image;
@@ -1073,8 +2453,18 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   for (const [x, z, r, c] of [[18, -7, 0, 0xd8d4c8], [24.5, -7.3, .05, 0x7a2a22], [31, -9.5, Math.PI / 2, 0x3a5a3a], [-8, -2.6, 0, 0xc8b88a]]) { const m = carMesh(c, true); m.position.set(x, 0, z); m.rotation.y = r; const hx = Math.abs(Math.sin(r)) > .5 ? .9 : 2.1, hz = Math.abs(Math.sin(r)) > .5 ? 2.1 : .9; addCol(x - hx, x + hx, z - hz, z + hz); occ(m.children[0]); }
   // кольцевые маршруты (с поворотами за домами)
   const ROUTES = [
-    [[-82, 12], [86, 12], [92, 18], [92, 46], [86, 52], [-84, 52], [-90, 46], [-90, 18]],
-    [[86, 8.4], [-82, 8.4], [-88, 14], [-88, 44], [-82, 50], [84, 50], [90, 44], [90, 14]],
+    [
+      [-360, 12.0], [84, 12.0],
+      [92, 11.8], [98, 11.1], [102, 10.2], [98, 9.3], [92, 8.6],
+      [84, 8.4], [-360, 8.4],
+      [-368, 8.6], [-374, 9.3], [-378, 10.2], [-374, 11.1], [-368, 11.8]
+    ],
+    [
+      [84, 8.4], [-360, 8.4],
+      [-368, 8.6], [-374, 9.3], [-378, 10.2], [-374, 11.1], [-368, 11.8],
+      [-360, 12.0], [84, 12.0],
+      [92, 11.8], [98, 11.1], [102, 10.2], [98, 9.3], [92, 8.6]
+    ]
   ];
   function routePoint(route, s) { // s — пройденная длина
     let total = 0; const segs = []; for (let i = 0; i < route.length; i++) { const a = route[i], b = route[(i + 1) % route.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]); segs.push([a, b, l]); total += l; }
@@ -1087,7 +2477,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const CAR_COLORS = [0x6a7a8a, 0xb8a070, 0xe0ddd2, 0x7a2a22, 0x2a4a6a, 0x3a5a3a];
 
   // ---------- игрок ----------
-  const P = { x: 0, z: .25, yaw: Math.PI, pitch: -.08, h: 1.18, vx: 0, vz: 0, seated: true, locked: false, crouch: false, sprint: false, stun: 0, bobPh: 0, roll: 0, shake: 0 };
+  const P = { x: 0, z: .25, yaw: Math.PI, pitch: -.08, h: 1.18, vx: 0, vz: 0, seated: true, locked: false, crouch: false, sprint: false, stun: 0, bobPh: 0, roll: 0, shake: 0, lying: false, lieSide: 1 };
   const STOOL = { x: 0, z: .25 };
   const input = { mx: 0, my: 0, keys: {} };
   const inKiosk = (x = P.x, z = P.z) => Math.abs(x) < KW && Math.abs(z) < KD;
@@ -1096,15 +2486,30 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const inOBB = (x, z, cx, cz, hd, hx, hz, r) => { const dx = x - cx, dz = z - cz, c = Math.cos(hd), s_ = Math.sin(hd); const lx = dx * c - dz * s_, lz = dx * s_ + dz * c; return Math.abs(lx) < hx + r && Math.abs(lz) < hz + r; };
   const hitAny = (x, z, r = PR) => colliders.some(b => x > b.x1 - r && x < b.x2 + r && z > b.z1 - r && z < b.z2 + r) || hitVeh(x, z, r);
   const hitVeh = (x, z, r = PR) => cars.some(c => inOBB(x, z, c.m.position.x, c.m.position.z, c.m.rotation.y, 2.1, .85, r))
-    || (!transport.riding && (() => { const o = transport.obstacle(); return inOBB(x, z, o.x, o.z, o.heading, o.hx - .3, o.hz - .2, r); })());
-  function canMove() { return ctx.getS() && !P.seated && !P.locked && !transport.riding && !ctx.cardOpen() && !ctx.sheetOpen() && P.stun <= 0; }
-  function sit() { P.seated = true; P.crouch = false; ctx.onCtl(); }
-  function stand() { if (P.locked) return; P.seated = false; const S = ctx.getS(); S && (S.flags.stood = true); ctx.onCtl(); }
+    || (transport.playerBlocked ? transport.playerBlocked(x, z, r) : false);
+  function canMove() { return ctx.getS() && !P.seated && !P.lying && !P.locked && !transport.seated && !ctx.cardOpen() && !ctx.sheetOpen() && P.stun <= 0; }
+  function sit() {
+    P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI;
+    P.seated = true; P.locked = false; P.crouch = false; P.vx = P.vz = 0;
+    ctx.onSitCounter && ctx.onSitCounter();
+    ctx.onCtl();
+  }
+  function stand() {
+    P.locked = false; P.seated = false;
+    const S = ctx.getS(); S && (S.flags.stood = true);
+    ctx.onStandCounter && ctx.onStandCounter();
+    ctx.onCtl();
+  }
   let fadeBusy = false;
   function fade(fn) { if (fadeBusy) return; fadeBusy = true; const f = document.getElementById('fade'); f.style.opacity = 1; setTimeout(() => { fn(); setTimeout(() => { f.style.opacity = 0; fadeBusy = false; ctx.onCtl(); }, 120); }, 260); }
-  function goCounter(lock) {
-    const doIt = () => { P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; P.pitch = -.1; P.seated = true; P.locked = !!lock; P.vx = P.vz = 0; doorTarget = 0; ctx.onCtl(); };
-    if (inKiosk() && P.seated) { P.locked = !!lock; P.yaw = Math.PI; ctx.onCtl(); } else fade(doIt);
+  function goCounter() {
+    const doIt = () => {
+      P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; P.pitch = -.1;
+      P.seated = true; P.locked = false; P.vx = P.vz = 0; doorTarget = 0;
+      ctx.onSitCounter && ctx.onSitCounter();
+      ctx.onCtl();
+    };
+    if (inKiosk() && P.seated) { P.locked = false; P.yaw = Math.PI; ctx.onSitCounter && ctx.onSitCounter(); ctx.onCtl(); } else fade(doIt);
   }
   function toggleDoor() { doorTarget = doorTarget > .5 ? 0 : 1; ctx.audio && ctx.audio.door(doorTarget > .5); }
 
@@ -1114,7 +2519,23 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const N = (id, x, z) => NODES[id] = { id, x, z, e: [] };
   const E = (a, b) => { NODES[a].e.push(b); NODES[b].e.push(a); };
   const SWX = [-66, -50, -34, -18, -8, -3, 3, 8, 18, 34, 50, 66];
-  SWX.forEach((x, i) => { N('s' + i, x, 3.4); N('f' + i, x, 16.2); if (i) { E('s' + i, 's' + (i - 1)); E('f' + i, 'f' + (i - 1)); } });
+  SWX.forEach((x, i) => {
+    // Безопасная траектория в обход павильона остановки (x = 8) и ларька (x = 0)
+    const sz = (x === 8 || x === -334) ? 2.35 : 3.4;
+    const fz = (x === 8 || x === -334) ? 14.95 : 16.2;
+    N('s' + i, x, sz); N('f' + i, x, fz);
+    if (i) { E('s' + i, 's' + (i - 1)); E('f' + i, 'f' + (i - 1)); }
+  });
+  // Продолжение тротуаров на запад по шоссе к локации «Краснозаводский завод» (x = -334)
+  const WSWX = [-82, -130, -180, -230, -280, -320, -334, -360, -400];
+  WSWX.forEach((x, i) => {
+    N('sw' + i, x, 3.4); N('fw' + i, x, 16.2);
+    E('sw' + i, i === 0 ? 's0' : 'sw' + (i - 1));
+    E('fw' + i, i === 0 ? 'f0' : 'fw' + (i - 1));
+  });
+  // Пешеходные пути: от автобусной остановки завода (x = -334, z = 3.4) через площадь, вход в проходную, бюро пропусков и во двор
+  N('zv_stop', -334, 3.4); N('zv_sq', -334, 0.2); N('zv_door', -334, -1.0); N('zv_foyer', -334, -3.4); N('zv_exit', -334, -6.6); N('zv_yard', -334, -12.0);
+  E('zv_stop', 'sw6'); E('zv_stop', 'zv_sq'); E('zv_sq', 'zv_door'); E('zv_door', 'zv_foyer'); E('zv_foyer', 'zv_exit'); E('zv_exit', 'zv_yard');
   E('s5', 'f5'); // переход по «зебре»
   N('w', 0, 2.75); E('w', 's5'); E('w', 's6');
   N('c1', -8, -5.5); N('c2', 8, -5.5); N('c3', -8, -15); N('c4', 8, -15); N('c5', -18, -20); N('c6', 18, -20); N('m1', -12, -8); N('m2', -23, -8); N('g1', 24, -11); N('kd', .8, -3.2);
@@ -1199,7 +2620,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const night = nightK > .6;
     const want = Math.min(Q.npc - 4, night ? 4 : 12);
     if (peds < want && Math.random() < dt * .7) {
-      const kind = night ? pick(['worker', 'youth', 'gopnik']) : pick(['babka', 'worker', 'worker', 'youth', 'school', 'neighbor']);
+      const kind = night ? pick(['worker', 'youth', 'gopnik', 'police']) : pick(['babka', 'dedushka', 'worker', 'school', 'youth', 'neighbor', 'police']);
       const sp = pickSpawn({ x: R(-40, 40), z: R(-15, 10) });
       const p = newPerson(kind, 'ped', sp); wander(p);
       // часть прохожих задерживается: ждёт автобус, курит у ларька, стоит у подъезда, болтает
@@ -1318,7 +2739,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (nx && !visibleFromPlayer(o.x, o.z)) {
       for (let r = 0; r < 3; r += .4) for (let a = 0; a < 6.28; a += .7) { const x = nx.x + Math.cos(a) * r, z = nx.z + Math.sin(a) * r; if (!npcBlocked(x, z) && !visibleFromPlayer(x, z)) { o.x = x; o.z = z; return; } }
     }
-    if (p.role === 'ped' && !p.leaving) leaveWorld(p);
+    if (p.role === 'ped' && !p.leaving) { const tSafe = NODES[pickSpawn(p.h.obj.position)]; goTo(p, tSafe.x, tSafe.z, null); }
     else if (p.path && p.path.length) { const fin = p.path[p.path.length - 1]; goTo(p, fin.x, fin.z, p.then, true); }
   }
   function npcBlocked(x, z) {
@@ -1343,6 +2764,14 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const camPos = camera.position;
     if (marat) { const S3 = ctx.getS(), away = !!(S3 && S3.phase === 'night' && hour > 23); marat.hidden = away; marat.h.obj.visible = !away; const d = Math.hypot(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z);
       if (marat.state !== 'scared') { marat.anim = d < 5 ? (marat.talking ? 'talk' : 'idle') : 'smoke'; if (d < 7) faceTo(marat, Math.atan2(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z), dt); else faceTo(marat, Math.PI * .6, dt); } }
+    if (zavodNpc && !zavodNpc.dead) {
+      const dz = Math.hypot(P.x - zavodNpc.h.obj.position.x, P.z - zavodNpc.h.obj.position.z);
+      if (zavodNpc.state !== 'scared') {
+        zavodNpc.anim = dz < 5 ? (zavodNpc.talking ? 'talk' : 'idle') : 'idle';
+        if (dz < 8) faceTo(zavodNpc, Math.atan2(P.x - zavodNpc.h.obj.position.x, P.z - zavodNpc.h.obj.position.z), dt);
+        else faceTo(zavodNpc, 0, dt);
+      }
+    }
     for (const p of people.slice()) {
       if (p.dead) { deadTick(p, dt); continue; }
       umbrellaTick(p);
@@ -1373,14 +2802,36 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const n = Math.random() < .6 ? RI(1, 2) : 0;
     for (let i = 0; i < n && people.length < Q.npc; i++) { const kind = pick(['babka', 'worker', 'youth', 'neighbor']); const id = 'tmpBus' + Math.random(); N(id, door.x, door.z); const pp = newPerson(kind, 'ped', id); delete NODES[id]; pp.h.obj.position.set(door.x + i * .5, 0, door.z); setTimeout(() => people.includes(pp) && wander(pp), 600 + i * 700); }
   }
-  // ---------- Марат: посредник на остановке ----------
-  let marat = null;
+  // ---------- Марат: посредник на остановке у ларька ----------
+  let marat = null, zavodNpc = null;
   function spawnMarat() {
     const look = makeLook('worker'); Object.assign(look, { male: true, height: 1.78, build: 1.15, top: '#141414', leather: true, puffy: false, pants: '#1d1d22', boots: '#111', hat: 'kepka', hatC: '#262626', hairStyle: 'short', hair: '#1c1410', facial: 'mustache', chain: true, scarf: null, bag: null, coat: false, stripes: null, apron: null, age: 38, nerve: .7, aggression: .2, swagger: .6, kind: 'worker' });
     const h = new Human(look, null); h.obj.position.set(STOPS.kiosk.x + 3.1, 0, 4.25); scene.add(h.obj);
     const sh = new THREE.Mesh(blobGeo, blobMat); sh.rotation.x = -Math.PI / 2; sh.position.y = .02; h.obj.add(sh);
     marat = { h, role: 'marat', state: 'stand', anim: 'smoke', path: [], kind: 'worker', title: 'Марат', talk: () => ctx.maratTalk && ctx.maratTalk(), id: 'marat' };
     people.push(marat);
+  }
+  // ---------- Кладовщик Геннадий в бюро пропусков проходной «Краснозаводского завода» ----------
+  function spawnZavodNpc() {
+    if (zavodNpc) return;
+    const look = makeLook('worker');
+    Object.assign(look, {
+      male: true, height: 1.76, build: 1.18,
+      top: '#283848', leather: false, puffy: true,
+      pants: '#22262c', boots: '#181614',
+      hat: 'ushanka', hatC: '#3a322a',
+      hairStyle: 'short', hair: '#5a524a', facial: 'mustache',
+      chain: false, scarf: '#58241e', bag: null, coat: false, stripes: null, apron: null,
+      age: 48, nerve: .8, aggression: .2, swagger: .4, kind: 'worker'
+    });
+    const h = new Human(look, null);
+    // Стоит прямо внутри проходной у прилавка бюро пропусков, встречая входящего игрока!
+    h.obj.position.set(-333.6, 0, -3.2);
+    h.obj.rotation.y = -Math.PI / 2;
+    scene.add(h.obj);
+    const sh = new THREE.Mesh(blobGeo, blobMat); sh.rotation.x = -Math.PI / 2; sh.position.y = .02; h.obj.add(sh);
+    zavodNpc = { h, role: 'zavod', state: 'stand', anim: 'idle', path: [], kind: 'worker', title: 'Кладовщик Геннадий', talk: () => ctx.factoryTalk && ctx.factoryTalk(), id: 'zavod_gena' };
+    people.push(zavodNpc);
   }
   // ---------- ружьё и реакции ----------
   const weapon = createWeapon({ audio: ctx.audio, onShot: () => onShot() });
@@ -1396,6 +2847,14 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // длинная ось — Z, приклад (торец) в z = 0, стволы уходят в −Z, высота — Y, ширина — X, центр по X/Y в нуле.
   let gunLen = 1.1, gunW = .06;
   function normGun(g) {
+    g.computeBoundingBox();
+    const bb0 = g.boundingBox;
+    if (bb0 && Math.abs(bb0.max.z) < .02 && (bb0.max.z - bb0.min.z) > .85 && (bb0.max.x - bb0.min.x) < .15) {
+      g.computeVertexNormals();
+      gunLen = bb0.max.z - bb0.min.z;
+      gunW = bb0.max.x - bb0.min.x;
+      return g;
+    }
     const pos = g.attributes.position, n = pos.count, c = new THREE.Vector3();
     for (let i = 0; i < n; i++) c.add(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i))); c.multiplyScalar(1 / n); g.translate(-c.x, -c.y, -c.z);
     // главные оси облака вершин (ковариация + степенной метод): скан лежит в файле по диагонали
@@ -1420,26 +2879,104 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     gunLen = L; gunW = g.boundingBox.max.x - g.boundingBox.min.x; window.__gunDbg = { hNeg, hPos, lo, hi, L, W: gunW, H: g.boundingBox.max.y - g.boundingBox.min.y }; return g;
   }
   // в руках и на стене: приклад в начале координат, ствол в −Z
-  function gunHoldMesh() { const g = new THREE.Group(); if (gunGeo) { const m = new THREE.Mesh(gunGeo, gunMat); m.castShadow = true; g.add(m); } else { const m = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, 1.1), MAT.dark); m.position.z = -.55; g.add(m); } g.userData.len = gunLen; return g; }
+  const strapLeatherM = std({ color: 0x3a2a1c, roughness: .85 });
+  const swivelMetalM = std({ color: 0x484a4c, metalness: .82, roughness: .32 });
+  function gunHoldMesh(withWallLoops = false) {
+    const g = new THREE.Group();
+    if (gunGeo) { const m = new THREE.Mesh(gunGeo, gunMat); m.castShadow = true; g.add(m); }
+    else { const m = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, 1.1), MAT.dark); m.position.z = -.55; g.add(m); }
+    if (withWallLoops) {
+      // Передняя антабка под цевьём/стволами (z = -0.68) и плотный кожаный ремень, огибающий цевьё снаружи вверх к гвоздю
+      const swF = new THREE.Mesh(new THREE.TorusGeometry(.010, .0025, 6, 12), swivelMetalM);
+      swF.rotation.y = Math.PI / 2; swF.position.set(0, -.002, -.68); g.add(swF);
+      const loopFBot = new THREE.Mesh(new THREE.BoxGeometry(.032, .008, .026), strapLeatherM);
+      loopFBot.position.set(-.015, .001, -.68); g.add(loopFBot);
+      const loopFSide = new THREE.Mesh(new THREE.BoxGeometry(.009, .064, .026), strapLeatherM);
+      loopFSide.position.set(-.029, .031, -.68); g.add(loopFSide);
+      // Задняя антабка снизу приклада (z = -0.14, y = -0.092) и кожаный ремень вдоль внешней стороны приклада вверх
+      const swR = new THREE.Mesh(new THREE.TorusGeometry(.010, .0025, 6, 12), swivelMetalM);
+      swR.rotation.y = Math.PI / 2; swR.position.set(0, -.092, -.14); g.add(swR);
+      const loopRBot = new THREE.Mesh(new THREE.BoxGeometry(.024, .008, .026), strapLeatherM);
+      loopRBot.position.set(-.010, -.088, -.14); g.add(loopRBot);
+      const loopRSide = new THREE.Mesh(new THREE.BoxGeometry(.009, .108, .026), strapLeatherM);
+      loopRSide.position.set(-.020, -.036, -.14); g.add(loopRSide);
+    }
+    g.userData.len = gunLen;
+    return g;
+  }
   // предмет на полу: лежит на боку, длиной по X, с центром в начале координат
-  function gunWorldMesh() { const g = new THREE.Group(), r = new THREE.Group(); r.rotation.y = Math.PI / 2; g.add(r); const m = gunHoldMesh(); m.rotation.z = Math.PI / 2; m.position.set(0, gunW / 2 + .005, gunLen / 2); r.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g; }
-  const RACK = { x: KW - .11, y: 1.9, z: -.05 };
+  function gunWorldMesh() { const g = new THREE.Group(), r = new THREE.Group(); r.rotation.y = Math.PI / 2; g.add(r); const m = gunHoldMesh(false); m.rotation.z = Math.PI / 2; m.position.set(0, gunW / 2 + .005, gunLen / 2); r.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g; }
+  const RACK = { x: KW - .09, y: 1.73, z: -.18 };
+  const NAIL = new THREE.Vector3(KW - .085, 1.98, -.18);
   let wallGun = null, wallRope = null;
-  const hookM = std({ color: 0x5a5a5a, metalness: .7, roughness: .4 });
-  // два крюка из стены, ружьё лежит на них: шейка приклада и цевьё
-  for (const dz of [-.3, .28]) { const h = box(.13, .025, .025, hookM, KW - .075, RACK.y - .06, RACK.z + dz, K); h.userData.keep = true; const t = box(.025, .05, .025, hookM, KW - .14, RACK.y - .04, RACK.z + dz, K); t.userData.keep = true; }
-  function buildWallGun() { if (wallGun) scene.remove(wallGun); wallGun = gunHoldMesh(); scene.add(wallGun); if (!wallRope) wallRope = new Rope(scene, { n: 12, length: .9, width: .028 }); }
-  const rackBox = new THREE.Box3(new THREE.Vector3(RACK.x - .2, RACK.y - .25, RACK.z - .65), new THREE.Vector3(RACK.x + .05, RACK.y + .2, RACK.z + .65));
+  const hookM = std({ color: 0x484a4c, metalness: .82, roughness: .35 });
+  // Гвоздь в стене, на котором ружьё висит на собственном ремне
+  { const nailShaft = cyl(.0055, .0055, .09, hookM, KW - .065, NAIL.y, NAIL.z, 10, K); nailShaft.rotation.z = Math.PI / 2; nailShaft.userData.keep = true;
+    const nailHead = cyl(.014, .014, .006, hookM, KW - .108, NAIL.y, NAIL.z, 12, K); nailHead.rotation.z = Math.PI / 2; nailHead.userData.keep = true; }
+  function buildWallGun() { if (wallGun) scene.remove(wallGun); wallGun = gunHoldMesh(true); scene.add(wallGun); if (!wallRope) wallRope = new Rope(scene, { n: 13, length: .79, width: .026, thick: .009, color: 0x4a321e }); }
+  const rackBox = new THREE.Box3(new THREE.Vector3(RACK.x - .22, RACK.y - .22, RACK.z - .68), new THREE.Vector3(RACK.x + .08, NAIL.y + .10, RACK.z + .68));
   const gunState = () => { const S = ctx.getS(); return S ? (S.gunState || 'wall') : 'wall'; };
   function setGunState(st) { const S = ctx.getS(); if (!S) return; S.gunState = st; S.gun = st === 'carried'; if (st !== 'carried' && weapon.drawn) weapon.holster(); ctx.onCtl(); }
   function wallGunTick(dt) {
     const on = gunState() === 'wall'; if (wallGun) wallGun.visible = on; if (!wallRope) return; wallRope.visible = on && !!wallGun;
-    if (on && wallGun) { const L = wallGun.userData.len || 1.1; wallGun.position.set(RACK.x, RACK.y, RACK.z + L * .48); wallGun.rotation.set(0, 0, 0); wallGun.updateMatrixWorld(true); const a = wallGun.localToWorld(tmpV.set(0, -.045, -L * .72)).clone(), b = wallGun.localToWorld(tmpV2.set(0, -.07, -.06)).clone(); wallRope.update(a, b, dt, .02); }
+    if (on && wallGun) {
+      wallGun.position.set(RACK.x, RACK.y, NAIL.z + .46);
+      wallGun.rotation.set(-.03, 0, 0);
+      wallGun.updateMatrixWorld(true);
+      // Точки выхода ремня с верхней кромки передней (z = -0.68) и задней (z = -0.14) петель — ремень натянут прямо к гвоздю без разрывов
+      const a = wallGun.localToWorld(tmpV.set(-.027, .060, -.68)).clone();
+      const b = wallGun.localToWorld(tmpV2.set(-.019, .015, -.14)).clone();
+      wallRope.update(a, b, dt, .02, NAIL);
+    }
   }
   const windVec = new THREE.Vector2();
+  let blackout = null;
+  const BLACKOUT_SPOTS = [
+    { x: -2.4, z: -3.3, name: 'в сугробе за ларьком' },
+    { x: 4.8, z: 16.5, name: 'у мусорного бака через дорогу' },
+    { x: 7.8,  z: 4.7,  name: 'у автобусной остановки' },
+    { x: -17.5, z: -18.2, name: 'у чужого подъезда во дворе' },
+    { x: 23.5, z: -11.2, name: 'за гаражами' },
+    { x: 8.5,  z: -14.8, name: 'на детской площадке во дворе' },
+    { x: -12.2, z: -7.8, name: 'в сугробе во дворе' },
+    { x: 16.0, z: 16.4, name: 'на тротуаре через дорогу' },
+    { x: -36.0, z: 3.4,  name: 'на дальнем конце улицы' },
+    { x: 34.0, z: 3.4,  name: 'на обочине у дороги' },
+  ];
+  function pickBlackoutSpot() {
+    const spots = BLACKOUT_SPOTS.slice();
+    while (spots.length) {
+      const idx = Math.floor(Math.random() * spots.length);
+      const sp = spots.splice(idx, 1)[0];
+      for (let i = 0; i < 12; i++) {
+        const tx = clamp(sp.x + R(-1.1, 1.1), BOUND.x1 + 1, BOUND.x2 - 1);
+        const tz = clamp(sp.z + R(-1.1, 1.1), BOUND.z1 + 1, BOUND.z2 - 1);
+        if (!hitAny(tx, tz, .42) && !inKiosk(tx, tz)) return { x: tx, z: tz, name: sp.name };
+      }
+    }
+    return { x: 0, z: 3.2, name: 'на снегу перед ларьком' };
+  }
+  function standFromGround() {
+    if (!P.lying) return;
+    P.lying = false; P.locked = false; blackout = null; P.shake = .35;
+    post.uniforms.blink.value = 0;
+    ctx.onCtl && ctx.onCtl();
+  }
+  function triggerBlackout() {
+    if (blackout) return;
+    if (life.held) life.stashHeldBottle ? life.stashHeldBottle() : life.dropHeld();
+    if (weapon.drawn) weapon.holster();
+    P.locked = true; P.seated = false; P.crouch = false; P.sprint = false; P.vx = P.vz = 0;
+    P.lying = true; P.lieSide = Math.random() < .5 ? 1 : -1;
+    P.pitch = -.28; P.shake = .8;
+    blackout = { phase: 'fall', t: 0, thudded: false, sleepHours: R(4.0, 7.0) };
+    ctx.onCtl && ctx.onCtl();
+  }
   const life = createLife({ scene, camera, P, ctx, KW, KD, std, colliders, addCol, audio: ctx.audio, onCtl: () => ctx.onCtl(), overlayScene: weapon.scene,
-    visibleFromPlayer: (x, z) => visibleFromPlayer(x, z), doorOpen: () => doorOpen, wind: () => windVec, gunWorldMesh,
-    onDelivered: d => ctx.onDelivered && ctx.onDelivered(d), onUnpack: data => ctx.onUnpack && ctx.onUnpack(data), onDrink: (k, s) => ctx.onDrink && ctx.onDrink(k, s) });
+    visibleFromPlayer: (x, z) => visibleFromPlayer(x, z), doorOpen: () => doorOpen, wind: () => windVec, gunWorldMesh, getItemMesh, getPackMesh,
+    onDelivered: (d, cnt) => ctx.onDelivered && ctx.onDelivered(d, cnt), onUnpack: data => ctx.onUnpack && ctx.onUnpack(data),
+    onDrink: (k, s, tot) => ctx.onDrink && ctx.onDrink(k, s, tot),
+    onBlackout: triggerBlackout });
   function aimedPerson(maxD = 30) {
     camera.getWorldDirection(tmpV2); let best = null, bd = .5;
     for (const p of people) { if (p.hidden || p.dead) continue; const o = p.h.obj.position; tmpV.set(o.x, 1.3 * p.h.L.height / 1.75, o.z).sub(camera.position); const along = tmpV.dot(tmpV2); if (along < .5 || along > maxD) continue; const perp = tmpV.addScaledVector(tmpV2, -along).length(); if (perp < bd) { bd = perp; best = p; } }
@@ -1481,6 +3018,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   function onShot() {
     P.pitch = Math.min(1.25, P.pitch + .09); P.shake = .4;
+    { const hitItem = life.lookItem && life.lookItem(20); if (hitItem && (hitItem.kind === 'bottle' || (hitItem.kind === 'good' && ['vodka','beer','samogon','soda'].includes(hitItem.data && hitItem.data.goodId)))) life.shatterBottle(hitItem); }
     { const hit = aimedPerson(26); if (hit) { camera.getWorldDirection(tmpV2); killPerson(hit, tmpV2.clone(), Math.hypot(hit.h.obj.position.x - P.x, hit.h.obj.position.z - P.z)); } }
     const S = ctx.getS(); if (S) { ctx.rep('law', -4); ctx.rep('folk', -2); }
     for (const p of people) { if (p.dead) continue; const d = Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z); if (d > 45) continue;
@@ -1524,7 +3062,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
 
   // ---------- граница карты: стена бурана (визуально) + невидимая коллизия внутри ----------
-  const BOUND = { x1: -63, x2: 69, z1: -40, z2: 23.5 };
+  const BOUND = { x1: -440, x2: 69, z1: -45, z2: 25 };
   const stormMat = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, col: { value: new THREE.Color(0xc8ced2) } },
     vertexShader: 'varying vec2 vU; varying vec3 vW; void main(){ vU = uv; vW = (modelMatrix * vec4(position, 1.)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.); }',
@@ -1535,7 +3073,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         float a = (.55 + f * .45) * smoothstep(0., .1, vU.y) * (1. - smoothstep(4., 26., vW.y)); /* верх растворяется: сверху нет квадрата карты */ gl_FragColor = vec4(col * (.85 + f * .25), a); }`,
     transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
   });
-  for (const [x, z, w, ry] of [[BOUND.x1 - 4, (BOUND.z1 + 30) / 2, 90, Math.PI / 2], [BOUND.x2 + 4, (BOUND.z1 + 30) / 2, 90, Math.PI / 2], [(BOUND.x1 + BOUND.x2) / 2, BOUND.z1 - 4, 150, 0], [(BOUND.x1 + BOUND.x2) / 2, 38, 150, 0]]) {
+  for (const [x, z, w, ry] of [[BOUND.x1 - 4, (BOUND.z1 + 30) / 2, 100, Math.PI / 2], [BOUND.x2 + 4, (BOUND.z1 + 30) / 2, 100, Math.PI / 2], [(BOUND.x1 + BOUND.x2) / 2, BOUND.z1 - 4, 530, 0], [(BOUND.x1 + BOUND.x2) / 2, 38, 530, 0]]) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 45), stormMat); m.position.set(x, 18, z); m.rotation.y = ry; m.renderOrder = 5; scene.add(m);
   }
   let stormK = 0;
@@ -1576,37 +3114,65 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const cA = new THREE.Color(), cB = new THREE.Color();
   const PAL = { dayTop: '#73858f', dayBot: '#c6c9c3', duskTop: '#3d485a', duskBot: '#c08058', nightTop: '#060a10', nightBot: '#171d26' };
   function setClock(h) {
-    hour = h;
+    hour = ((h % 24) + 24) % 24;
+    if (typeof clockHourHand !== 'undefined') {
+      const hh = hour % 12, mm = (hour % 1) * 60, ss = Math.floor(tAll) % 60;
+      clockHourHand.rotation.z = -(hh / 12) * Math.PI * 2;
+      clockMinHand.rotation.z = -(mm / 60) * Math.PI * 2;
+      clockSecHand.rotation.z = -(ss / 60) * Math.PI * 2;
+    }
     const S = ctx.getS(), m = S ? ctx.monthOf(S.day) : 0;
-    const k = Math.cos((m - 5.5) / 12 * Math.PI * 2); // -1 зимой … +1 летом
-    const rise = 6.6 - k * 2.0, set = 18.3 + k * 2.0, maxEl = 33 + k * 22;
+    const k = Math.cos((m - 5.5) / 12 * Math.PI * 2);
+    const rise = 7.0 - k * 1.8, set = 18.0 + k * 1.8, maxEl = 33 + k * 22;
     const dayF = (h - rise) / (set - rise);
     const el = dayF > 0 && dayF < 1 ? Math.sin(dayF * Math.PI) * maxEl : -8 - Math.min(Math.abs(h - rise), Math.abs(h - set)) * 3;
     const elR = el * Math.PI / 180, az = (dayF - .5) * Math.PI * .9;
     sun.position.set(Math.sin(az) * 60 * Math.cos(Math.max(elR, .05)) + P.x, Math.sin(Math.max(elR, .08)) * 60, -Math.cos(az) * 50 * .3 + 40 + P.z); sun.target.position.set(P.x, 0, P.z);
-    const dayAmt = clamp((el + 4) / 14, 0, 1), dusk = clamp(1 - Math.abs(el - 2) / 9, 0, 1);
+
+    const dayAmt = clamp((el + 3) / 12, 0, 1);
     nightK = 1 - dayAmt;
-    const top = cA.set(PAL.nightTop).lerp(cB.set(PAL.dayTop), dayAmt), topC = top.clone(); topC.lerp(cB.set(PAL.duskTop), dusk * .6);
-    const bot = cA.set(PAL.nightBot).lerp(cB.set(PAL.dayBot), dayAmt).clone(); bot.lerp(cB.set(PAL.duskBot), dusk * .7);
-    const over = weather.snow * .35; topC.lerp(cB.set('#8a9096'), over * dayAmt); bot.lerp(cB.set('#a8acae'), over * dayAmt);
-    skyMat.uniforms.top.value.copy(topC); skyMat.uniforms.bot.value.copy(bot); skyMat.uniforms.cloud.value = .5 + weather.snow * .5;
-    skyMat.uniforms.sunDir.value.copy(sun.position).sub(sun.target.position).normalize(); skyMat.uniforms.sunCol.value.set(el > -2 ? (dusk > .3 ? '#ff9a55' : '#fff1dc') : '#000000').multiplyScalar(1 - over);
-    scene.fog.color.copy(bot); scene.fog.near = lerp(8 + (1 - weather.snow) * 25, 1, Math.max(stormK, weather.fog * .7)); scene.fog.far = lerp(Q.draw * (1 - weather.snow * .45) * (1 - weather.fog * .65), 9, stormK);
-    sun.color.set(dusk > .3 ? '#ffa565' : '#fff1dc'); sun.intensity = el > 0 ? (2.6 * clamp(el / 15, 0, 1)) * (1 - over * .8) : 0;
-    hemi.intensity = .14 + dayAmt * (1.05 - over * .2); hemi.color.copy(topC).lerp(cA.set('#ffffff'), .5); hemi.groundColor.set(winter ? '#9aa0a6' : '#4a4636').multiplyScalar(.5 + dayAmt * .5);
+    // Раздельный расчёт рассвета (dawn: нежный лососево-розовый и утреннее золото) и заката (sunset: пламенно-алый, багровый и фиолетовый)
+    const isMorning = h < (rise + set) / 2;
+    const dawn = isMorning ? clamp(1.0 - Math.abs(h - rise) / 1.6, 0, 1) : 0;
+    const sunset = !isMorning ? clamp(1.0 - Math.abs(h - set) / 1.8, 0, 1) : 0;
+
+    const topC = cA.set(PAL.nightTop).lerp(cB.set(PAL.dayTop), dayAmt);
+    if (dawn > 0) topC.lerp(cB.set('#46627c'), dawn * .75);
+    if (sunset > 0) topC.lerp(cB.set('#3a2444'), sunset * .85);
+
+    const botC = cA.set(PAL.nightBot).lerp(cB.set(PAL.dayBot), dayAmt);
+    if (dawn > 0) botC.lerp(cB.set('#e89278'), dawn * .85);
+    if (sunset > 0) botC.lerp(cB.set('#d84824'), sunset * .95);
+
+    const over = weather.snow * .35;
+    topC.lerp(cB.set('#8a9096'), over * dayAmt); botC.lerp(cB.set('#a8acae'), over * dayAmt);
+    skyMat.uniforms.top.value.copy(topC); skyMat.uniforms.bot.value.copy(botC); skyMat.uniforms.cloud.value = .5 + weather.snow * .5;
+    skyMat.uniforms.sunDir.value.copy(sun.position).sub(sun.target.position).normalize();
+
+    const sunCol = dawn > 0 ? '#ffb470' : sunset > 0 ? '#ff4818' : '#fff1dc';
+    skyMat.uniforms.sunCol.value.set(el > -2 ? sunCol : '#000000').multiplyScalar(1 - over);
+    scene.fog.color.copy(botC);
+    scene.fog.near = lerp(8 + (1 - weather.snow) * 25, 1, Math.max(stormK, weather.fog * .7));
+    scene.fog.far = lerp(Q.draw * (1 - weather.snow * .45) * (1 - weather.fog * .65), 9, stormK);
+
+    sun.color.set(sunCol);
+    sun.intensity = el > 0 ? (2.6 * clamp(el / 15, 0, 1)) * (1 - over * .8) : 0;
+    hemi.intensity = .12 + dayAmt * (1.05 - over * .2);
+    hemi.color.copy(topC).lerp(cA.set('#ffffff'), .45);
+    hemi.groundColor.set(winter ? '#9aa0a6' : '#4a4636').multiplyScalar(.5 + dayAmt * .5);
     if (dayAmt < .2) { hemi.color.lerp(cA.set('#5a6a8a'), .6); }
     post.uniforms.exposure.value = 1.05 + nightK * .45;
     winU.night.value = nightK; winU.time.value = tAll; snowU.sparkle.value = 1 - nightK * .7;
     MAT.lampHead.emissiveIntensity = nightK > .35 ? 4 : 0;
     streetLights.forEach(l => l.intensity = nightK > .35 ? 55 * nightK : 0); poolMat.opacity = nightK > .35 ? nightK : 0;
-    sign.material.emissiveIntensity = nightK * .9; exS.material.emissiveIntensity = nightK * 1.2;
+    sign.material.emissiveIntensity = nightK * .9;
     neons.forEach(o => o.material.emissiveIntensity = nightK * .7);
     cars.forEach(c => { c.m.userData.hl.emissiveIntensity = nightK > .3 ? 3 : 0; });
-    bulbLight.intensity = 6 + nightK * 3; MAT.bulb.emissiveIntensity = 3;
+    bulbLight.intensity = 3.6 + nightK * 1.8; MAT.bulb.emissiveIntensity = 2.2;
     if (snowPts) snowPts.material.uniforms.light.value = .35 + dayAmt * .65;
   }
   function setSeason() {
-    const S = ctx.getS(); if (!S) return; const m = window.__larekMonth != null ? window.__larekMonth : ctx.monthOf(S.day); if (m === season) return; season = m; // __larekMonth — только для автотестов
+    const S = ctx.getS(); if (!S) return; if (S.day !== lastCalDay) { lastCalDay = S.day; drawCalendar(); } const m = window.__larekMonth != null ? window.__larekMonth : ctx.monthOf(S.day); if (m === season) return; season = m; // __larekMonth — только для автотестов
     winter = m >= 10 || m <= 2;
     winterGround.forEach(g => g.visible = winter); summerGround.forEach(g => g.visible = !winter);
     scene.traverse(o => { if (o.userData.winter) o.visible = winter; }); awnSnow.visible = roofSnow.visible = winter;
@@ -1644,63 +3210,559 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   function action() {
     const S = ctx.getS(); if (!S || fadeBusy || ctx.cardOpen() || P.stun > 0 || life.notepadState !== 'rest' || life.calling) return null;
+    if (P.lying) return (!blackout || blackout.phase === 'lying') ? { label: 'Подняться с земли', icon: '⬆', fn: standFromGround } : null;
     const hb = life.habit;
-    if (hb.busy === 'smoke' && hb.canFinish && !inKiosk() && nearestOf(TRASH_SMALL, 1.7)) return { label: 'Выбросить окурок в урну', icon: 'smoke', fn: () => hb.finishHabit('urn') };
+    if (hb.busy === 'smoke' && hb.canFinish && !inKiosk() && (nearestOf(TRASH_SMALL, 1.7) || nearestOf(TRASH_BIG, 2.4))) return { label: 'Выбросить окурок в мусорку', icon: 'smoke', fn: () => hb.finishHabit('urn') };
     if (hb.busy === 'smoke') return hb.canFinish ? (life.lookingAtAshtray() ? { label: 'Потушить в пепельнице', icon: 'smoke', fn: () => hb.finishHabit('ashtray') } : { label: 'Выбросить окурок', icon: 'smoke', fn: () => hb.finishHabit('throw') }) : null;
     if (hb.busy) return null;
     // мелкий мусор (бутылка) — в урну или бак; крупное (коробка, ружьё) — только в большой бак
+    // Помощники точного 1-к-1 взаимодействия с полками, витриной и оптовыми упаковками
+    const lookShelfGood = () => {
+      if (!inKiosk()) return null;
+      const h = lookingAt(foodGroup.children, 2.3);
+      if (!h || !h.object) return null;
+      let o = h.object;
+      while (o && !o.userData.shelfGoodId && o.parent && o.parent !== foodGroup) o = o.parent;
+      const gid = o && o.userData && o.userData.shelfGoodId;
+      let uid = o && o.userData && o.userData.shelfUid;
+      if (!gid) return null;
+      const root = (o.userData && o.userData.shelfRoot) || o;
+      const wp = new THREE.Vector3(); root.getWorldPosition(wp);
+      // Если предмет лежит в вертикальной стопке на полке — берём самый верхний предмет из этой стопки
+      const S = ctx.getS();
+      if (S && S.shelfPlacements && uid) {
+        const hitEntry = S.shelfPlacements.find(p => p.uid === uid);
+        if (hitEntry) {
+          const sameStack = S.shelfPlacements.filter(p => p.id === gid && Math.hypot(p.x - hitEntry.x, p.z - hitEntry.z) < .04 && Math.abs(p.y - hitEntry.y) < .28);
+          if (sameStack.length > 1) {
+            sameStack.sort((a, b) => b.y - a.y);
+            uid = sameStack[0].uid;
+            wp.set(sameStack[0].x, sameStack[0].y, sameStack[0].z);
+          }
+        }
+      }
+      return { id: gid, uid, pos: wp };
+    };
+    const lookStorageShelfHit = () => {
+      if (!inKiosk()) return null;
+      if (life.rayPlaceShelf) {
+        const rp = life.rayPlaceShelf(3.2);
+        if (rp) return rp;
+      }
+      const h = lookingAt([...shelfHitTargets, foodGroup], 3.2);
+      if (!h) return null;
+      let o = h.object, rowIdx = null;
+      while (o) {
+        if (o.userData && o.userData.shelfRowIdx != null) { rowIdx = o.userData.shelfRowIdx; break; }
+        o = o.parent;
+      }
+      return { point: h.point, rowIdx };
+    };
+    const lookShowcaseSlot = () => {
+      if (!inKiosk()) return null;
+      const h = lookingAt(shelfGroup.children, 2.4);
+      if (h && h.object) {
+        let o = h.object;
+        while (o && o.userData.showcaseSlot == null && o.parent && o.parent !== shelfGroup) o = o.parent;
+        if (o && o.userData.showcaseSlot != null) return o.userData.showcaseSlot;
+      }
+      return null;
+    };
+    const returnGoodToShelfStock = (gid, preferPos = null, addToShelfList = true, unitCost = null, preferRowIdx = null) => {
+      const S = ctx.getS(); if (!S || !gid) return;
+      if (addToShelfList) {
+        S.shelfPlacements = S.shelfPlacements || [];
+        const sp = findFreeShelfSpot(S.shelfPlacements, gid, preferPos, preferRowIdx);
+        S.shelfPlacements.push({
+          uid: 'sh_' + Math.random().toString(36).slice(2, 9),
+          id: gid, x: sp.x, y: sp.y, z: sp.z, ry: sp.ry
+        });
+      }
+      if (gid === 'samogon' || gid === 'kontra') {
+        S.hidden = S.hidden || {};
+        S.hidden[gid] = (S.hidden[gid] || 0) + 1;
+      } else if (ctx.addStock) {
+        ctx.addStock(gid, 1, unitCost || (S.prices && S.prices[gid]) || 20);
+      }
+      shelfSig = ''; updateShelves(); ctx.onStockChange && ctx.onStockChange();
+    };
+    const takeGoodFromShelfStock = (gid, shelfUid = null) => {
+      const S = ctx.getS(); if (!S || !gid) return false;
+      if (shelfUid && S.shelfPlacements) {
+        const idx = S.shelfPlacements.findIndex(p => p.uid === shelfUid);
+        if (idx >= 0) S.shelfPlacements.splice(idx, 1);
+      }
+      if (gid === 'samogon' || gid === 'kontra') {
+        if (!S.hidden || (S.hidden[gid] || 0) <= 0) return false;
+        S.hidden[gid]--;
+      } else {
+        if (!ctx.qOf || ctx.qOf(gid) <= 0) return false;
+        ctx.takeStock && ctx.takeStock(gid, 1);
+      }
+      shelfSig = ''; updateShelves(); ctx.onStockChange && ctx.onStockChange();
+      return true;
+    };
+    const openPack = (packItem) => {
+      if (!packItem || packItem.kind !== 'pack' || !packItem.data || packItem.data.opened) return;
+      packItem.data.opened = true;
+      life.rebuildPackItem && life.rebuildPackItem(packItem);
+      ctx.audio && ctx.audio.thud(.22);
+      ctx.toast && ctx.toast(`Упаковка открыта: ${packTitleOf(packItem.data)}. Доставайте по 1 шт.!`, 'good');
+      ctx.onStockChange && ctx.onStockChange();
+    };
+    const pullOneFromPack = (packItem) => {
+      if (!packItem || packItem.kind !== 'pack') return;
+      const d = packItem.data;
+      const gid = d.goodId || 'cig';
+      const gName = goodTitleOf(gid);
+      if (!d.opened) {
+        d.opened = true;
+      }
+      if ((d.count || 0) <= 0) {
+        life.removeItem(packItem);
+        return;
+      }
+      d.count--;
+      const S = ctx.getS();
+      if (S && gid === 'gum' && ctx.onGumUnpacked) ctx.onGumUnpacked(1);
+      const pos = packItem.obj.position.clone();
+      const it = life.addItem({
+        kind: 'good',
+        x: pos.x, y: pos.y + .06, z: pos.z, ry: P.yaw,
+        data: { goodId: gid, unitCost: d.unitCost }
+      });
+      if (d.count <= 0) {
+        life.removeItem(packItem);
+        ctx.toast && ctx.toast(`Достали последнюю штуку (${gName}) — упаковка пуста`);
+      } else {
+        life.rebuildPackItem && life.rebuildPackItem(packItem);
+        ctx.toast && ctx.toast(`Достали: ${gName} (в упаковке осталось ${d.count} шт.)`);
+      }
+      life.pick(it);
+      ctx.onStockChange && ctx.onStockChange();
+    };
+
     const binBig = !inKiosk() && nearestOf(TRASH_BIG, 2.4), binSmall = !inKiosk() && nearestOf(TRASH_SMALL, 1.7);
-    if (life.held) { const h = life.held, small = h.kind === 'bottle', bin = small ? (binSmall || binBig) : binBig;
-      if (bin) return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : small ? (bin === binSmall ? 'Выбросить в урну' : 'Выбросить в бак') : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(bin), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } }; }
+    if (life.held) {
+      const h = life.held, small = h.kind === 'bottle' || h.kind === 'good' || h.kind === 'pack', bin = small ? (binSmall || binBig) : binBig;
+      const openBx = h.kind !== 'box' && life.lookingAtOpenBox && life.lookingAtOpenBox(2.4);
+      if (openBx) return { label: 'Бросить в коробку', icon: 'box', fn: () => life.throwIntoBox(openBx), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } };
+      const putHeldCigInPocket = () => {
+        if (!h || h.kind !== 'good') return;
+        const gid = h.data && h.data.goodId;
+        if (gid !== 'cig' && gid !== 'kontra') return;
+        const addN = gid === 'kontra' ? 100 : 20;
+        S.cigs = (S.cigs || 0) + addN;
+        life.removeItem(h);
+        ctx.audio && ctx.audio.click(780, .4, 0, .05);
+        ctx.toast && ctx.toast(`Пачка убрана в карман (+${addN} сигарет). Теперь можно закурить!`, 'good');
+        ctx.onStockChange && ctx.onStockChange();
+        ctx.onCtl && ctx.onCtl();
+      };
+      const isHeldCig = h.kind === 'good' && ['cig', 'kontra'].includes(h.data && h.data.goodId);
+      const cigPocketAlt = isHeldCig ? { label: 'В карман (курить)', icon: 'smoke', fn: putHeldCigInPocket } : { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() };
+
+      if (h.kind === 'good' && inKiosk()) {
+        const gid = h.data && h.data.goodId;
+        const gName = goodTitleOf(gid);
+        const scSlot = lookShowcaseSlot();
+        if (scSlot != null && ctx.GOODS && ctx.GOODS[gid]) {
+          S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
+          const oldId = S.slots[scSlot];
+          const curCnt = oldId === gid ? (S.slotCounts[scSlot] || 1) : 0;
+          const lbl = oldId && oldId !== gid
+            ? `Заменить на витрине: ${goodShortOf(oldId)} → ${goodShortOf(gid)}`
+            : curCnt > 0
+            ? `Добавить на витрину: ${gName} (${curCnt + 1} шт.)`
+            : `Поставить на витрину: ${gName}`;
+          return {
+            label: lbl, icon: 'place',
+            fn: () => {
+              S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
+              if (oldId === gid) {
+                S.slotCounts[scSlot] = (S.slotCounts[scSlot] || 1) + 1;
+              } else {
+                for (let j = 0; j < S.slots.length; j++) {
+                  if (j !== scSlot && S.slots[j] === gid) {
+                    S.slotCounts[scSlot] = (S.slotCounts[j] || 1) + 1;
+                    S.slots[j] = null; S.slotCounts[j] = 0;
+                  }
+                }
+                if (S.slots[scSlot] !== gid) {
+                  S.slots[scSlot] = gid;
+                  S.slotCounts[scSlot] = 1;
+                }
+              }
+              returnGoodToShelfStock(gid, null, false, h.data && h.data.unitCost);
+              life.removeItem(h);
+              ctx.audio && ctx.audio.click(820, .45, 0, .05);
+              ctx.toast && ctx.toast(`${gName} поставлен на витрину (${ctx.fmt(ctx.sellPrice(gid))} ₽)`, 'good');
+              shelfSig = ''; updateShelves(); ctx.onStockChange && ctx.onStockChange();
+            },
+            alt: cigPocketAlt
+          };
+        }
+        const shHit = lookStorageShelfHit();
+        if (shHit) {
+          return {
+            label: `Поставить на полку: ${gName}`, icon: 'place',
+            fn: () => {
+              returnGoodToShelfStock(gid, shHit.point, true, h.data && h.data.unitCost, shHit.rowIdx);
+              life.removeItem(h);
+              ctx.audio && ctx.audio.click(720, .4, 0, .05);
+              ctx.toast && ctx.toast(`${gName} поставлен на полку`);
+            },
+            alt: cigPocketAlt
+          };
+        }
+      }
+      if (bin) return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : small ? (bin === binSmall ? 'Выбросить в урну' : 'Выбросить в бак') : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(bin), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } };
+      return { label: life.canPlace() ? 'Поставить' : 'Бросить', icon: life.canPlace() ? 'place' : 'drop', fn: () => { if (!life.placeHeld()) life.dropHeld(); }, alt: cigPocketAlt };
+    }
     if (!life.held && gunState() === 'carried' && binBig && !weapon.aiming) return { label: 'Выбросить ружьё в бак', icon: 'drop', fn: () => { const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); trashIt(binBig); } };
-    if (life.held) return { label: life.canPlace() ? 'Поставить' : 'Бросить', icon: life.canPlace() ? 'place' : 'drop', fn: () => { if (!life.placeHeld()) life.dropHeld(); }, alt: { label: 'Повернуть', icon: 'rotate', fn: () => life.rotateHeld() } };
+    if (!life.held && gunState() === 'carried' && weapon.drawn && !weapon.aiming) {
+      const openBx = life.lookingAtOpenBox && life.lookingAtOpenBox(2.2);
+      if (openBx) return { label: 'Бросить ружьё в коробку', icon: 'box', fn: () => { const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); life.throwIntoBox(openBx); } };
+    }
     if (gunState() === 'wall' && inKiosk() && lookingAtBox(rackBox, 2)) return { label: 'Снять ружьё со стены', icon: 'weapon', fn: () => { setGunState('carried'); ctx.audio.reloadClose(); weapon.draw(); } };
     if (gunState() === 'carried' && inKiosk() && lookingAtBox(rackBox, 2) && !weapon.aiming) return { label: 'Повесить ружьё на стену', icon: 'weapon', fn: () => { setGunState('wall'); ctx.audio.click(900, .5, 0, .06); } };
-    if (transport.riding) return transport.canAlight() ? { label: 'Выйти: ' + STOPS[transport.stopKey].name, icon: 'bus', fn: () => transport.alight() } : null;
-    if (transport.canBoard()) return { label: 'Сесть в автобус №7', icon: 'bus', fn: () => transport.board() };
+    if (transport.lookingAtDriver && transport.lookingAtDriver(2.8) && !weapon.drawn) return { label: 'Поговорить: Дядя Коля', icon: 'talk', fn: () => transport.talkToDriver() };
+    if (transport.seated) return { label: 'Встать с места', icon: '⬆', fn: () => transport.standFromSeat() };
+    { const busSeat = transport.lookedSeat && transport.lookedSeat(0, 0, 2.6);
+      if (busSeat) return { label: 'Сесть на место', icon: '🪑', fn: () => transport.sitOnSeat(busSeat) }; }
     const li = life.lookItem(2.2);
     if (li && li.kind === 'gun') return { label: 'Поднять ружьё', icon: 'weapon', fn: () => { life.removeItem(li); setGunState('carried'); weapon.draw(); } };
     if (li && li.kind === 'bottle') return { label: 'Поднять пустую бутылку', icon: 'drink', fn: () => life.pick(li) };
-    if (li && li.kind === 'box') return { label: li.data.opened ? 'Поднять пустую коробку' : 'Поднять коробку', icon: 'box', fn: () => life.pick(li),
-      alt: li.data.contents && inKiosk(li.obj.position.x, li.obj.position.z) ? { label: 'Распаковать', icon: 'box', fn: () => life.unpack(li) } : null };
+    if (li && li.kind === 'pack') {
+      const pTitle = packTitleOf(li.data);
+      const gid = li.data && li.data.goodId;
+      const gName = goodTitleOf(gid);
+      if (li.inBoxId) {
+        const parentBox = life.items.find(b => b.id === li.inBoxId && b.kind === 'box');
+        return {
+          label: `Достать из коробки: ${pTitle}`, icon: 'box',
+          fn: () => life.pick(li),
+          alt: parentBox ? { label: 'Взять коробку', icon: 'hand', fn: () => life.pick(parentBox) } : { label: 'Распаковать', icon: 'hand', fn: () => openPack(li) }
+        };
+      }
+      if (!li.data.opened) {
+        return {
+          label: `Распаковать: ${pTitle}`, icon: 'box',
+          fn: () => openPack(li),
+          alt: { label: 'Взять упаковку', icon: 'hand', fn: () => life.pick(li) }
+        };
+      }
+      return {
+        label: `Достать (1 шт.): ${gName} (ост. ${li.data.count})`, icon: 'hand',
+        fn: () => pullOneFromPack(li),
+        alt: { label: 'Взять упаковку', icon: 'box', fn: () => life.pick(li) }
+      };
+    }
+    if (li && li.kind === 'good') {
+      const gid = li.data && li.data.goodId;
+      const gName = goodTitleOf(gid);
+      return {
+        label: `Взять: ${gName}`, icon: 'hand',
+        fn: () => life.pick(li),
+        alt: inKiosk() ? { label: 'На полку', icon: 'place', fn: () => { returnGoodToShelfStock(gid, null, true, li.data && li.data.unitCost); life.removeItem(li); ctx.toast && ctx.toast(`${gName} убран на полку`); } } : null
+      };
+    }
+    if (li && li.kind === 'box') {
+      if (li.data.opened) {
+        const innerPack = life.items.find(ch => ch.inBoxId === li.id && ch.kind === 'pack');
+        if (innerPack) {
+          return {
+            label: `Достать: ${packTitleOf(innerPack.data)}`, icon: 'box',
+            fn: () => life.pick(innerPack),
+            alt: { label: 'Взять коробку', icon: 'hand', fn: () => life.pick(li) }
+          };
+        }
+      }
+      if (!li.data.opened && li.data.contents) {
+        return {
+          label: 'Распаковать коробку', icon: 'box', fn: () => life.unpack(li),
+          alt: { label: 'Поднять коробку', icon: 'hand', fn: () => life.pick(li) }
+        };
+      }
+      return {
+        label: li.data.opened ? 'Поднять пустую коробку' : 'Поднять коробку', icon: 'box', fn: () => life.pick(li),
+        alt: null
+      };
+    }
+    if (inKiosk() && !weapon.drawn) {
+      const scSlot = lookShowcaseSlot();
+      if (scSlot != null && S.slots[scSlot]) {
+        const gid = S.slots[scSlot];
+        const gName = goodTitleOf(gid);
+        const [sx, sy] = SLOT_POS[scSlot];
+        return {
+          label: `Взять с витрины: ${gName}`, icon: 'hand',
+          fn: () => {
+            S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
+            S.slotCounts[scSlot] = Math.max(0, (S.slotCounts[scSlot] || 1) - 1);
+            if (S.slotCounts[scSlot] <= 0) S.slots[scSlot] = null;
+            if (takeGoodFromShelfStock(gid, null)) {
+              const it = life.addItem({ kind: 'good', x: sx, y: sy + .02, z: KD - .14, ry: P.yaw, data: { goodId: gid } });
+              life.pick(it);
+            } else {
+              shelfSig = ''; updateShelves(); ctx.onStockChange && ctx.onStockChange();
+            }
+          },
+          alt: {
+            label: 'Убрать на полку', icon: 'place',
+            fn: () => {
+              S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
+              const moved = Math.max(1, S.slotCounts[scSlot] || 1);
+              S.slots[scSlot] = null; S.slotCounts[scSlot] = 0;
+              S.shelfPlacements = S.shelfPlacements || [];
+              for (let k = 0; k < moved; k++) {
+                const sp = findFreeShelfSpot(S.shelfPlacements, gid, null);
+                S.shelfPlacements.push({ uid: 'sh_' + Math.random().toString(36).slice(2, 9), id: gid, x: sp.x, y: sp.y, z: sp.z, ry: sp.ry });
+              }
+              shelfSig = ''; updateShelves(); ctx.onStockChange && ctx.onStockChange();
+              ctx.toast && ctx.toast(`${gName} убран с витрины на полку`);
+            }
+          }
+        };
+      }
+      const shGood = lookShelfGood();
+      if (shGood) {
+        const gid = shGood.id;
+        const gName = goodTitleOf(gid);
+        return {
+          label: `Взять с полки: ${gName}`, icon: 'hand',
+          fn: () => {
+            if (takeGoodFromShelfStock(gid, shGood.uid)) {
+              const it = life.addItem({ kind: 'good', x: shGood.pos.x, y: shGood.pos.y, z: shGood.pos.z, ry: P.yaw, data: { goodId: gid } });
+              life.pick(it);
+            }
+          }
+        };
+      }
+    }
     if (inKiosk() && life.lookingAtPhone()) return { label: 'Позвонить', icon: 'phone', fn: () => ctx.phoneCall() };
     if (inKiosk() && life.lookingAtNotepad()) return { label: 'Открыть блокнот заказов', icon: 'notepad', fn: () => ctx.openOrders() };
     if (lookingAt([doorMesh], 2.4)) return { label: doorTarget > .5 ? 'Закрыть дверь' : (inKiosk() ? 'Открыть дверь' : 'Открыть дверь'), icon: '🚪', fn: toggleDoor };
     if (inKiosk()) {
+      if (lookingAtBox(clockBox, 2.2)) {
+        const hh = String(Math.floor(hour) % 24).padStart(2, '0'), mm = String(Math.floor((hour % 1) * 60)).padStart(2, '0');
+        return { label: `Часы: ${hh}:${mm}`, icon: 'interact', fn: () => {
+          const s = ctx.getS(), d = s && s.deliveries && s.deliveries.find(x => x.state === 'way');
+          const dLeft = d ? ` Доставка приедет через ~${Math.max(1, Math.round((d.etaHours ?? (d.eta / 90)) * 60))} мин.` : '';
+          ctx.toast && ctx.toast(`Настенные часы показывают ${hh}:${mm}.${dLeft}`);
+        } };
+      }
+      if (lookingAtBox(calBox, 2.2)) {
+        const info = calInfoOf(ctx.getS());
+        return { label: `Календарь: ${info.curDate} ${info.mGen.toLowerCase()} ${info.yr}`, icon: 'interact', fn: () => {
+          ctx.toast && ctx.toast(`На календаре: ${info.curDate} ${info.mGen.toLowerCase()} ${info.yr} г. (День ${info.gameDayNum})`);
+        } };
+      }
       if (radioObj && lookingAtBox(radioBox, 1.8)) return { label: ctx.audio.radioOn ? 'Выключить радио' : 'Включить радио', icon: 'radio', fn: () => { ctx.audio.radioToggle(); ctx.onCtl(); } };
-      if (P.locked) return null;
-      if (!P.seated && Math.hypot(P.x - STOOL.x, P.z - STOOL.z) < .9) return { label: S.phase === 'night' ? 'Сесть и уснуть до утра' : 'Сесть за прилавок', icon: '🪑', fn: () => { if (S.phase === 'night') ctx.sleep(); else { sit(); P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; } } };
-      if (P.seated) return { label: 'Встать', icon: '⬆', fn: stand };
+      if (!P.seated && Math.hypot(P.x - STOOL.x, P.z - STOOL.z) < .9) return { label: S.phase === 'night' ? 'Сесть и уснуть до утра' : 'Сесть за прилавок', icon: '🪑', fn: () => { if (S.phase === 'night') ctx.sleep(); else sit(); } };
+      if (P.seated) return { label: S.phase === 'night' ? 'Уснуть до утра' : 'Встать из-за прилавка', icon: '⬆', fn: () => { if (S.phase === 'night') ctx.sleep(); else stand(); } };
       return null;
+    }
+    if (zavodNpc && !zavodNpc.dead && !weapon.drawn) {
+      const dG = Math.hypot(P.x - zavodNpc.h.obj.position.x, P.z - zavodNpc.h.obj.position.z);
+      if (dG < 3.2) return { label: 'Поговорить: Кладовщик Геннадий', icon: 'talk', fn: () => zavodNpc.talk() };
     }
     const tp = aimedPerson(2.6);
     if (tp && tp.role === 'ped' && tp.state !== 'scared' && !weapon.drawn) return { label: 'Поговорить', icon: 'talk', fn: () => talkTo(tp) };
     if (tp && tp.talk && !weapon.drawn) return { label: 'Поговорить: ' + tp.title, icon: 'talk', fn: () => tp.talk() };
-    if (nearBooth()) return { label: 'Обменник', icon: 'money', fn: () => ctx.openSheet('exch') };
     const ext = env2.extraAction && env2.extraAction(); if (ext) return ext;
     return null;
   }
   const env2 = { extraAction: () => env2Extra && env2Extra() };
   function talkTo(p) {
-    p.state = 'talking'; p.timer = 6; p.h.setExpr('talk'); p.path = [];
-    const lines = lineFor[p.kind] || lineFor.worker; const L = p.h.L;
-    const name = { babka: 'Бабушка', worker: 'Мужик', youth: 'Парень', school: 'Школьник', gopnik: 'Пацан', neighbor: 'Соседка', chelnok: 'Челнок' }[p.kind] || 'Прохожий';
-    ctx.dialog({ name, text: pick(lines), options: [
-      { label: 'Как жизнь?', fn: () => ctx.dialog({ name, text: pick(['Да как… потихоньку. Цены вон опять подняли.', 'Живём, хлеб жуём.', 'Зарплату третий месяц не дают.', 'Нормально, жить можно.']), options: [{ label: 'Ну, держись.', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }] }) },
-      { label: 'Заходи в ларёк, у меня дёшево!', fn: () => { ctx.rep('folk', .5); ctx.dialog({ name, text: pick(['Зайду, может.', 'А что есть-то?', 'Посмотрим.']), options: [{ label: 'Жду!', fn: () => ctx.closeDialog() }] }); } },
-      { label: 'Бывай.', fn: () => ctx.closeDialog() },
-    ] });
+    p.state = 'talking'; p.timer = 12; p.h.setExpr('talk'); p.path = [];
+    const L = p.h.L, k = p.kind;
+    if (k === 'dedushka') {
+      ctx.dialog({
+        name: 'Дедушка Егор (ветеран труда)',
+        text: 'Здравствуй, внучок. Да вот, в аптеку ковыляю, суставы к морозу разломило... Как дядя Миша-то, передаёт весточки?',
+        options: [
+          { label: 'Как раньше на заводе работали, дедушка?', fn: () => ctx.dialog({
+            name: 'Дедушка Егор',
+            text: 'Эх, милок, гремел наш Краснозаводский завод на всю страну! В три смены станки гудели, по пять тысяч комбайнов за год собирали. Орден Трудового Красного Знамени коллективу лично вручали! А нынче… эх, бартер да задержки.',
+            options: [
+              { label: 'А в ларьке у нас бывали в те годы?', fn: () => ctx.dialog({
+                name: 'Дедушка Егор',
+                text: 'Бывал, как не бывать! В 70-е тут квас из бочки продавали по три копейки кружка, да мороженое пломбир за девятнадцать копеек. Ты честно торгуй, людей не обвешивай, и всё у тебя сладится.',
+                options: [{ label: 'Спасибо за совет, дедушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
+              }) },
+              { label: 'Здоровья вам, дедушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }
+            ]
+          }) },
+          { label: 'Заходите в ларёк погреться!', fn: () => {
+            ctx.rep('folk', 1);
+            ctx.dialog({ name: 'Дедушка Егор', text: 'Спасибо за доброе слово, внук! Чайку бы грузинского заварить да сухариков купить, загляну непременно.', options: [{ label: 'Ждём вас!', fn: () => ctx.closeDialog() }] });
+          } },
+          { label: 'Доброго здоровья!', fn: () => ctx.closeDialog() }
+        ]
+      });
+      return;
+    }
+    if (k === 'babka') {
+      ctx.dialog({
+        name: 'Бабушка Клавдия',
+        text: 'Ой, касатик, здравствуй. За хлебушком свежим ходила, скользко на тропинке-то… Ты шапку надень, уши продует!',
+        options: [
+          { label: 'Как здоровье, бабушка?', fn: () => ctx.dialog({
+            name: 'Бабушка Клавдия',
+            text: 'Да потихоньку, милок. Лишь бы пенсию не задерживали да тепло в батареях было. Во дворе бабы говорят, ваучеры эти выдали, а что с ними делать — Бог весть!',
+            options: [
+              { label: 'Что во дворе слышно?', fn: () => ctx.dialog({
+                name: 'Бабушка Клавдия',
+                text: 'Милиция по ночам патрулирует, гопников разгоняет. А ты у ларька свет включённым держи — при свете хулиганы не сунутся.',
+                options: [{ label: 'Понял, спасибо!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
+              }) },
+              { label: 'Берегите себя, бабушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }
+            ]
+          }) },
+          { label: 'В ларьке хлеб свежий, заходите!', fn: () => {
+            ctx.rep('folk', 1);
+            ctx.dialog({ name: 'Бабушка Клавдия', text: 'Ой, дай Бог тебе здоровья, милок! Сейчас зайду, буханку «Дарницкого» возьму.', options: [{ label: 'Всегда рады!', fn: () => ctx.closeDialog() }] });
+          } },
+          { label: 'Всего доброго!', fn: () => ctx.closeDialog() }
+        ]
+      });
+      return;
+    }
+    if (k === 'school') {
+      ctx.dialog({
+        name: 'Школьник Димка',
+        text: 'Здрасьте! А у вас новые жвачки «Турбина» с машинами завезли? Мы с пацанами за гаражами на вкладыши рубимся!',
+        options: [
+          { label: 'Как в школе дела, Димка?', fn: () => ctx.dialog({
+            name: 'Школьник Димка',
+            text: 'Да историчка двойку влепила ни за что! Зато на большой перемене мы шестиклассников снежками закидали, во весело было!',
+            options: [
+              { label: 'Много вкладышей собрал?', fn: () => ctx.dialog({
+                name: 'Школьник Димка',
+                text: 'У меня уже «Феррари F40» есть и «Ламборджини»! Если у вас блок жвачек взять, там точно редкие попадутся?',
+                options: [{ label: 'Конечно! Заходи в ларёк.', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
+              }) },
+              { label: 'Учись давай!', fn: () => ctx.closeDialog() }
+            ]
+          }) },
+          { label: 'Беги на уроки, опоздаешь!', fn: () => ctx.dialog({ name: 'Школьник Димка', text: 'Да вторая смена только в два часа! Мы ещё на карусели покатаемся.', options: [{ label: 'Ну давай!', fn: () => ctx.closeDialog() }] }) }
+        ]
+      });
+      return;
+    }
+    if (k === 'worker') {
+      ctx.dialog({
+        name: 'Рабочий завода',
+        text: 'Здорово, хозяин. Со смены иду, в мехосборочном семь часов у фрезера отпахал. Холодрыга на улице.',
+        options: [
+          { label: 'Как там на заводе дела?', fn: () => ctx.dialog({
+            name: 'Рабочий',
+            text: 'Да гудит завод! Заказы есть, но зарплату опять бартером выдали — тушёнкой да ящиком пива. Ты у Гены на складе затаривался? Там для своих скидку дают.',
+            options: [
+              { label: 'Автобус №7 нормально ходит?', fn: () => ctx.dialog({
+                name: 'Рабочий',
+                text: 'Дядя Коля чётко по кольцу крутит, в обе стороны остановки есть. Печка в салоне шпарит — согрелся хоть.',
+                options: [{ label: 'Это отлично.', fn: () => ctx.closeDialog() }]
+              }) },
+              { label: 'Держись, земляк.', fn: () => ctx.closeDialog() }
+            ]
+          }) },
+          { label: 'Заходи за сигаретами и пивом!', fn: () => {
+            ctx.dialog({ name: 'Рабочий', text: 'О, пачку «Космонавта» с фильтром точно прихвачу. Бывай!', options: [{ label: 'Удачи!', fn: () => ctx.closeDialog() }] });
+          } },
+          { label: 'Счастливо.', fn: () => ctx.closeDialog() }
+        ]
+      });
+      return;
+    }
+    if (k === 'police') {
+      ctx.dialog({
+        name: 'Сержант Кузьмин (милиция)',
+        text: 'Здравия желаю. Патрулируем район. Как обстановка у ларька, подозрительных лиц не замечено?',
+        options: [
+          { label: 'Всё спокойно, товарищ сержант.', fn: () => ctx.dialog({
+            name: 'Сержант Кузьмин',
+            text: 'Вот и порядок. По вечерам у остановки карманники орудуют, да шпана за гаражами шумит. Если что — свисток сразу, наряд рядом.',
+            options: [{ label: 'Так точно!', fn: () => ctx.closeDialog() }]
+          }) },
+          { label: 'Служба как идёт?', fn: () => ctx.dialog({
+            name: 'Сержант Кузьмин',
+            text: 'Служим закону! На морозе только ноги стынут. Чайку бы горячего выпить.',
+            options: [{ label: 'Спокойного дежурства!', fn: () => ctx.closeDialog() }]
+          }) },
+          { label: 'Честь имею.', fn: () => ctx.closeDialog() }
+        ]
+      });
+      return;
+    }
+    // Прочие прохожие
+    ctx.dialog({
+      name: 'Прохожий',
+      text: pick(['Здорово!', 'Холодно нынче, мороз крепчает.', 'Автобус седьмой недавно прошёл?', 'Привет, коммерсант!']),
+      options: [
+        { label: 'Как дела?', fn: () => ctx.dialog({ name: 'Прохожий', text: 'Да нормально, в магазин бегу. Бывай!', options: [{ label: 'Удачи!', fn: () => ctx.closeDialog() }] }) },
+        { label: 'Заходи в ларёк!', fn: () => { ctx.rep('folk', .5); ctx.dialog({ name: 'Прохожий', text: 'Загляну, если мелочь останется!', options: [{ label: 'Ждём!', fn: () => ctx.closeDialog() }] }); } },
+        { label: 'Бывай.', fn: () => ctx.closeDialog() }
+      ]
+    });
   }
 
   // ---------- кадр ----------
   let tAll = 0, stepPh = 0, actT = 0, lastActLabel = '', curAct = null;
-  const surfaceAt = () => inKiosk() ? 'wood' : (winter && !(P.z > 6.3 && P.z < 14.1) ? 'snow' : 'hard');
+  const PATH_TRACKS = [[-6, 1.1, -10, -28], [4, 1.1, 2, -30], [14, 1.1, 18, -26], [-30, 18.6, -30, 24], [28, 18.6, 30, 24], [-14, 18.6, -18, 24], [-40, 1.1, -52, -10], [40, 1.1, 58, -6]];
+  const distToSeg = (px, pz, x1, z1, x2, z2) => {
+    const dx = x2 - x1, dz = z2 - z1, l2 = dx * dx + dz * dz || 1;
+    const t = clamp(((px - x1) * dx + (pz - z1) * dz) / l2, 0, 1);
+    return Math.hypot(px - (x1 + dx * t), pz - (z1 + dz * t));
+  };
+  const surfaceAt = () => {
+    if (transport.onBoard || (transport.floorHeightAt && transport.floorHeightAt(P.x, P.z) > .05)) return 'bus';
+    if (inKiosk()) return 'wood';
+    // Если игрок идёт по коробке
+    if (life.items && life.items.some(it => it.kind === 'box' && it.state === 'rest' && Math.abs(P.x - it.obj.position.x) < it.half.x + .20 && Math.abs(P.z - it.obj.position.z) < it.half.z + .20)) return 'box';
+    // Деревянная горка на детской площадке
+    if (Math.hypot(P.x - (PG.x + 4), P.z - (PG.z - .8)) < 1.3) return 'wood';
+    // Стальной погрузочный пандус у цеха на заводе и чугунные решётки ливнёвки
+    if (P.x >= -113.0 && P.x <= -104.0 && P.z >= -17.0 && P.z <= -13.5) return 'metal';
+    if (drainSpots.some(([dx, dz]) => Math.abs(P.x - dx) < .55 && Math.abs(P.z - dz) < .35)) return 'metal';
+    // Асфальтированная предзаводская площадь и двор «Краснозаводского завода»
+    if (P.x >= -139.0 && P.x <= -81.0 && P.z >= -37.5 && P.z <= 1.5) return weather.wet > .15 ? 'wet' : 'asphalt';
+    if (Math.abs(P.x - 4.8) < 1.1 && Math.abs(P.z - 17.55) < 1.0) return 'path';
+    // Проезжая часть (асфальт)
+    if (P.z >= 6.25 && P.z <= 14.15) return weather.wet > .15 ? 'wet' : 'asphalt';
+    // Южный и северный тротуары (расчищенная тропинка вдоль улицы), площадка у ларька и остановки
+    const inGap = (P.x > -6.2 && P.x < 2.2) || (P.x > 2.8 && P.x < 13.8);
+    if ((P.z >= 1.30 && P.z <= 5.45) || (P.z >= 15.05 && P.z <= 18.40) || (inGap && P.z >= 1.30 && P.z <= 15.05)) {
+      return weather.wet > .15 ? 'wet' : 'path';
+    }
+    if (Math.abs(P.x) < 2.4 && P.z >= -2.5 && P.z <= 1.5) return weather.wet > .15 ? 'wet' : 'path';
+    // Протоптанные тропинки во дворах
+    if (PATH_TRACKS.some(([x1, z1, x2, z2]) => distToSeg(P.x, P.z, x1, z1, x2, z2) < .95)) {
+      return weather.wet > .15 ? 'wet' : 'path';
+    }
+    return winter ? 'snow' : (weather.wet > .15 ? 'wet' : 'path');
+  };
   function frame(dt) {
     tAll += dt;
     const S = ctx.getS(), T = ctx.getT();
-    // часы
+    // часы (спокойный темп времени: 1 игровой час = 90 с реального времени)
+    const dHour = dt / 90;
+    if (S) updateShelves();
     if (!S) setClock(18.2);
-    else { const ph = S.phase; if (ph === 'trade' && T) setClock(9 + 12 * clamp(T.t / T.len, 0, 1)); else if (ph === 'evening') setClock(21); else if (ph === 'night') setClock(Math.min(29, hour + dt / 30 + (hour < 21 ? 21 - hour : 0))); else setClock(Math.min(9, Math.max(8, hour < 7.9 || hour > 9.5 ? 8 : hour + dt / 60))); }
+    else {
+      const ph = S.phase;
+      if (ph === 'trade' && T) {
+        setClock(9 + 12 * clamp(T.t / T.len, 0, 1) + (S.tradeHourOff || 0));
+      } else {
+        if (S._clockPhase !== ph) {
+          S._clockPhase = ph;
+          if (ph === 'morning' && (hour < 7.5 || hour > 11)) hour = 8.0;
+          else if (ph === 'evening' && (hour < 20.5 || hour > 23.5)) hour = 21.0;
+        }
+        setClock(hour + dHour);
+      }
+    }
     if (window.__larekHour != null) setClock(window.__larekHour); // только для автотестов
     setSeason();
     // погода
@@ -1716,6 +3778,15 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     weather.gust *= Math.pow(.6, dt); weather.ang += Math.sin(tAll * .05) * dt * .05;
     // буран у границы карты
     { const ed = Math.min(P.x - BOUND.x1, BOUND.x2 - P.x, P.z - BOUND.z1); stormK = clamp(1 - ed / 14, 0, 1); }
+    // Сначала обновляем движение машин и автобуса в текущем кадре, чтобы камера игрока в автобусе двигалась абсолютно плавно без дрожания
+    const _t0 = performance.now();
+    carsTick(dt);
+    transport.tick(dt, [...(transport.onBoard ? [] : [{ x: P.x, z: P.z }]), ...cars.map(c => ({ x: c.m.position.x, z: c.m.position.z })), ...people.filter(p => !p.inBus).map(p => ({ x: p.h.obj.position.x, z: p.h.obj.position.z }))]);
+    { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca;
+      busCol.x1 = busCol.x2 = 999; // столкновения игрока со стенками и дверями автобуса обрабатываются точно в transport.playerBlocked
+      if (!transport.onBoard && o.v > 1.5 && P.stun <= 0 && Math.abs(P.x - o.x) < hx + .3 && Math.abs(P.z - o.z) < hz + .3) hitByCar({ v: o.v }, Math.cos(-o.heading), Math.sin(-o.heading)); }
+    const _t1 = performance.now();
+
     // игрок
     P.stun = Math.max(0, P.stun - dt);
     const moveOK = canMove();
@@ -1723,10 +3794,10 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (moveOK) { ix = input.mx; iz = input.my; const k = input.keys; if (k.KeyW || k.ArrowUp) iz -= 1; if (k.KeyS || k.ArrowDown) iz += 1; if (k.KeyA || k.ArrowLeft) ix -= 1; if (k.KeyD || k.ArrowRight) ix += 1; const l = Math.hypot(ix, iz); if (l > 1) { ix /= l; iz /= l; } }
     const inside = inKiosk();
     if (!inside && S && !S.flags.wentOut) { S.flags.wentOut = true; ctx.onCtl(); }
-    const dr = Math.min(1.4, life.fx.drunk);
-    if (dr > .05 && !P.seated) { ix += Math.sin(tAll * .73) * dr * .35 + Math.sin(tAll * 1.9) * dr * .12; iz += Math.cos(tAll * .51) * dr * .15; P.yaw += Math.sin(tAll * .37) * dr * .12 * dt; }
-    const run = P.sprint && !P.crouch && iz < -.3 && !weapon.aiming && life.heavy() < 8;
-    const maxSp = (inside ? (run ? 1.7 : 1.15) : (run ? 4.3 : 1.65)) * (P.crouch ? .5 : 1) * (weapon.aiming ? .55 : 1) * (1 - Math.min(.35, life.heavy() * .025)) * (1 - dr * .15);
+    const dr = Math.min(1.65, life.fx.drunk);
+    if (dr > .04 && !P.seated) { ix += Math.sin(tAll * .73) * dr * .38 + Math.sin(tAll * 1.9) * dr * .14; iz += Math.cos(tAll * .51) * dr * .16; P.yaw += Math.sin(tAll * .37) * dr * .14 * dt; }
+    const run = P.sprint && !P.crouch && !transport.onBoard && iz < -.3 && !weapon.aiming && life.heavy() < 8;
+    const maxSp = ((inside || transport.onBoard) ? (run ? 1.7 : 1.15) : (run ? 4.3 : 1.65)) * (P.crouch ? .5 : 1) * (weapon.aiming ? .55 : 1) * (1 - Math.min(.35, life.heavy() * .025)) * (1 - dr * .15);
     const fx = -Math.sin(P.yaw), fz = -Math.cos(P.yaw), rx = Math.cos(P.yaw), rz = -Math.sin(P.yaw);
     const tvx = (rx * ix - fx * iz) * maxSp, tvz = (rz * ix - fz * iz) * maxSp;
     const acc = (Math.hypot(tvx, tvz) > Math.hypot(P.vx, P.vz) ? 9 : 11) * dt * (1 - dr * .45);
@@ -1736,12 +3807,17 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       doorCol.x1 = doorOpen < .3 ? .4 : 1.17; doorCol.x2 = doorOpen < .3 ? 1.2 : 1.25; doorCol.z1 = doorOpen < .3 ? -KD - .05 : -KD - .8 * Math.min(1, doorOpen); doorCol.z2 = -KD + (doorOpen < .3 ? .05 : 0);
       if (doorOpen > .3 && doorOpen < .75) { doorCol.x1 = doorCol.x2 = 999; }
       const ox = P.x, oz = P.z;
-      const stuckIn = hitVeh(P.x, P.z); // машина подъехала вплотную/наехала — даём выйти, не запирая игрока
+      const stuckIn = hitVeh(P.x, P.z);
       const nx = P.x + P.vx * dt; if (stuckIn || !hitAny(nx, P.z)) P.x = nx; else P.vx = 0;
       const nz = P.z + P.vz * dt; if (stuckIn || !hitAny(P.x, nz)) P.z = nz; else P.vz = 0;
-      P.x = clamp(P.x, BOUND.x1, BOUND.x2); P.z = clamp(P.z, BOUND.z1, BOUND.z2); // невидимая граница внутри бурана
+      P.x = clamp(P.x, BOUND.x1, BOUND.x2); P.z = clamp(P.z, BOUND.z1, BOUND.z2);
       moved = Math.hypot(P.x - ox, P.z - oz);
-    } else { P.vx = P.vz = 0; P.x += (STOOL.x - P.x) * Math.min(1, dt * 6); P.z += (STOOL.z - P.z) * Math.min(1, dt * 6); }
+      if (transport.syncPlayerBoarding) transport.syncPlayerBoarding();
+    } else if (!transport.onBoard) {
+      P.vx = P.vz = 0; P.x += (STOOL.x - P.x) * Math.min(1, dt * 6); P.z += (STOOL.z - P.z) * Math.min(1, dt * 6);
+    } else {
+      P.vx = P.vz = 0;
+    }
     // шаги — по фазе шага
     const spd = moved / Math.max(dt, 1e-4);
     if (spd > .25) { const stride = run ? 1.25 : P.crouch ? .55 : .75; const prev = stepPh; stepPh += moved / stride; if (Math.floor(prev) !== Math.floor(stepPh)) ctx.audio && ctx.audio.step(surfaceAt(), spd, inside); }
@@ -1749,27 +3825,79 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const bobAmt = ctx.settings().bob ?? 1;
     const bobY = !P.seated ? Math.sin(stepPh * Math.PI) ** 2 * .04 * Math.min(1, spd / 1.6) * bobAmt * (run ? 1.6 : 1) : 0;
     const bobX = !P.seated ? Math.sin(stepPh * Math.PI) * .02 * Math.min(1, spd / 1.6) * bobAmt : 0;
-    const targetH = P.seated ? 1.18 : P.crouch ? 1.05 : 1.66; P.h += (targetH - P.h) * Math.min(1, dt * 6);
-    P.shake = Math.max(0, P.shake - dt * 1.5); P.roll += ((P.stun > 0 ? Math.sin(tAll * 3) * .25 * (P.stun / 2.5) : 0) - P.roll) * Math.min(1, dt * 5);
+    let blinkVal = 0, blinkBlur = 0;
+    if (blackout) {
+      blackout.t += dt;
+      const bt = blackout.t;
+      if (blackout.phase === 'fall') {
+        // Плавное засыпание с тяжёлым морганием глазами перед отключкой (0..2.1 с)
+        if (bt < .55) blinkVal = Math.sin((bt / .55) * Math.PI) * .78;
+        else if (bt < .85) blinkVal = .22 + (1 - Math.cos(((bt - .55) / .30) * Math.PI)) * .34;
+        else if (bt < 1.25) blinkVal = .90 - Math.sin(((bt - .85) / .40) * Math.PI) * .38;
+        else if (bt < 1.75) { const u = (bt - 1.25) / .50; blinkVal = .52 + u * u * (3 - 2 * u) * .48; }
+        else blinkVal = 1.0;
+        blinkBlur = clamp(bt * .45, 0, .75);
+
+        if (bt > .65 && !blackout.thudded) { blackout.thudded = true; ctx.audio && ctx.audio.thud(1.0); }
+        if (bt >= 2.10) {
+          const sp = pickBlackoutSpot();
+          const sleepH = blackout.sleepHours || R(4.0, 7.0);
+          if (transport.riding) transport.alight();
+          if (inKiosk()) { doorTarget = 1; doorOpen = 1; }
+          P.x = sp.x; P.z = sp.z; P.vx = P.vz = 0;
+          P.seated = false; P.crouch = false; P.lying = true;
+          P.h = .20; P.roll = P.lieSide * 1.18; P.pitch = R(.12, .26); P.yaw = R(0, Math.PI * 2);
+          life.fx.drunkTarget = .35; life.fx.drunk = .45;
+          // Продвигаем игровое время на 4–7 часов вперёд (вместе с доставками)
+          setClock(hour + sleepH);
+          if (S && S.deliveries) {
+            for (const d of S.deliveries) if (d.state === 'way') {
+              if (d.etaHours != null) d.etaHours -= sleepH;
+              else d.eta -= sleepH * 90;
+            }
+          }
+          blackout.phase = 'lying'; blackout.t = 0;
+          blinkVal = 1.0; blinkBlur = .75;
+          ctx.onBlackout && ctx.onBlackout(sp.name, sleepH);
+          ctx.onCtl && ctx.onCtl();
+        }
+      } else if (blackout.phase === 'lying') {
+        // Плавное пробуждение лёжа на земле: глаза несколько раз медленно моргают и фокусируются (0..3.1 с)
+        if (bt < .35) blinkVal = 1.0;
+        else if (bt < .85) blinkVal = 1.0 - Math.sin(((bt - .35) / .50) * Math.PI) * .42;
+        else if (bt < 1.10) blinkVal = .96;
+        else if (bt < 1.85) blinkVal = .96 - Math.sin(((bt - 1.10) / .75) * Math.PI) * .72;
+        else if (bt < 2.05) blinkVal = .84;
+        else if (bt < 2.65) { const u = (bt - 2.05) / .60; blinkVal = .84 * (1 - u * u * (3 - 2 * u)); }
+        else if (bt < 3.05) blinkVal = Math.sin(((bt - 2.65) / .40) * Math.PI) * .52;
+        else blinkVal = 0;
+        blinkBlur = clamp((1 - bt / 3.1) * .68, 0, .68);
+
+        const wantUp = bt > 1.8 && (Math.hypot(input.mx, input.my) > .25 || input.keys.KeyW || input.keys.KeyS || input.keys.KeyA || input.keys.KeyD || input.keys.Space);
+        if (wantUp || bt > 4.6) standFromGround();
+      }
+    }
+    post.uniforms.blink.value += (blinkVal - post.uniforms.blink.value) * Math.min(1, dt * 18);
+    const busFloor = transport.floorHeightAt ? transport.floorHeightAt(P.x, P.z) : 0;
+    const targetH = P.lying ? .20 : transport.seated ? P.h : P.seated ? 1.18 : (P.crouch ? 1.05 : 1.66) + busFloor;
+    if (!transport.seated) P.h += (targetH - P.h) * Math.min(1, dt * (P.lying ? 4.2 : 6.5));
+    P.shake = Math.max(0, P.shake - dt * 1.5);
+    const targetRoll = P.lying ? P.lieSide * 1.18 + Math.sin(tAll * 1.6) * .04 : (P.stun > 0 ? Math.sin(tAll * 3) * .25 * (P.stun / 2.5) : 0);
+    P.roll += (targetRoll - P.roll) * Math.min(1, dt * (P.lying ? 4.5 : 4.5));
     const sh = P.shake * .03;
     camera.position.set(P.x + rx * bobX + R(-sh, sh), P.h - bobY + R(-sh, sh), P.z + rz * bobX);
-    if (riderCam) { camera.position.copy(riderCam); P.x = riderCam.x; P.z = riderCam.z; }
-    const sway = dr * (Math.sin(tAll * .8) * .05 + Math.sin(tAll * 1.7) * .02);
-    camera.rotation.set(P.pitch + weapon.kick * .05 + dr * Math.sin(tAll * 1.1) * .02, P.yaw + dr * Math.sin(tAll * .6) * .03, P.roll + bobX * .5 * bobAmt + sway);
-    post.uniforms.dbl.value = dr > .2 ? (dr - .2) * .012 : 0; post.uniforms.dbt.value = tAll * .8; post.uniforms.smoke.value = life.fx.smoke;
-    post.uniforms.blur.value += ((ctx.notepadOpen && ctx.notepadOpen() ? 1 : 0) - post.uniforms.blur.value) * Math.min(1, dt * 6);
+    const sway = dr * (Math.sin(tAll * .85) * .065 + Math.sin(tAll * 1.75) * .028);
+    const drPitch = dr * (Math.sin(tAll * 1.1) * .028 + Math.cos(tAll * .53) * .016);
+    const drYaw = dr * (Math.sin(tAll * .62) * .042 + Math.sin(tAll * 1.35) * .018);
+    camera.rotation.set(P.pitch + (life.fx.smokePitch || 0) + weapon.kick * .05 + drPitch, P.yaw + drYaw, P.roll + bobX * .5 * bobAmt + sway);
+    post.uniforms.dbl.value = dr > .06 ? (dr - .06) * .016 : 0; post.uniforms.dbt.value = tAll * .85; post.uniforms.smoke.value = life.fx.smoke;
+    const drBlur = dr > .32 ? (Math.sin(tAll * .95) * .5 + .5) * Math.min(.55, (dr - .32) * .36) : 0;
+    const targetBlur = (ctx.notepadOpen && ctx.notepadOpen() ? 1 : Math.max(drBlur, blinkBlur));
+    post.uniforms.blur.value += (targetBlur - post.uniforms.blur.value) * Math.min(1, dt * 6);
     camera.fov += ((baseFov * (1 - weapon.aimK * .22) * (run ? 1.06 : 1)) - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix();
     post.uniforms.hurt.value = Math.max(0, post.uniforms.hurt.value - dt * .4);
     // дверь
     doorOpen += (doorTarget - doorOpen) * Math.min(1, dt * 5); doorPivot.rotation.y = -doorOpen * 1.6;
-    const _t0 = performance.now();
-    // машины
-    carsTick(dt);
-    transport.tick(dt, [...(transport.riding ? [] : [{ x: P.x, z: P.z }]), ...cars.map(c => ({ x: c.m.position.x, z: c.m.position.z })), ...people.filter(p => !p.inBus).map(p => ({ x: p.h.obj.position.x, z: p.h.obj.position.z }))]);
-    { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca;
-      if (transport.riding) { busCol.x1 = busCol.x2 = 999; } else { busCol.x1 = o.x - hx; busCol.x2 = o.x + hx; busCol.z1 = o.z - hz; busCol.z2 = o.z + hz; }
-      if (!transport.riding && o.v > 1.5 && P.stun <= 0 && Math.abs(P.x - o.x) < hx + .3 && Math.abs(P.z - o.z) < hz + .3) hitByCar({ v: o.v }, Math.cos(-o.heading), Math.sin(-o.heading)); }
-    const _t1 = performance.now();
     // люди
     if (S) { ambientTick(dt); gopTick(dt); }
     peopleTick(dt);
@@ -1777,7 +3905,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // наведение ружья
     if (weapon.drawn) { const p = aimedPerson(weapon.aiming ? 35 : 12); if (p && (weapon.aiming || Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z) < 6)) threaten(p); }
     weapon.update(dt, { moving: Math.min(1, spd / 2), sprint: run, aspect: camera.aspect });
-    life.tick(dt); wallGunTick(dt); playgroundTick(dt); paperTick(dt);
+    life.tick(dt, dHour); wallGunTick(dt); playgroundTick(dt); paperTick(dt); factorySmokeTick(dt); kioskFliesTick(dt);
     { const wsp = weather.wind * 1.6 + weather.gust * 2.2 + stormK * 3; windVec.set(Math.cos(weather.ang) * wsp, Math.sin(weather.ang) * wsp); weather.windOff.addScaledVector(windVec, dt); weather.fallOff += dt * (1.1 + weather.gust * .4 + stormK); }
     stormMat.uniforms.time.value = tAll; stormMat.uniforms.col.value.copy(scene.fog.color);
     weapon.cam.fov = camera.fov; weapon.cam.updateProjectionMatrix();
@@ -1797,7 +3925,55 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     post.uniforms.time.value = tAll;
     renderer.info.reset(); renderer.info.autoReset = false;
     renderer.setRenderTarget(rt); renderer.render(scene, camera);
-    if (weapon.state !== 'holstered' || life.habit.busy || life.fx.handOut) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(weapon.scene, weapon.cam); renderer.autoClear = true; }
+    if (weapon.state !== 'holstered' || life.habit.busy || life.fx.handOut) {
+      if (weapon.lights) {
+        const L = weapon.lights, invQ = camera.quaternion.clone().invert();
+        L.hemi.color.copy(hemi.color); L.hemi.groundColor.copy(hemi.groundColor);
+        L.hemi.intensity = Math.max(.34, hemi.intensity * (inside ? .75 : .90));
+        // Солнце / направление света неба в координатах камеры (меняется при повороте игрока!)
+        const sDir = sun.position.clone().sub(sun.target.position).normalize().applyQuaternion(invQ);
+        if (sun.intensity > .05) {
+          L.key.color.copy(sun.color); L.key.intensity = sun.intensity * (inside ? .35 : .85); L.key.position.copy(sDir);
+        } else {
+          L.key.color.copy(hemi.color); L.key.intensity = Math.max(.28, hemi.intensity * .65); L.key.position.set(-.3, 1, .4).applyQuaternion(invQ);
+        }
+        // Локальный свет: лампа в ларьке, ближайший уличный фонарь ночью и фонарик игрока
+        const bPos = bulbLight.position.clone().sub(camera.position), bDist = bPos.length();
+        let locInt = 0;
+        if (bDist < 6.5) {
+          const wK = inside ? 1 : clamp(1 - (bDist - 1.2) / 5.0, 0, .75);
+          locInt = bulbLight.intensity * .42 * wK;
+          L.localLight.color.copy(bulbLight.color);
+          L.localLight.position.copy(bPos.applyQuaternion(invQ));
+          L.localLight.distance = 6.5;
+        }
+        if (nightK > .35 && !inside && streetLights.length) {
+          let bestD = 999, bestL = null;
+          for (const sl of streetLights) { const d = sl.position.distanceTo(camera.position); if (d < bestD) { bestD = d; bestL = sl; } }
+          if (bestL && bestD < 14) {
+            const slI = (1 - bestD / 14) * 2.2 * nightK;
+            if (slI > locInt) {
+              locInt = slI;
+              L.localLight.color.copy(bestL.color);
+              L.localLight.position.copy(bestL.position).sub(camera.position).applyQuaternion(invQ);
+              L.localLight.distance = 14;
+            }
+          }
+        }
+        if (flashlight.intensity > 0) {
+          locInt = Math.max(locInt, 1.1);
+          L.localLight.color.set(0xfff4e0);
+          L.localLight.position.set(.1, -.05, -.6);
+        }
+        L.localLight.intensity = locInt;
+        // Передаём текущую яркость и оттенок освещения для дыма, чтобы он не светился белым в темноте
+        if (life.setEnvLight) {
+          const ambLum = clamp(hemi.intensity * .7 + sun.intensity * .35 + locInt * .25, .18, 1.0);
+          life.setEnvLight(hemi.color, bulbLight.color, inside ? .6 : clamp(locInt * .25, 0, .5), ambLum);
+        }
+      }
+      renderer.autoClear = false; renderer.clearDepth(); renderer.render(weapon.scene, weapon.cam); renderer.autoClear = true;
+    }
     renderer.setRenderTarget(null); renderer.render(postScene, postCam);
     const _t3 = performance.now(); TIM.cars = _t1 - _t0; TIM.people = _t2 - _t1; TIM.rest = _t3 - _t2;
   }
@@ -1845,7 +4021,19 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const ptrs = new Map();
   cvs.addEventListener('pointerdown', e => { ctx.audio && ctx.audio.ensure(); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() }); cvs.setPointerCapture(e.pointerId); });
   cvs.addEventListener('pointermove', e => { const p = ptrs.get(e.pointerId); if (!p) return; const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; ctx.look(dx, dy, e.pointerType); });
-  const pend = e => { const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId); if (p && e.pointerType === 'mouse' && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 4 && performance.now() - p.t < 300) { if (e.button === 0 && weapon.drawn) weapon.fire(); } };
+  const pend = e => {
+    const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+    if (!p) return;
+    if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 10 && performance.now() - p.t < 400) {
+      if ((transport.onBoard || transport.doorK > .45) && !transport.seated && transport.lookedSeat) {
+        const ndcX = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
+        const ndcY = -(e.clientY / Math.max(1, window.innerHeight)) * 2 + 1;
+        const s = transport.lookedSeat(ndcX, ndcY, 2.8) || transport.lookedSeat(0, 0, 2.6);
+        if (s) { transport.sitOnSeat(s); return; }
+      }
+      if (e.pointerType === 'mouse' && e.button === 0 && weapon.drawn) weapon.fire();
+    }
+  };
   cvs.addEventListener('pointerup', pend); cvs.addEventListener('pointercancel', pend);
   cvs.addEventListener('contextmenu', e => { e.preventDefault(); });
   cvs.addEventListener('mousedown', e => { if (e.button === 2) weapon.aim(true); });
@@ -1856,16 +4044,23 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   return {
     scene, frame, updateShelves, goCounter, sit, stand, nearMarket, nearBooth, P, weapon, loading,
     action: () => curAct, isNight: () => nightK > .45, canMove, inKiosk, toggleDoor, look, applyQuality, spawnCustomer, customerEvent,
-    move(x, y) { input.mx = x; input.my = y; }, nearDoor() { return Math.hypot(P.x - .8, P.z + KD) < 2.2; }, setSprint(v) { P.sprint = v; }, toggleCrouch() { if (!P.seated) P.crouch = !P.crouch; }, get crouch() { return P.crouch; }, get sprint() { return P.sprint; },
+    move(x, y) { input.mx = x; input.my = y; }, nearDoor() { return Math.hypot(P.x - .8, P.z + KD) < 2.2; }, setSprint(v) { P.sprint = v; }, toggleCrouch() { if (transport.seated) { transport.standFromSeat(); return; } if (!P.seated) P.crouch = !P.crouch; }, get crouch() { return P.crouch; }, get sprint() { return P.sprint; },
     unlock() { P.locked = false; ctx.onCtl(); },
-    toggleFlashlight() { flashlight.intensity = flashlight.intensity > 0 ? 0 : 30; return flashlight.intensity > 0; }, get flashlightOn() { return flashlight.intensity > 0; },
+    toggleFlashlight() { flashlight.intensity = 0; return false; }, get flashlightOn() { return false; },
     radioNear() { return inKiosk(); },
     gopLeave, get gopnik() { return gopnikGroup; },
     get hour() { return hour; }, get doorOpen() { return doorOpen; },
     reset() { life.loadItems(); const S0 = ctx.getS(); if (S0) { S0.gunState = S0.gunState || 'wall'; S0.gun = S0.gunState === 'carried'; life.setButts(S0.butts || 0); }
-      P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; P.pitch = -.08; P.seated = true; P.locked = false; P.crouch = false; P.vx = P.vz = 0; shelfSig = ''; season = -1; hour = 8; doorTarget = 0; people.slice().forEach(p => { if (p.role !== 'vendor' && p.role !== 'marat') removePerson(p); }); gopnikGroup = null; },
+      P.x = STOOL.x; P.z = -.25; P.yaw = Math.PI; P.pitch = -.08; P.seated = false; P.locked = false; P.crouch = false; P.vx = P.vz = 0; shelfSig = ''; season = -1; hour = 8; doorTarget = 0; people.slice().forEach(p => { if (p.role !== 'vendor' && p.role !== 'marat' && p.role !== 'zavod') removePerson(p); }); gopnikGroup = null; },
     transport, life, env2, gunState, setGunState, openNotepadAnim: f => life.openNotepad(f), closeNotepadAnim: f => life.closeNotepad(f),
-    putGunDown() { if (gunState() !== 'carried') return; const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); },
+    spawnFactoryBox(contents, label = '«КРАСНОЗАВОДСК · СБЫТ»') {
+      const existing = life.items.filter(i => i.kind === 'box' && Math.hypot(i.obj.position.x - (-105.6), i.obj.position.z - (-2.6)) < 2.5).length;
+      const col = existing % 3, row = Math.floor(existing / 3);
+      const bx = -334.8 + col * .58, bz = -2.2 + row * .52;
+      const it = life.addItem({ kind: 'box', x: bx, y: 0, z: bz, ry: R(-.2, .2), data: { contents, hidden: false, label, opened: false } });
+      return it;
+    },
+    putGunDown() { if (gunState() !== 'carried' || life.habit.busy) return; const openBx = life.lookingAtOpenBox && life.lookingAtOpenBox(2.4); const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); if (openBx) life.throwIntoBox(openBx); },
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
     setRetro(v) { post.uniforms.retro.value = v ? 1 : 0; },
