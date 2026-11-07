@@ -86,5 +86,16 @@ public final class IniTweaks {
             pr.set("GamePlay", "bSaveOnRest", "1");
         }
         pr.save(prefs);
+        // Если Wine завёл пользователя с другим именем, кладём те же ini и ему: без них игра
+        // открывает оригинальный лаунчер вместо себя.
+        File users = new File(winePrefix, "drive_c/users");
+        File[] list = users.listFiles();
+        if (list != null) for (File u : list) {
+            if (!u.isDirectory() || u.getName().equals("steamuser") || u.getName().equalsIgnoreCase("Public")) continue;
+            File other = new File(u, "Documents/My Games/" + g.folder);
+            if (!other.mkdirs() && !other.isDirectory()) continue;
+            Files2.copy(ini, new File(other, "Fallout.ini"));
+            Files2.copy(prefs, new File(other, "FalloutPrefs.ini"));
+        }
     }
 }

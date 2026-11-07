@@ -108,7 +108,7 @@ public final class SavesActivity extends Activity {
         int i = 0;
         for (SaveStore.Save s : saves) {
             LinearLayout row = Ui.row(this);
-            row.setBackground(Ui.rounded(i % 2 == 0 ? Color.argb(20, 138, 255, 128) : Color.TRANSPARENT, 0, 8, this));
+            row.setBackground(Ui.rounded(i % 2 == 0 ? Ui.tint(18) : Color.TRANSPARENT, 0, 8, this));
             TextView t = Ui.label(this, s.title() + "\n" + df.format(new Date(s.file.lastModified()))
                     + " | " + (s.size() / 1024) + " КБ" + (s.companions.isEmpty() ? "" : " | +" + s.companions.size()));
             t.setTextSize(13);

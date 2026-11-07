@@ -64,6 +64,15 @@ public final class ProtonPrefix {
         }
     }
 
+    /**
+     * Префикс сломан: реестр есть, но испорчен. Каталог без реестра — не поломка: это префикс,
+     * который Proton ещё не создавал (в нём могут лежать наши заранее записанные ini).
+     */
+    public static boolean isBroken(File pfx) {
+        File reg = systemReg(pfx);
+        return reg.exists() && !looksValid(pfx);
+    }
+
     /** Есть ли уже наша секция с этим путём (чтобы не дописывать её каждый запуск). */
     private static boolean alreadyThere(File reg, Charset cs, String section, String path) throws IOException {
         String all = new String(Files.readAllBytes(reg.toPath()), cs);

@@ -27,6 +27,7 @@ public final class CoverView extends View {
     private final RectF rect = new RectF();
     private Bitmap bitmap;
     private String title = "";
+    private String tagline = "";
     private int accent = Ui.FG, dark = Ui.BG;
     private boolean selected;
 
@@ -52,6 +53,9 @@ public final class CoverView extends View {
         }
         invalidate();
     }
+
+    /** Подпись под названием на обложке (место и год действия). */
+    public void setTagline(String t) { tagline = t == null ? "" : t; invalidate(); }
 
     public void setSelectedCard(boolean s) { selected = s; invalidate(); }
 
@@ -91,10 +95,28 @@ public final class CoverView extends View {
         c.drawRect(rect, paint);
         paint.setShader(null);
 
-        text.setTextSize(Math.min(w, h) * 0.085f);
-        text.setShadowLayer(8, 0, 2, Color.BLACK);
-        float pad = Ui.dp(getContext(), 12);
-        c.drawText(title.toUpperCase(), pad, h - pad, text);
+        float pad = Ui.dp(getContext(), 16);
+        text.setShadowLayer(10, 0, 2, Color.BLACK);
+        if (bitmap == null) {
+            // фирменная заглушка: крупный номер/подзаголовок на штриховке
+            String big = title.contains("New Vegas") ? "NEW VEGAS" : title.replace("Fallout", "").trim();
+            text.setColor(Color.argb(40, 255, 255, 255));
+            text.setTextSize(h * (big.length() <= 2 ? 0.9f : 0.22f));
+            text.setLetterSpacing(0.04f);
+            c.drawText(big, pad * 0.6f, h * (big.length() <= 2 ? 0.78f : 0.42f), text);
+            text.setLetterSpacing(0f);
+        }
+        text.setColor(Color.WHITE);
+        text.setTextSize(Math.min(w * 0.075f, h * 0.11f));
+        float base = tagline.isEmpty() ? h - pad : h - pad - text.getTextSize() * 0.55f;
+        c.drawText(title.toUpperCase(), pad, base, text);
+        if (!tagline.isEmpty()) {
+            text.setColor(Color.argb(200, 230, 230, 220));
+            text.setTextSize(Math.min(w * 0.034f, h * 0.05f));
+            text.setLetterSpacing(0.2f);
+            c.drawText(tagline.toUpperCase(), pad, h - pad * 0.7f, text);
+            text.setLetterSpacing(0f);
+        }
         c.restore();
 
         paint.setStyle(Paint.Style.STROKE);

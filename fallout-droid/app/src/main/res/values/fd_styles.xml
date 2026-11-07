@@ -2,7 +2,8 @@
 <resources>
     <color name="fd_bg">#FF0B0E0C</color>
     <color name="fd_bg2">#FF141A16</color>
-    <color name="fd_fg">#FF8AFF80</color>
+    <color name="fd_fg">#FFA0E296</color>
+    <color name="fd_text">#FFDEE4DC</color>
 
     <style name="FdTheme" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
         <item name="android:windowBackground">@color/fd_bg</item>
@@ -23,8 +24,8 @@
     <style name="FdDialog" parent="@android:style/Theme.Material.Dialog.Alert">
         <item name="android:colorAccent">@color/fd_fg</item>
         <item name="android:colorBackground">@color/fd_bg2</item>
-        <item name="android:textColorPrimary">@color/fd_fg</item>
-        <item name="android:textColor">@color/fd_fg</item>
+        <item name="android:textColorPrimary">@color/fd_text</item>
+        <item name="android:textColor">@color/fd_text</item>
         <item name="android:fontFamily">@font/fallout</item>
     </style>
 </resources>

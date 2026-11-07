@@ -111,14 +111,14 @@ public final class SplashActivity extends Activity {
             Prefs.get(this).edit().putBoolean(Prefs.LAUNCH_PENDING, false).putBoolean(Prefs.AUTOSTART_BLOCKED, true).putBoolean(Prefs.CRASH_NOTICE, true).apply();
             return null;
         }
-        if (!Prefs.get(this).getBoolean(Prefs.AUTOSTART, true)) return null;
+        if (!Prefs.get(this).getBoolean(Prefs.AUTOSTART, false)) return null;
         if (Prefs.get(this).getBoolean(Prefs.AUTOSTART_BLOCKED, false)) return null;
         String last = Prefs.get(this).getString(Prefs.LAST_GAME, null);
         if (last == null) return null;
         GameDef d = GameDef.byId(last);
         String dir = d.gameDir(this);
         if (dir == null || !GameFiles.validate(d, new File(dir)).ok()) return null;
-        if (!com.wastelanddroid.engine.FalloutEngine.runtimeInstalled(this)) return null;
+        if (!com.wastelanddroid.engine.FalloutEngine.ready(this) || !Prefs.get(this).getBoolean(MainActivity.ONBOARDED, false)) return null;
         return d;
     }
 

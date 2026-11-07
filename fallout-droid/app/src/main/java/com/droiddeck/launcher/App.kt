@@ -40,6 +40,7 @@ class App : Application() {
             process == "$packageName:shortcuts_sync") return
         CrashHandler.install(this)
         com.wastelanddroid.util.CrashLog.install(this)
+        runCatching { com.wastelanddroid.util.Ui.init(this) }
         com.droiddeck.launcher.core.SteamIntegration.syncShortcutsListing(this)
         com.droiddeck.launcher.session.QuestExperimental.initialize(this)
         com.droiddeck.launcher.session.SessionPrefs.applyNtsyncDefault(this)

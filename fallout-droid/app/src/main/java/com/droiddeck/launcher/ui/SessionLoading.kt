@@ -299,8 +299,8 @@ private fun CancelHint(onCancel: () -> Unit, modifier: Modifier = Modifier) {
 
 // ───────────── Fallout Droid: оформление экрана загрузки ─────────────
 
-private val FdGreen = Color(0xFF8AFF80)
-private val FdAmber = Color(0xFFFFB840)
+private val FdGreen: Color get() = Color(com.wastelanddroid.util.Ui.FG)
+private val FdAmber: Color get() = Color(com.wastelanddroid.util.Ui.AMBER)
 private val FalloutFont = FontFamily(androidx.compose.ui.text.font.Font(R.font.fallout))
 
 /** Знак радиации: медленное вращение и мягкая пульсация свечения. */

@@ -123,7 +123,7 @@ public final class ControlsEditorActivity extends Activity {
         panelBody.addView(look);
         LinearLayout colors = Ui.row(this);
         colors.addView(Ui.hint(this, "Цвет кнопок:"));
-        int[] palette = {0xFFFFB840, 0xFF8AFF80, 0xFFFFFFFF};
+        int[] palette = {Ui.ACCENT_COLORS[1], Ui.ACCENT_COLORS[0], Ui.ACCENT_COLORS[2]};
         String[] paletteNames = {"Оранжевый", "Зелёный", "Белый"};
         for (int i = 0; i < palette.length; i++) {
             int color = palette[i];

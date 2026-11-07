@@ -23,17 +23,52 @@ import android.widget.TextView;
 
 /** Дизайн-система приложения: 'ламповый терминал' — янтарь и фосфорная зелень на графите. */
 public final class Ui {
-    // Палитра
+    // Палитра. Акцентные цвета не final: их задаёт выбранная тема (зелёный, оранжевый, белый).
     public static final int BG = Color.rgb(11, 14, 12);
     public static final int BG2 = Color.rgb(20, 26, 22);
-    public static final int CARD = Color.argb(235, 22, 29, 24);
-    public static final int LINE = Color.rgb(46, 60, 50);
-    public static final int FG = Color.rgb(138, 255, 128);     // фосфор
-    public static final int FG_DIM = Color.rgb(112, 150, 112);
-    public static final int AMBER = Color.rgb(255, 184, 64);
-    public static final int RED = Color.rgb(255, 100, 90);
+    public static final int CARD = Color.argb(225, 20, 26, 22);
+    public static final int LINE = Color.rgb(44, 56, 48);
+    public static final int RED = Color.rgb(236, 112, 100);
     public static final int TG = Color.rgb(42, 171, 238);       // цвет Telegram
-    public static final int ON_ACCENT = Color.rgb(10, 16, 10);
+    public static final int TEXT = Color.rgb(222, 228, 220);    // нейтральный основной текст
+    public static final int TEXT_DIM = Color.rgb(146, 156, 146);
+    public static int FG = Color.rgb(160, 226, 150);    // приглушённый фосфор
+    public static int FG_DIM = Color.rgb(112, 142, 110);
+    public static int AMBER = Color.rgb(232, 190, 120);  // второй акцент: заголовки, предупреждения
+    public static int ON_ACCENT = Color.rgb(12, 18, 12);
+
+    public static final String ACCENT_KEY = "accent";
+    public static final String[] ACCENTS = {"green", "orange", "white"};
+    public static final String[] ACCENT_NAMES = {"Зелёный", "Оранжевый", "Белый"};
+    /** Основной цвет каждой темы — для образцов в настройках и тона экранных кнопок. */
+    public static final int[] ACCENT_COLORS = {Color.rgb(160, 226, 150), Color.rgb(242, 182, 98), Color.rgb(228, 232, 226)};
+
+    /** Применяет тему из настроек. Вызывается при старте приложения и после её смены. */
+    public static void applyAccent(Context c) {
+        String a = c.getSharedPreferences("wasteland", Context.MODE_PRIVATE).getString(ACCENT_KEY, "green");
+        switch (a) {
+            case "orange":
+                FG = ACCENT_COLORS[1]; FG_DIM = Color.rgb(160, 132, 94); AMBER = Color.rgb(238, 218, 178);
+                ON_ACCENT = Color.rgb(24, 16, 6);
+                break;
+            case "white":
+                FG = ACCENT_COLORS[2]; FG_DIM = Color.rgb(140, 146, 140); AMBER = Color.rgb(226, 200, 146);
+                ON_ACCENT = Color.rgb(14, 16, 14);
+                break;
+            default:
+                FG = ACCENT_COLORS[0]; FG_DIM = Color.rgb(112, 142, 110); AMBER = Color.rgb(232, 190, 120);
+                ON_ACCENT = Color.rgb(12, 18, 12);
+        }
+    }
+
+    public static String accent(Context c) {
+        return c.getSharedPreferences("wasteland", Context.MODE_PRIVATE).getString(ACCENT_KEY, "green");
+    }
+
+    /** Акцент с прозрачностью — для подложек и подсветок. */
+    public static int tint(int alpha) {
+        return Color.argb(alpha, Color.red(FG), Color.green(FG), Color.blue(FG));
+    }
 
     public interface IntCallback { void on(int v); }
 
@@ -52,6 +87,7 @@ public final class Ui {
         } catch (RuntimeException e) {
             font = Typeface.MONOSPACE; // не должно случаться, но без шрифта приложение всё равно работает
         }
+        applyAccent(c);
     }
 
     public static Typeface mono(boolean bold) {
@@ -167,7 +203,7 @@ public final class Ui {
     public static TextView label(Context c, String s) {
         TextView t = new TextView(c);
         t.setText(s);
-        t.setTextColor(FG);
+        t.setTextColor(TEXT);
         t.setTextSize(14);
         t.setTypeface(mono(false));
         t.setLineSpacing(0, 1.15f);
@@ -177,7 +213,7 @@ public final class Ui {
 
     public static TextView hint(Context c, String s) {
         TextView t = label(c, s);
-        t.setTextColor(FG_DIM);
+        t.setTextColor(TEXT_DIM);
         t.setTextSize(12);
         return t;
     }
@@ -205,7 +241,7 @@ public final class Ui {
 
     /** Второстепенная кнопка (контур). */
     public static Button ghostButton(Context c, String s, View.OnClickListener l) {
-        return styledButton(c, s, l, Color.argb(30, 138, 255, 128), FG, FG_DIM);
+        return styledButton(c, s, l, tint(26), FG, FG_DIM);
     }
 
     public static Button styledButton(Context c, String s, View.OnClickListener l, int fill, int textColor, int stroke) {
@@ -230,7 +266,7 @@ public final class Ui {
     public static CheckBox check(Context c, String text, boolean checked) {
         CheckBox cb = new CheckBox(c);
         cb.setText(text);
-        cb.setTextColor(FG);
+        cb.setTextColor(TEXT);
         cb.setTypeface(mono(false));
         cb.setTextSize(13);
         cb.setChecked(checked);

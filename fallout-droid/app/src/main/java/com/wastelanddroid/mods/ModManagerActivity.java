@@ -107,7 +107,7 @@ public final class ModManagerActivity extends Activity {
             final int idx = i;
             ModManager.Plugin p = plugins.get(i);
             LinearLayout row = Ui.row(this);
-            row.setBackground(Ui.rounded(i % 2 == 0 ? Color.argb(20, 138, 255, 128) : Color.TRANSPARENT, 0, 8, this));
+            row.setBackground(Ui.rounded(i % 2 == 0 ? Ui.tint(18) : Color.TRANSPARENT, 0, 8, this));
             TextView num = Ui.hint(this, String.format("%02X", i));
             num.setMinWidth(Ui.dp(this, 30));
             row.addView(num);
