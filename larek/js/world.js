@@ -282,6 +282,9 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const bulbLight = new THREE.PointLight(0xffaa32, 3.8, 5.2, 1.8); bulbLight.position.set(0, 2.22, -.1); scene.add(bulbLight);
   bulbLight.shadow.mapSize.set(256, 256); bulbLight.shadow.bias = -0.004; bulbLight.shadow.radius = 3; bulbLight.shadow.camera.far = 3.6; // кубическая тень рисует сцену 6 раз — только ближний радиус
   const fillLight = new THREE.PointLight(0xffe0b0, 1.2, 4, 2); fillLight.position.set(0, 1.0, .2); scene.add(fillLight); // «отражённый» свет от прилавка
+  // дневной свет из витрины: холодный рассеянный свет неба/снега падает внутрь через окно — контраст с тёплой лампой
+  const winLight = new THREE.SpotLight(0xd8e4f0, 0, 7.5, 1.05, 1, 1.4); winLight.position.set(0, 2.3, 3.8); // перед витриной (KD = 1.2) winLight.target.position.set(0, .3, -.9); scene.add(winLight); scene.add(winLight.target);
+  let dayLightK = 0, inSm = 0;
   const streetLights = [];
   const flashlight = new THREE.SpotLight(0xfff4e0, 0, 28, .45, .5, 1.5); flashlight.position.set(.15, -.1, 0); camera.add(flashlight); camera.add(flashlight.target); flashlight.target.position.set(0, 0, -5);
 
@@ -2301,7 +2304,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         }
       }
     }
-    if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld)); gunMat = gm.material; weapon.setModel(gunHoldMesh(), life.makeHand); buildWallGun(); }
+    if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = fixWinding(normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld))); gunMat = gm.material; weapon.setModel(gunHoldMesh(), life.makeHand); buildWallGun(); }
     spawnMarat();
     spawnZavodNpc();
     // уличные продавцы стояли неподвижно с позированными руками и выглядели как баг — убраны
@@ -2877,6 +2880,19 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // Модель ружья приводим к одной системе координат, как бы ни был повёрнут исходный файл:
   // длинная ось — Z, приклад (торец) в z = 0, стволы уходят в −Z, высота — Y, ширина — X, центр по X/Y в нуле.
   let gunLen = 1.1, gunW = .06;
+  // разворот обхода треугольников, если грани смотрят внутрь (после нормализации осей скан мог отразиться) — иначе модель «просвечивает»
+  function fixWinding(g) {
+    // знак объёма замкнутой модели: > 0 — грани смотрят наружу; < 0 — вывернуты (пересчёт нормалей по такому обходу тоже даёт «внутрь»)
+    const pos = g.attributes.position, idx = g.index, n = idx ? idx.count : pos.count, I = k => idx ? idx.getX(k) : k;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(); let vol = 0;
+    g.computeBoundingBox(); const ctr = g.boundingBox.getCenter(new THREE.Vector3());
+    for (let k = 0; k < n; k += 3) { a.fromBufferAttribute(pos, I(k)).sub(ctr); b.fromBufferAttribute(pos, I(k + 1)).sub(ctr); c.fromBufferAttribute(pos, I(k + 2)).sub(ctr); vol += a.dot(b.cross(c)); }
+    if (vol >= 0) return g;
+    if (idx) { for (let k = 0; k < n; k += 3) { const t = idx.getX(k + 1); idx.setX(k + 1, idx.getX(k + 2)); idx.setX(k + 2, t); } idx.needsUpdate = true; g.computeVertexNormals(); return g; }
+    const ng = g.toNonIndexed(); for (const name of Object.keys(ng.attributes)) { const at = ng.attributes[name], s = at.itemSize, arr = at.array;
+      for (let k = 0; k < ng.attributes.position.count; k += 3) for (let j = 0; j < s; j++) { const t = arr[(k + 1) * s + j]; arr[(k + 1) * s + j] = arr[(k + 2) * s + j]; arr[(k + 2) * s + j] = t; } at.needsUpdate = true; }
+    ng.computeVertexNormals(); return ng;
+  }
   function normGun(g) {
     g.computeBoundingBox();
     const bb0 = g.boundingBox;
@@ -3189,6 +3205,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     sun.color.set(sunCol);
     sun.intensity = el > 0 ? (2.6 * clamp(el / 15, 0, 1)) * (1 - over * .8) : 0;
     hemi.intensity = .12 + dayAmt * (1.05 - over * .2);
+    dayLightK = dayAmt * (1 - over * .45); winLight.color.copy(topC).lerp(cA.set(winter ? '#eef4ff' : '#fff6e8'), .6);
     hemi.color.copy(topC).lerp(cA.set('#ffffff'), .45);
     hemi.groundColor.set(winter ? '#9aa0a6' : '#4a4636').multiplyScalar(.5 + dayAmt * .5);
     if (dayAmt < .2) { hemi.color.lerp(cA.set('#5a6a8a'), .6); }
@@ -3206,7 +3223,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const S = ctx.getS(); if (!S) return; if (S.day !== lastCalDay) { lastCalDay = S.day; drawCalendar(); } const m = window.__larekMonth != null ? window.__larekMonth : ctx.monthOf(S.day); if (m === season) return; season = m; // __larekMonth — только для автотестов
     winter = m >= 10 || m <= 2;
     winterGround.forEach(g => g.visible = winter); summerGround.forEach(g => g.visible = !winter);
-    scene.traverse(o => { if (o.userData.winter) o.visible = winter; }); awnSnow.visible = roofSnow.visible = winter;
+    scene.traverse(o => { if (o.userData.winter) o.visible = winter; }); roofSnow.visible = winter;
     weather.target = winter ? pick([0, .3, .6, .6, 1]) : 0; weather.windT = R(.1, .9);
     seasonHooks.forEach(f => f(winter, m)); applyVegSeason();
   }
@@ -3277,10 +3294,10 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const lookStorageShelfHit = () => {
       if (!inKiosk()) return null;
       if (life.rayPlaceShelf) {
-        const rp = life.rayPlaceShelf(3.2);
+        const rp = life.rayPlaceShelf(1.45);
         if (rp) return rp;
       }
-      const h = lookingAt([...shelfHitTargets, foodGroup], 3.2);
+      const h = lookingAt([...shelfHitTargets, foodGroup], 1.6);
       if (!h) return null;
       let o = h.object, rowIdx = null;
       while (o) {
@@ -3291,7 +3308,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     };
     const lookShowcaseSlot = () => {
       if (!inKiosk()) return null;
-      const h = lookingAt(shelfGroup.children, 2.4);
+      const h = lookingAt(shelfGroup.children, 1.7);
       if (h && h.object) {
         let o = h.object;
         while (o && o.userData.showcaseSlot == null && o.parent && o.parent !== shelfGroup) o = o.parent;
@@ -3824,6 +3841,9 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     let ix = 0, iz = 0;
     if (moveOK) { ix = input.mx; iz = input.my; const k = input.keys; if (k.KeyW || k.ArrowUp) iz -= 1; if (k.KeyS || k.ArrowDown) iz += 1; if (k.KeyA || k.ArrowLeft) ix -= 1; if (k.KeyD || k.ArrowRight) ix += 1; const l = Math.hypot(ix, iz); if (l > 1) { ix /= l; iz /= l; } }
     const inside = inKiosk();
+    inSm += ((inside ? 1 : 0) - inSm) * Math.min(1, dt * 2.5);
+    hemi.intensity *= 1 - inSm * .5; fillLight.intensity = 1.2 * (1 - inSm * .35);
+    winLight.intensity = dayLightK * (2.5 + inSm * 9); winLight.visible = winLight.intensity > .02;
     if (!inside && S && !S.flags.wentOut) { S.flags.wentOut = true; ctx.onCtl(); }
     const dr = Math.min(1.65, life.fx.drunk);
     if (dr > .04 && !P.seated) { ix += Math.sin(tAll * .73) * dr * .38 + Math.sin(tAll * 1.9) * dr * .14; iz += Math.cos(tAll * .51) * dr * .16; P.yaw += Math.sin(tAll * .37) * dr * .14 * dt; }
@@ -3947,7 +3967,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (snowPts) { const u = snowPts.material.uniforms; u.time.value = tAll; u.origin.value.copy(camera.position); u.windOff.value.copy(weather.windOff); u.fallOff.value = weather.fallOff; u.swirl.value = weather.wind * .6 + weather.gust; u.density.value = Math.max(weather.snow, stormK); snowPts.visible = winter && (weather.snow > .03 || stormK > .05); u.scale.value = window.innerHeight * DPR * .035; }
     sky.position.copy(camera.position); skyMat.uniforms.t.value = tAll;
     bulbLight.intensity *= 1 + Math.sin(tAll * 31) * .01;
-    bulbLight.castShadow = renderer.shadowMap.enabled && Q.light >= 2 && inside;
+    bulbLight.castShadow = renderer.shadowMap.enabled && Q.light >= 1 && inside;
     // звук
     ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: Math.min(1.5, (winter ? weather.wind : weather.wind * .4) + weather.gust * .5 + stormK), night: nightK > .6, rain: weather.rain });
     // контекстная кнопка

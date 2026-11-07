@@ -480,14 +480,22 @@ export function createWeapon({ audio, onShot }) {
       if (cz < zSplit) barrelTris.push(t);
       else stockTris.push(t);
     }
+    // если после нормализации модели (поворот осей может оказаться отражением) обход треугольников вывернут — грани смотрят внутрь
+    // и ружьё выглядит «прозрачным». Сверяем геометрическую нормаль треугольников с вершинными и при необходимости разворачиваем обход.
+    const nrm = g.attributes.normal; let agree = 0;
+    if (nrm) { const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), vn = new THREE.Vector3();
+      for (let t = 0; t < nTris; t++) { const i0 = t * 3; a.fromBufferAttribute(pos, i0); b.fromBufferAttribute(pos, i0 + 1).sub(a); c.fromBufferAttribute(pos, i0 + 2).sub(a); b.cross(c);
+        vn.fromBufferAttribute(nrm, i0).add(c.fromBufferAttribute(nrm, i0 + 1)).add(c.fromBufferAttribute(nrm, i0 + 2)); agree += Math.sign(b.dot(vn)); } }
+    const flip = agree < 0;
+    const GET = ['getX', 'getY', 'getZ', 'getW'];
     const buildSub = tris => {
       const sub = new THREE.BufferGeometry();
       for (const name of Object.keys(g.attributes)) {
-        const a = g.attributes[name], itemSize = a.itemSize;
+        const a = g.attributes[name], itemSize = a.itemSize; // читаем через getX..getW — работает и с interleaved/квантованными атрибутами glTF
         const arr = new Float32Array(tris.length * 3 * itemSize);
-        for (let k = 0; k < tris.length; k++) {
-          const base = tris[k] * 3 * itemSize;
-          for (let j = 0; j < 3 * itemSize; j++) arr[k * 3 * itemSize + j] = a.array[base + j];
+        for (let k = 0; k < tris.length; k++) for (let v = 0; v < 3; v++) {
+          const src = tris[k] * 3 + (flip && v ? 3 - v : v);
+          for (let j = 0; j < itemSize; j++) arr[(k * 3 + v) * itemSize + j] = a[GET[j]](src);
         }
         sub.setAttribute(name, new THREE.BufferAttribute(arr, itemSize));
       }

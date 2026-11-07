@@ -642,11 +642,12 @@ export function createLife(env) {
     }
     heldYaw = it.obj.rotation.y - P.yaw; heldYawT = heldYaw; syncCol(it); env.audio && env.audio.click(700, .4, 0, .05); env.onCtl();
   }
+  const REACH = 1.45; // дотянуться рукой: ставить предмет можно только вплотную к полке/витрине
   function placeHeld() {
     if (!held) return false;
-    const openBx = held.kind !== "box" ? lookingAtOpenBox(2.6) : null;
+    const openBx = held.kind !== "box" ? lookingAtOpenBox(REACH + .2) : null;
     if (openBx) return throwIntoBox(openBx);
-    const t = rayPlace(3.1, held); if (!t) return false;
+    const t = rayPlace(REACH, held); if (!t) return false;
     const it = held; held = null;
     if (isPhysicsProp(it)) { it.data.lying = false; it.data.rollAng = 0; applyBottlePose(it); }
     if (t.s && t.s.axis === 'z') it.obj.rotation.y = Math.PI / 2;
@@ -1310,9 +1311,11 @@ export function createLife(env) {
       mats.forEach(mt => {
         if (!glassOrig.has(mt)) glassOrig.set(mt, { c: mt.color ? mt.color.getHex() : 0xffffff, op: mt.opacity, rgh: mt.roughness });
         if (/label/i.test(mt.name)) {
-          // своя этикетка модели развёрнута иначе: наша текстура растягивалась на неё огромными буквами («странный раскрас»).
-          // Прячем её — этикетку рисует отдельный цилиндр fpLabelMesh с правильной развёрткой.
-          mt.visible = false;
+          // корпус-«этикетка» модели: родная развёртка растягивала нашу текстуру. Материал общий с бутылками в мире — не трогаем его,
+          // а этому мешу в руке даём собственное непрозрачное стекло нужного цвета; этикетку рисует цилиндр fpLabelMesh.
+          if (!m.userData.fpBody) { m.userData.fpBody = new THREE.MeshStandardMaterial({ roughness: .18, metalness: .1 }); m.userData.fpBody.name = 'fpLabelBody'; }
+          m.userData.fpBody.color.setHex(cfg.glass); m.userData.fpBody.roughness = cfg.rgh;
+          if (Array.isArray(m.material)) m.material = m.material.map(x => x === mt ? m.userData.fpBody : x); else m.material = m.userData.fpBody;
         } else if (/glass/i.test(mt.name) || mt.transparent) {
           mt.color.setHex(cfg.glass);
           mt.opacity = cfg.op;
@@ -1745,8 +1748,8 @@ export function createLife(env) {
 
   return {
     makeHand, items, addItem, removeItem, rebuildPackItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, rotateHeld, trashHeld, unpack, lookingAtOpenBox, throwIntoBox, shatterBottle, get held() { return held; },
-    canPlace: () => !!(held && rayPlace(3.1, held)),
-    rayPlaceShelf: (maxD = 3.2) => {
+    canPlace: () => !!(held && rayPlace(REACH, held)),
+    rayPlaceShelf: (maxD = REACH) => {
       const pl = rayPlace(maxD, held);
       return (pl && pl.s && pl.s.name === 'shelf') ? { point: new THREE.Vector3(pl.x, pl.y, pl.z), rowIdx: pl.s.rowIdx } : null;
     },
