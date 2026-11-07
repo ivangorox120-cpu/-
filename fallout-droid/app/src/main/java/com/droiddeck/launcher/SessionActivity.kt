@@ -242,6 +242,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var scrollRestX = 0f
     private var scrollRestY = 0f
     private var touchMode by mutableStateOf(SessionPrefs.TOUCH_AUTO)
+    private var lookIgnored = false
     private var cursorPos by mutableStateOf(androidx.compose.ui.geometry.Offset(-100f, -100f))
     private var cursorVisible by mutableStateOf(false)
     private var floodColor by mutableStateOf<Int?>(null)
@@ -3434,6 +3435,17 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }
                 if (route == com.droiddeck.launcher.input.TouchRouter.Route.TOUCHPAD) {
                     val rect = drawnRect() ?: return false
+                    // Fallout Droid: мышь ведёт камеру с правой части экрана, слева остаётся стик движения
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        lookIgnored = com.wastelanddroid.engine.FalloutInput.lookOnRightOnly(this) &&
+                            event.x < rect.left + rect.width() * 0.42f
+                        touchpad.sensitivity = com.wastelanddroid.engine.FalloutInput.lookSensitivity(this)
+                        touchpad.tapClicks = com.wastelanddroid.engine.FalloutInput.tapFires(this)
+                    }
+                    if (lookIgnored) {
+                        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) lookIgnored = false
+                        return true
+                    }
                     if (touchpad.bounds != rect) {
                         val fresh = touchpad.bounds.width() <= 1f
                         touchpad.bounds = rect

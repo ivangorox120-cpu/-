@@ -107,6 +107,20 @@ public final class ControlsEditorActivity extends Activity {
 
         panelBody = Ui.column(this);
         panelBody.addView(Ui.hint(this, "Перетаскивайте кнопки. Нажмите на кнопку — рядом откроется её настройка."));
+        android.content.SharedPreferences ip = getSharedPreferences("wasteland", MODE_PRIVATE);
+        LinearLayout look = Ui.row(this);
+        look.addView(Ui.slider(this, "Чувствительность обзора, %", 30, 300,
+                ip.getInt(com.wastelanddroid.engine.FalloutInput.LOOK_SENS, 115),
+                v -> ip.edit().putInt(com.wastelanddroid.engine.FalloutInput.LOOK_SENS, v).apply()), Ui.weight());
+        CheckBox right = Ui.check(this, "Обзор только правой половиной",
+                ip.getBoolean(com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, true));
+        right.setOnCheckedChangeListener((v, on) -> ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, on).apply());
+        look.addView(right);
+        CheckBox tap = Ui.check(this, "Касание стреляет",
+                ip.getBoolean(com.wastelanddroid.engine.FalloutInput.TAP_FIRES, false));
+        tap.setOnCheckedChangeListener((v, on) -> ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.TAP_FIRES, on).apply());
+        look.addView(tap);
+        panelBody.addView(look);
         LinearLayout actions = Ui.row(this);
         actions.addView(Ui.ghostButton(this, R.drawable.ic_plus, "Добавить кнопку", v -> addKey()), Ui.weight());
         actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить", v -> {

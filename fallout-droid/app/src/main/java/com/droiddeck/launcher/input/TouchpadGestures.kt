@@ -18,6 +18,9 @@ class TouchpadGestures(
     var sensitivity = 1.15f
     var desktop = false
 
+    /** Fallout Droid: в игре касание не должно стрелять — щелчок по тапу отключается. */
+    var tapClicks = true
+
     private val handler = Handler(Looper.getMainLooper())
     private var lastX = 0f
     private var lastY = 0f
@@ -261,7 +264,7 @@ class TouchpadGestures(
                         }
                     }
                     !cancelled && travelled <= slopPx && event.eventTime - downAt < TouchTiming.TAP_MS -> {
-                        click(PointerGestures.BTN_LEFT)
+                        if (tapClicks) click(PointerGestures.BTN_LEFT)
                         lastTapAt = event.eventTime
                     }
                 }

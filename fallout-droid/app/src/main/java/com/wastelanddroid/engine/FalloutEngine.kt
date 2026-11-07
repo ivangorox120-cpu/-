@@ -127,6 +127,11 @@ object FalloutEngine {
         }
     }
 
+    /** Прямой звук (AAudio) или обычный PulseAudio внутри Linux-среды. */
+    @JvmStatic fun setDirectAudio(context: Context, on: Boolean) {
+        runCatching { com.droiddeck.launcher.session.SessionPrefs.setDirectAudio(context, on) }
+    }
+
     /** Режим экранного геймпада в игре: auto (скрыт при физическом геймпаде), on, off. */
     @JvmStatic fun setTouchControlsMode(context: Context, mode: String) {
         val v = when (mode) {

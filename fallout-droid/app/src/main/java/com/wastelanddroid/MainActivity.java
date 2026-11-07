@@ -433,6 +433,13 @@ public final class MainActivity extends Activity {
         stab.addView(check("Сторож зависаний", Prefs.WATCHDOG, true));
         stab.addView(check("Только 'большие' ядра CPU", Prefs.PIN_BIG_CORES, true));
         stab.addView(check("Подробные логи игры (для отчётов)", Prefs.GAME_LOGS, true));
+        CheckBox audio = Ui.check(this, "Прямой звук (меньше задержка)", prefs.getBoolean(Prefs.DIRECT_AUDIO, true));
+        audio.setOnCheckedChangeListener((v, on) -> {
+            prefs.edit().putBoolean(Prefs.DIRECT_AUDIO, on).apply();
+            FalloutEngine.setDirectAudio(this, on);
+        });
+        stab.addView(audio);
+        stab.addView(Ui.hint(this, "Выключите, если звука нет: тогда работает обычный PulseAudio."));
         col.addView(stab, Ui.matchWrap(this, 12));
 
         LinearLayout look = Ui.card(this, "Оформление");
