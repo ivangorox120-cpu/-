@@ -822,7 +822,15 @@ export function createLife(env) {
       sh.life -= dt;
       if (!sh.settled) {
         sh.v.y -= 9.8 * dt;
+        const px = sh.m.position.x, pz = sh.m.position.z, py = sh.m.position.y, wasIn = inK(px, pz);
         sh.m.position.addScaledVector(sh.v, dt);
+        // стены ларька: осколок отскакивает, а не пролетает насквозь
+        if (wasIn !== inK(sh.m.position.x, sh.m.position.z)) {
+          if (wasIn !== inK(sh.m.position.x, pz)) { sh.m.position.x = px; sh.v.x *= -.3; }
+          if (wasIn !== inK(sh.m.position.x, sh.m.position.z)) { sh.m.position.z = pz; sh.v.z *= -.3; }
+        }
+        // поверхность под осколком пересчитывается на лету: слетел с прилавка/полки — падает до пола, а не висит в воздухе
+        sh.fl = surfaceBelow(sh.m.position.x, sh.m.position.z, Math.max(py, sh.m.position.y)); // от высоты до шага — быстрый осколок не проскакивает сквозь прилавок
         sh.m.rotation.x += sh.rv.x * dt;
         sh.m.rotation.y += sh.rv.y * dt;
         sh.m.rotation.z += sh.rv.z * dt;

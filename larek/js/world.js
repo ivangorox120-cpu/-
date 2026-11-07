@@ -453,7 +453,10 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   box(.06, .08, KD * 2 + .08, plinthM, -KW - .02, .04, 0, K);
   box(.06, .08, KD * 2 + .08, plinthM, KW + .02, .04, 0, K);
   box(KW * 2 + .3, .1, KD * 2 + .3, MAT.roofTin, 0, KH + .05, 0, K);
-  box(KW * 2 - .02, .02, KD * 2 - .02, MAT.ceiling, 0, KH - .01, 0, K, false);
+  // потолок: старая побелка с трещинами и отслоившейся штукатуркой (фото пользователя)
+  const ceilMat = std({ color: 0xd8d2c6, roughness: .95 });
+  TL.load('assets/tex/ceiling_crack.jpg', t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; ceilMat.map = t; ceilMat.color.set(0xffffff); ceilMat.needsUpdate = true; }, undefined, () => {});
+  box(KW * 2 - .02, .02, KD * 2 - .02, ceilMat, 0, KH - .01, 0, K, false);
   // Реалистичный деревянный потолочный плинтус (галтель) с фаской, поперечными балками и мягкой контактной тенью (AO) на стыке с обоями
   const moldingMat = std({ color: 0x5c3e26, roughness: .72, metalness: .05 });
   const moldingSubMat = std({ color: 0x462e1b, roughness: .78, metalness: .05 });
@@ -828,11 +831,23 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // ---------- дверь ----------
   const doorPivot = new THREE.Group(); doorPivot.position.set(1.2, 0, -KD); K.add(doorPivot); doorPivot.userData.dyn = true;
-  // дверь: старая филёнчатая из серого дерева с облезшей белой краской (фото пользователя); изнутри — то же полотно зеркально
-  const doorEdgeM = std({ color: 0x7d7468, roughness: .9 });
-  const doorOutM = std({ color: 0x8f877c, roughness: .88 }), doorInM = std({ color: 0x8f877c, roughness: .88 });
-  TL.load('assets/tex/door_wood.jpg', t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; doorOutM.map = t; doorOutM.color.set(0xffffff); doorOutM.needsUpdate = true;
-    const ti = t.clone(); ti.wrapS = THREE.RepeatWrapping; ti.repeat.x = -1; ti.offset.x = 1; ti.needsUpdate = true; doorInM.map = ti; doorInM.color.set(0xffffff); doorInM.needsUpdate = true; }, undefined, () => {});
+  // дверь: ровное крашеное полотно с потёртостями — затёрто у ручки, сбит низ ногами, царапины и сколы до дерева
+  const doorTex = regTex(ctex(256, 640, (g, w, h) => {
+    g.fillStyle = '#8d8a80'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(${R(120, 160) | 0},${R(118, 155) | 0},${R(108, 140) | 0},${R(.05, .14)})`; g.fillRect(R(0, w), R(0, h), R(20, 90), R(10, 60)); } // неровный слой краски
+    const wear = (x, y, rx, ry, a) => { const gr = g.createRadialGradient(x, y, 2, x, y, Math.max(rx, ry)); gr.addColorStop(0, `rgba(196,190,176,${a})`); gr.addColorStop(1, 'rgba(196,190,176,0)'); g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, 7); g.fill(); };
+    wear(w * .88, h * .5, 40, 70, .45); wear(w * .88, h * .5, 18, 30, .35); // затёрто руками у ручки (ручка у свободного края)
+    const kick = g.createLinearGradient(0, h * .82, 0, h); kick.addColorStop(0, 'rgba(60,52,44,0)'); kick.addColorStop(1, 'rgba(60,52,44,.55)'); g.fillStyle = kick; g.fillRect(0, 0, w, h); // грязь и удары ногами внизу
+    for (let i = 0; i < 14; i++) { g.fillStyle = `rgba(85,70,52,${R(.35, .7)})`; g.beginPath(); g.ellipse(R(10, w - 10), R(h * .84, h - 6), R(4, 14), R(2, 6), R(0, 3), 0, 7); g.fill(); }
+    for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(92,74,54,${R(.4, .8)})`; const x = R(0, w), y = R(0, h); g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 5; k++) g.lineTo(x + R(-6, 6), y + R(-5, 5)); g.fill(); } // сколы до дерева
+    g.lineCap = 'round'; for (let i = 0; i < 60; i++) { g.strokeStyle = `rgba(${R(0, 1) < .5 ? '210,205,192' : '70,64,56'},${R(.15, .45)})`; g.lineWidth = R(.5, 1.6); const x = R(0, w), y = R(0, h), l = R(6, 40), a = R(-.6, .6) + (R(0, 1) < .5 ? 0 : Math.PI / 2); g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); } // царапины
+    stains(g, w, h, 10, 'rgba(70,58,44,'); speckle(g, w, h, 4000, ['rgba(60,50,40,.5)', 'rgba(230,225,212,.4)'], 1.6);
+    g.strokeStyle = 'rgba(50,44,38,.5)'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, w - 3, h - 3); // торцы краски темнее
+  }));
+  const doorEdgeM = std({ color: 0x77736a, roughness: .9 });
+  const doorOutM = std({ map: doorTex, roughness: .82, metalness: .05 });
+  const dTi = doorTex.clone(); dTi.wrapS = THREE.RepeatWrapping; dTi.repeat.x = -1; dTi.offset.x = 1; dTi.needsUpdate = true; regTex(dTi);
+  const doorInM = std({ map: dTi, roughness: .82, metalness: .05 });
   const doorMesh = box(.8, 2.04, .05, [doorEdgeM, doorEdgeM, doorEdgeM, doorEdgeM, doorInM, doorOutM], -.4, 1.02, 0, doorPivot);
   // деревянный наличник вокруг проёма снаружи
   { const frM = std({ color: 0x8a8174, roughness: .92 }); const fz = -KD - T_ / 2 - .015;
