@@ -12,6 +12,11 @@ public final class FalloutInput {
     public static final String LOOK_RIGHT = "look_right_half";
     public static final String LOOK_SENS = "look_sensitivity";
     public static final String TAP_FIRES = "tap_fires";
+    public static final String FIRE_LOOK = "fire_look";
+    public static final String HAPTICS = "key_haptics";
+    public static final String BTN_SCALE = "btn_scale";
+    public static final String BTN_OPACITY = "btn_opacity";
+    public static final String BTN_LABELS = "btn_labels";
 
     private FalloutInput() {}
 
@@ -27,4 +32,10 @@ public final class FalloutInput {
 
     /** Стрелять по касанию экрана (обычно не нужно: огонь на экранной кнопке). */
     public static boolean tapFires(Context c) { return p(c).getBoolean(TAP_FIRES, false); }
+
+    /** Обзор пальцем, который держит кнопку огня. */
+    public static boolean fireLook(Context c) { return p(c).getBoolean(FIRE_LOOK, true); }
+
+    /** Вибрация при нажатии экранных кнопок. */
+    public static boolean haptics(Context c) { return p(c).getBoolean(HAPTICS, true); }
 }

@@ -46,10 +46,13 @@ public final class OnboardingActivity extends Activity {
     private static final int REQ_GAME_DIR = 21;
     private static final int REQ_NOTIFY = 22;
 
-    private static final String[] TITLES = {"Добро пожаловать", "Разрешения", "Фоновая работа", "Linux-среда", "Proton", "Игры"};
+    private static final String[] TITLES = {"Добро пожаловать", "Разрешения", "Фоновая работа", "Linux-среда", "Proton", "Графика", "Игры"};
 
     private LinearLayout steps;
     private LinearLayout body;
+    private LinearLayout footerBox;
+    private com.droiddeck.launcher.FdDriverSetup drivers;
+    private final android.os.Handler poll = new android.os.Handler(android.os.Looper.getMainLooper());
     private int step;
     private boolean working;
     private String workStage;
@@ -92,17 +95,21 @@ public final class OnboardingActivity extends Activity {
         left.addView(steps);
         page.addView(left, new LinearLayout.LayoutParams(Ui.dp(this, 240), -1));
 
-        body = Ui.column(this);
-        body.setBackground(Ui.rounded(Ui.CARD, Ui.LINE, 18, this));
+        LinearLayout card = Ui.column(this);
+        card.setBackground(Ui.rounded(Ui.CARD, Ui.LINE, 18, this));
         int bp = Ui.dp(this, 24);
-        body.setPadding(bp, bp, bp, bp);
+        card.setPadding(bp, bp, bp, Ui.dp(this, 16));
+        body = Ui.column(this);
         ScrollView sc = new ScrollView(this);
         sc.setVerticalScrollBarEnabled(false);
-        sc.setFillViewport(true);
         sc.addView(body);
+        card.addView(sc, new LinearLayout.LayoutParams(-1, 0, 1f));
+        footerBox = Ui.row(this);
+        footerBox.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(footerBox, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, -1, 1f);
         blp.leftMargin = Ui.dp(this, 22);
-        page.addView(sc, blp);
+        page.addView(card, blp);
 
         frame.addView(page, new FrameLayout.LayoutParams(-1, -1));
         frame.addView(new ScanlineView(this), new FrameLayout.LayoutParams(-1, -1));
@@ -151,6 +158,7 @@ public final class OnboardingActivity extends Activity {
             case 2: return !FalloutEngine.childLimitBlocks(this);
             case 3: return FalloutEngine.runtimeInstalled(this);
             case 4: return FalloutEngine.runtimeInstalled(this) && FalloutEngine.anyProton(this);
+            case 5: return driverReady();
             default: return anyGameReady();
         }
     }
@@ -196,12 +204,14 @@ public final class OnboardingActivity extends Activity {
         }
 
         body.removeAllViews();
+        footerBox.removeAllViews();
         switch (step) {
             case 0: welcome(); break;
             case 1: permissions(); break;
             case 2: background(); break;
             case 3: runtime(); break;
             case 4: proton(); break;
+            case 5: graphics(); break;
             default: games();
         }
         if (animate) {
@@ -241,23 +251,21 @@ public final class OnboardingActivity extends Activity {
         body.addView(t);
     }
 
-    private void spacer() {
-        body.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1f));
-    }
-
     /** Нижняя панель: «Назад» и основная кнопка. */
     private void footer(String primary, int icon, boolean enabled, View.OnClickListener l) {
-        spacer();
-        LinearLayout row = Ui.row(this);
-        row.setPadding(0, Ui.dp(this, 16), 0, 0);
-        if (step > 0) row.addView(Ui.ghostButton(this, "Назад", v -> go(step - 1)));
-        row.addView(new View(this), Ui.weight());
+        footerBox.removeAllViews();
+        footerBox.setPadding(0, Ui.dp(this, 12), 0, 0);
+        if (step > 0) {
+            android.widget.Button back = Ui.ghostButton(this, "Назад", v -> go(step - 1));
+            back.setMinHeight(Ui.dp(this, 48));
+            footerBox.addView(back, new LinearLayout.LayoutParams(-2, Ui.dp(this, 52)));
+        }
+        footerBox.addView(new View(this), Ui.weight());
         Button b = Ui.button(this, icon, primary, l);
         b.setEnabled(enabled);
-        b.setMinWidth(Ui.dp(this, 200));
-        b.setMinHeight(Ui.dp(this, 50));
-        row.addView(b);
-        body.addView(row);
+        b.setMinHeight(Ui.dp(this, 48));
+        b.setMinWidth(Ui.dp(this, 220));
+        footerBox.addView(b, new LinearLayout.LayoutParams(-2, Ui.dp(this, 52)));
     }
 
     private void go(int s) {
@@ -272,6 +280,7 @@ public final class OnboardingActivity extends Activity {
         if (working) return;
         if (step == 3 && !FalloutEngine.runtimeInstalled(this) && error == null) installRuntime();
         else if (step == 4 && FalloutEngine.runtimeInstalled(this) && !FalloutEngine.anyProton(this) && error == null) installProton();
+        else if (step == 5 && !driverReady() && error == null) installDriver(false);
     }
 
     // ───────────── шаги ─────────────
@@ -418,6 +427,76 @@ public final class OnboardingActivity extends Activity {
             body.addView(Ui.button(this, R.drawable.ic_download, error == null ? "Установить Proton" : "Повторить", v -> { error = null; installProton(); }));
         }
         footer(ok ? "Далее" : "Установка...", R.drawable.ic_play, ok && !working, v -> go(5));
+    }
+
+    private com.droiddeck.launcher.FdDriverSetup drivers() {
+        if (drivers == null) drivers = new com.droiddeck.launcher.FdDriverSetup(this);
+        return drivers;
+    }
+
+    private boolean driverReady() {
+        try {
+            return !drivers().applies() || com.droiddeck.launcher.FdDriverSetup.chosen(this)
+                    || (step != 5 && Prefs.get(this).getBoolean("driver_skipped", false));
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    private void graphics() {
+        heading("Графический драйвер", "Драйвер Vulkan под ваш GPU: через него картинка игры попадает на экран. "
+                + "Встроенный драйвер подходит не всем новым Adreno, поэтому подбираем рекомендованный и скачиваем (около 30 МБ).");
+        boolean ok = driverReady();
+        if (working) {
+            String st = drivers().status();
+            status(false, st == null || st.isEmpty() ? "Подбор драйвера..." : st);
+            body.addView(progress(drivers().percent()));
+        } else if (ok) {
+            String name = null;
+            try { drivers().ready(); name = drivers().activeName(); } catch (Throwable ignored) { }
+            status(true, name != null ? "Драйвер: " + name : "Драйвер подобран");
+        } else {
+            errorBox();
+            body.addView(Ui.button(this, R.drawable.ic_download, error == null ? "Подобрать драйвер" : "Повторить", v -> { error = null; installDriver(true); }));
+            body.addView(Ui.hint(this, "Без интернета можно пропустить — тогда используется встроенный драйвер."));
+        }
+        footer(ok ? "Далее" : "Пропустить", R.drawable.ic_play, !working, v -> {
+            Prefs.get(this).edit().putBoolean("driver_skipped", !driverReady()).apply();
+            go(6);
+        });
+    }
+
+    private void installDriver(boolean force) {
+        if (working) return;
+        working = true;
+        try {
+            drivers().start(force);
+        } catch (Throwable t) {
+            working = false;
+            error = "Не удалось подобрать драйвер: " + t.getMessage();
+            render(false);
+            return;
+        }
+        render(false);
+        final long started = System.currentTimeMillis();
+        poll.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (isDestroyed()) return;
+                boolean busy = drivers().busy();
+                boolean ok = driverReady();
+                if (busy && System.currentTimeMillis() - started < 10 * 60_000) {
+                    if (step == 5) render(false);
+                    poll.postDelayed(this, 500);
+                    return;
+                }
+                if (!busy && !ok && System.currentTimeMillis() - started < 3000) { poll.postDelayed(this, 500); return; }
+                working = false;
+                if (ok) { if (step == 5) go(6); return; }
+                String st = drivers().status();
+                error = st == null || st.isEmpty() ? "Драйвер не скачался. Проверьте интернет." : st;
+                render(false);
+            }
+        }, 600);
     }
 
     private void games() {

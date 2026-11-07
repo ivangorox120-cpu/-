@@ -48,6 +48,10 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
     private val stickCodes = HashMap<Int, List<Int>>()
     private val held = HashMap<Int, Int>()
     private var forwardedPointerBits = 0
+    /** Fallout Droid: кнопки, с которых палец дальше ведёт камеру (огонь + обзор одним пальцем). */
+    var lookThrough: (List<Int>) -> Boolean = { false }
+    /** Fallout Droid: короткая вибрация при нажатии кнопки. */
+    var haptics = false
     private var addX = -1f
     private var addY = -1f
     private var pressX = 0f
@@ -208,6 +212,27 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
         val entry = entries.firstOrNull { it.codes == codes } ?: return
         entry.size = size.coerceIn(MIN_SIZE, MAX_SIZE)
         measure(entry)
+        save()
+        invalidate()
+    }
+
+    /** Fallout Droid: размер всех кнопок разом (множитель к текущим размерам). */
+    fun scaleAll(factor: Float) {
+        entries.forEach { it.size = (it.size * factor).toInt().coerceIn(MIN_SIZE, MAX_SIZE); measure(it) }
+        save()
+        invalidate()
+    }
+
+    /** Fallout Droid: прозрачность всех кнопок разом. */
+    fun opacityAll(opacity: Float) {
+        entries.forEach { it.opacity = opacity.coerceIn(0.2f, 1f) }
+        save()
+        invalidate()
+    }
+
+    /** Fallout Droid: подписи на всех кнопках. */
+    fun labelsAll(labels: Boolean) {
+        entries.forEach { it.labels = labels }
         save()
         invalidate()
     }
@@ -892,6 +917,11 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
                 if (down.values.any { it === entry }) return true
                 down[event.getPointerId(index)] = entry
                 entry.codes.forEach { pressKey(it) }
+                if (lookThrough(entry.codes)) {
+                    // палец остаётся на кнопке огня, а его движение крутит камеру
+                    forwardedPointerBits = forwardedPointerBits or (1 shl event.getPointerId(index))
+                    forwardPointers(event, forwardedPointerBits)
+                }
                 invalidate()
                 return true
             }
@@ -1073,7 +1103,10 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
     private fun pressKey(code: Int) {
         val owners = held[code] ?: 0
         held[code] = owners + 1
-        if (owners == 0) sendKey(code, true)
+        if (owners == 0) {
+            if (haptics) performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            sendKey(code, true)
+        }
     }
 
     private fun releaseKey(code: Int) {

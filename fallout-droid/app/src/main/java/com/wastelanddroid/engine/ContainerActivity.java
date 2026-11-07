@@ -80,8 +80,13 @@ public final class ContainerActivity extends Activity {
         LinearLayout gpu = Ui.card(this, "Графический драйвер");
         List<String> ids = new ArrayList<>();
         List<String> names = new ArrayList<>();
+        String current = SessionPrefs.INSTANCE.androidDriver(this);
+        if (!current.isEmpty() && !"system".equals(current) && !TurnipDriver.BUNDLED.contains(current)) {
+            ids.add(current);
+            names.add("Рекомендованный: " + current);
+        }
         ids.add(TurnipDriver.AUTO);
-        names.add("Авто (по вашему Adreno)");
+        names.add("Встроенный (по модели Adreno)");
         for (String id : TurnipDriver.BUNDLED) {
             ids.add(id);
             names.add(pretty(id));
@@ -89,9 +94,12 @@ public final class ContainerActivity extends Activity {
         ids.add("system");
         names.add("Системный драйвер Android");
         gpu.addView(choice(names, ids, SessionPrefs.INSTANCE.androidDriver(this),
-                v -> SessionPrefs.INSTANCE.setAndroidDriver(this, "system".equals(v) ? "system" : v)));
-        gpu.addView(Ui.hint(this, "Turnip — открытый драйвер Vulkan для Adreno, с ним игра идёт быстрее. "
-                + "Если экран чёрный или игра не стартует, попробуйте системный драйвер."));
+                v -> {
+                    SessionPrefs.INSTANCE.setAndroidDriver(this, v);
+                    getSharedPreferences("wasteland", MODE_PRIVATE).edit().putBoolean("driver_manual", !v.isEmpty()).apply();
+                }));
+        gpu.addView(Ui.hint(this, "Рекомендованный драйвер скачивается в мастере подготовки. "
+                + "Если экран чёрный, а звук есть, попробуйте системный драйвер Android."));
         col.addView(gpu);
 
         LinearLayout fex = Ui.card(this, "Эмуляция x86 (FEX)");

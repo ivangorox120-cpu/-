@@ -108,19 +108,40 @@ public final class ControlsEditorActivity extends Activity {
         panelBody = Ui.column(this);
         panelBody.addView(Ui.hint(this, "Перетаскивайте кнопки. Нажмите на кнопку — рядом откроется её настройка."));
         android.content.SharedPreferences ip = getSharedPreferences("wasteland", MODE_PRIVATE);
+        // Все кнопки разом
+        LinearLayout all = Ui.row(this);
+        final int[] scale = {ip.getInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, 100)};
+        all.addView(Ui.slider(this, "Размер всех кнопок, %", 60, 160, scale[0], v -> {
+            if (v == scale[0]) return;
+            keys.scaleAll(v / (float) scale[0]);
+            scale[0] = v;
+            ip.edit().putInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, v).apply();
+        }), Ui.weight());
+        all.addView(Ui.slider(this, "Прозрачность всех, %", 20, 100,
+                ip.getInt(com.wastelanddroid.engine.FalloutInput.BTN_OPACITY, 100), v -> {
+                    keys.opacityAll(v / 100f);
+                    ip.edit().putInt(com.wastelanddroid.engine.FalloutInput.BTN_OPACITY, v).apply();
+                }), Ui.weight());
+        panelBody.addView(all);
         LinearLayout look = Ui.row(this);
         look.addView(Ui.slider(this, "Чувствительность обзора, %", 30, 300,
                 ip.getInt(com.wastelanddroid.engine.FalloutInput.LOOK_SENS, 115),
                 v -> ip.edit().putInt(com.wastelanddroid.engine.FalloutInput.LOOK_SENS, v).apply()), Ui.weight());
-        CheckBox right = Ui.check(this, "Обзор только правой половиной",
-                ip.getBoolean(com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, true));
-        right.setOnCheckedChangeListener((v, on) -> ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, on).apply());
-        look.addView(right);
-        CheckBox tap = Ui.check(this, "Касание стреляет",
-                ip.getBoolean(com.wastelanddroid.engine.FalloutInput.TAP_FIRES, false));
-        tap.setOnCheckedChangeListener((v, on) -> ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.TAP_FIRES, on).apply());
-        look.addView(tap);
         panelBody.addView(look);
+        LinearLayout opts = Ui.row(this);
+        opts.addView(pref(ip, "Обзор с кнопки огня", com.wastelanddroid.engine.FalloutInput.FIRE_LOOK, true), Ui.weight());
+        opts.addView(pref(ip, "Обзор правой половиной", com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, true), Ui.weight());
+        panelBody.addView(opts);
+        LinearLayout opts2 = Ui.row(this);
+        opts2.addView(pref(ip, "Вибрация", com.wastelanddroid.engine.FalloutInput.HAPTICS, true), Ui.weight());
+        opts2.addView(pref(ip, "Касание стреляет", com.wastelanddroid.engine.FalloutInput.TAP_FIRES, false), Ui.weight());
+        CheckBox labels = Ui.check(this, "Подписи", ip.getBoolean(com.wastelanddroid.engine.FalloutInput.BTN_LABELS, true));
+        labels.setOnCheckedChangeListener((v, on) -> {
+            ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.BTN_LABELS, on).apply();
+            keys.labelsAll(on);
+        });
+        opts2.addView(labels, Ui.weight());
+        panelBody.addView(opts2);
         LinearLayout colors = Ui.row(this);
         colors.addView(Ui.hint(this, "Цвет кнопок:"));
         int[] palette = {Ui.ACCENT_COLORS[1], Ui.ACCENT_COLORS[0], Ui.ACCENT_COLORS[2]};
@@ -140,6 +161,8 @@ public final class ControlsEditorActivity extends Activity {
         actions.addView(Ui.ghostButton(this, R.drawable.ic_plus, "Добавить кнопку", v -> addKey()), Ui.weight());
         actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить", v -> {
             ControllerPrefs.INSTANCE.setScreenKeys(this, PcLayout.defaults());
+            ip.edit().putInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, 100)
+                    .putInt(com.wastelanddroid.engine.FalloutInput.BTN_OPACITY, 100).apply();
             keys.load(ControllerPrefs.INSTANCE.encodeScreenKeys(PcLayout.defaults()));
             keys.startEditing();
             closeMini();
@@ -149,10 +172,16 @@ public final class ControlsEditorActivity extends Activity {
         panelBody.addView(actions);
         panel.addView(panelBody);
 
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 460), -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 580), -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         lp.topMargin = Ui.dp(this, 6);
         root.addView(panel, lp);
         Anim.enterFromTop(panel, 80);
+    }
+
+    private CheckBox pref(android.content.SharedPreferences ip, String text, String key, boolean def) {
+        CheckBox c = Ui.check(this, text, ip.getBoolean(key, def));
+        c.setOnCheckedChangeListener((v, on) -> ip.edit().putBoolean(key, on).apply());
+        return c;
     }
 
     private void addKey() {

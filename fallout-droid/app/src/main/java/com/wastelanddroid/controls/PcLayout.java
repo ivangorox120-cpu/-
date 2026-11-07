@@ -30,40 +30,52 @@ public final class PcLayout {
         return new ScreenKey(java.util.Collections.singletonList(code), x, y, size, "", text, "", 1f, shape, toggle, true);
     }
 
-    /** Раскладка по умолчанию: стик WASD слева, мышь и действия справа, служебные сверху. */
+    /** Размер кнопки из доли высоты экрана (так задана раскладка) в единицах экранных кнопок. */
+    private static int sz(float fraction) { return Math.round(fraction * 350f); }
+
+    /**
+     * Раскладка по умолчанию — привычная схема мобильных шутеров: стик слева, крупная «Огонь»
+     * справа внизу (с неё же можно вести камеру), вокруг — прицел, прыжок, действие,
+     * перезарядка и V.A.T.S.; служебные кнопки — тонкой строкой сверху.
+     */
     public static List<ScreenKey> defaults() {
+        int C = ScreenKeyKt.SCREEN_KEY_CIRCLE, P = ScreenKeyKt.SCREEN_KEY_PILL;
         List<ScreenKey> keys = new ArrayList<>();
         // Ходьба: стик с диагоналями (пустые слоты = нажимаются две соседние клавиши)
-        keys.add(new ScreenKey(Arrays.asList(W, 0, D, 0, S, 0, A, 0), 0.13f, 0.70f, 120, "", "", "", 1f,
+        keys.add(new ScreenKey(Arrays.asList(W, 0, D, 0, S, 0, A, 0), 0.14f, 0.70f, sz(0.34f), "", "", "", 1f,
                 ScreenKeyKt.SCREEN_KEY_STICK, false, true));
-        // Мышь — огонь и прицел
-        keys.add(key(BTN_LEFT, 0.90f, 0.62f, 68, "Огонь", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
-        keys.add(key(BTN_RIGHT, 0.78f, 0.80f, 56, "Прицел", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
-        // Действия
-        keys.add(key(E, 0.78f, 0.47f, 50, "E", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
-        keys.add(key(SPACE, 0.93f, 0.86f, 50, "Прыжок", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(R, 0.67f, 0.90f, 44, "R", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
-        keys.add(key(LCTRL, 0.31f, 0.90f, 44, "Присед", ScreenKeyKt.SCREEN_KEY_PILL, true));
-        keys.add(key(CAPS, 0.31f, 0.74f, 40, "Шаг", ScreenKeyKt.SCREEN_KEY_PILL, true));
-        keys.add(key(V, 0.90f, 0.42f, 50, "VATS", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(Z, 0.67f, 0.74f, 40, "Взять", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(F, 0.84f, 0.10f, 40, "Вид", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        // Служебные
-        keys.add(key(TAB, 0.05f, 0.10f, 44, "Pip-Boy", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(ESC, 0.95f, 0.10f, 40, "Esc", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(T, 0.37f, 0.10f, 40, "Ждать", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(F5, 0.17f, 0.10f, 36, "F5", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(F9, 0.27f, 0.10f, 36, "F9", ScreenKeyKt.SCREEN_KEY_PILL, false));
-        keys.add(key(K1, 0.47f, 0.10f, 36, "1", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
-        keys.add(key(K2, 0.55f, 0.10f, 36, "2", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
-        keys.add(key(K3, 0.63f, 0.10f, 36, "3", ScreenKeyKt.SCREEN_KEY_CIRCLE, false));
+        // Бой
+        keys.add(key(BTN_LEFT, 0.90f, 0.68f, sz(0.21f), "ОГОНЬ", C, false));
+        keys.add(key(BTN_RIGHT, 0.92f, 0.36f, sz(0.14f), "ПРИЦЕЛ", C, false));
+        keys.add(key(E, 0.76f, 0.86f, sz(0.14f), "ВЗЯТЬ", C, false));
+        keys.add(key(SPACE, 0.775f, 0.56f, sz(0.13f), "ПРЫЖОК", C, false));
+        keys.add(key(R, 0.655f, 0.88f, sz(0.12f), "ПЕРЕЗ.", C, false));
+        keys.add(key(V, 0.66f, 0.66f, sz(0.12f), "V.A.T.S.", C, false));
+        keys.add(key(LCTRL, 0.05f, 0.40f, sz(0.12f), "ПРИСЕСТЬ", C, false));
+        keys.add(key(CAPS, 0.05f, 0.22f, sz(0.10f), "БЕГ/ШАГ", C, false));
+        // Верхняя строка
+        keys.add(key(ESC, 0.045f, 0.08f, sz(0.10f), "МЕНЮ", P, false));
+        keys.add(key(F5, 0.125f, 0.08f, sz(0.10f), "СОХР.", P, false));
+        keys.add(key(F9, 0.205f, 0.08f, sz(0.10f), "ЗАГР.", P, false));
+        keys.add(key(T, 0.285f, 0.08f, sz(0.10f), "ЖДАТЬ", P, false));
+        keys.add(key(F, 0.85f, 0.08f, sz(0.10f), "ВИД", P, false));
+        keys.add(key(TAB, 0.95f, 0.08f, sz(0.12f), "PIP-BOY", P, false));
+        // Быстрые слоты 1-8 внизу по центру
+        for (int i = 1; i <= 8; i++) {
+            keys.add(key(K1 + i - 1, 0.24f + i * 0.045f, 0.94f, sz(0.08f), String.valueOf(i), C, false));
+        }
         return keys;
     }
 
-    /** Ставит раскладку по умолчанию, если игрок ещё ничего не настраивал. */
+    private static final int LAYOUT_VERSION = 2;
+
+    /** Ставит раскладку по умолчанию, если игрок ещё ничего не настраивал или раскладка устарела. */
     public static void installIfEmpty(Context c) {
-        if (!ControllerPrefs.INSTANCE.screenKeys(c).isEmpty()) return;
+        android.content.SharedPreferences p = c.getSharedPreferences("wasteland", Context.MODE_PRIVATE);
+        boolean old = p.getInt("layout_version", 1) < LAYOUT_VERSION;
+        if (!old && !ControllerPrefs.INSTANCE.screenKeys(c).isEmpty()) return;
         ControllerPrefs.INSTANCE.setScreenKeys(c, defaults());
+        p.edit().putInt("layout_version", LAYOUT_VERSION).putInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, 100).apply();
     }
 
     /** Подписи и коды для мини-редактора: что обычно нужно в Fallout. */
@@ -73,7 +85,7 @@ public final class PcLayout {
             {LSHIFT, "Shift — бег"}, {CAPS, "Caps — шаг"}, {TAB, "Tab — Пип-бой"}, {V, "V — V.A.T.S."},
             {F, "F — вид от 1/3 лица"}, {Z, "Z — взять предмет"}, {T, "T — ожидание"}, {ESC, "Esc — меню"},
             {F5, "F5 — быстрое сохранение"}, {F9, "F9 — быстрая загрузка"},
-            {K1, "1 — оружие 1"}, {K2, "2 — оружие 2"}, {K3, "3 — оружие 3"},
+            {K1, "1 — слот 1"}, {K2, "2 — слот 2"}, {K3, "3 — слот 3"}, {5, "4 — слот 4"}, {6, "5 — слот 5"}, {7, "6 — слот 6"}, {8, "7 — слот 7"}, {9, "8 — слот 8"},
             {W, "W — вперёд"}, {S, "S — назад"}, {A, "A — влево"}, {D, "D — вправо"},
             {28, "Enter — ввод"}, {ScreenKeyKt.SCREEN_KEY_PILL == 0 ? 41 : 41, "~ — консоль"},
     };

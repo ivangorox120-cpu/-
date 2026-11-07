@@ -676,6 +676,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 event.offsetLocation(keys.left - surfaceView.left.toFloat(), keys.top - surfaceView.top.toFloat())
                 onTouchEvent(event)
             }
+            keys.lookThrough = { codes -> 272 in codes && com.wastelanddroid.engine.FalloutInput.fireLook(this) }
+            keys.haptics = com.wastelanddroid.engine.FalloutInput.haptics(this)
             keys.onAdd = { screenKeyPickerOpen = true }
             keys.onSelect = { codes -> screenKeyEdit = screenKeys?.stateOf(codes) }
             keys.onEditingChanged = { if (!it) screenKeyEdit = null }

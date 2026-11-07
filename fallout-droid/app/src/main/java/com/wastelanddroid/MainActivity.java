@@ -161,6 +161,17 @@ public final class MainActivity extends Activity {
         if (auto != null) frame.post(() -> startGame(GameDef.byId(auto)));
     }
 
+    /** Adreno без скачанного рекомендованного драйвера: встроенный может не вывести картинку. */
+    private boolean needsDriver() {
+        if (prefs.getBoolean("driver_skipped", false)) return false;
+        try {
+            return new com.droiddeck.launcher.FdDriverSetup(this).applies()
+                    && !com.droiddeck.launcher.FdDriverSetup.chosen(this);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private boolean anyGameChosen() {
         for (GameDef d : GameDef.values()) if (d.gameDir(this) != null) return true;
         return false;
@@ -268,6 +279,11 @@ public final class MainActivity extends Activity {
         if (dir == null) { Toast.makeText(this, "Сначала выберите папку игры", Toast.LENGTH_SHORT).show(); return; }
         if (!FalloutEngine.ready(this)) {
             Toast.makeText(this, "Сначала завершите подготовку — это нужно один раз", Toast.LENGTH_LONG).show();
+            open(new Intent(this, OnboardingActivity.class));
+            return;
+        }
+        if (needsDriver()) {
+            Toast.makeText(this, "Нужен графический драйвер под ваш GPU — без него не будет картинки", Toast.LENGTH_LONG).show();
             open(new Intent(this, OnboardingActivity.class));
             return;
         }

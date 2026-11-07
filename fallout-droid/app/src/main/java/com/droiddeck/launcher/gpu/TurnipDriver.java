@@ -264,6 +264,10 @@ public final class TurnipDriver {
 
     private String choose() {
         String chosen = SessionPrefs.androidDriver(context);
+        if ("system".equals(chosen)) {
+            Log.i(TAG, "system Vulkan driver chosen by the user");
+            return null;
+        }
         if (chosen != null && !chosen.isEmpty()) {
             if (BUNDLED.contains(chosen)) {
                 Log.i(TAG, "driver pinned by the user: " + chosen);
