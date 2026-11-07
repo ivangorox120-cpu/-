@@ -745,7 +745,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     g.fillStyle = '#f2e6c9'; g.font = '900 34px Arial'; g.textAlign = 'center'; g.fillText('ГРУППА', w / 2, 60); g.font = '900 38px Arial'; g.fillText('«КИНОПЛЁНКА»', w / 2, 110); g.font = '700 22px Arial'; g.fillText('ТУР 1992', w / 2, h - 40);
     g.fillStyle = '#0008'; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(50 + i * 52, 210, 26, 0, 7); g.fill(); } speckle(g, w, h, 3000, ['#0003', '#fff2'], 2);
   }));
-  const poster = new THREE.Mesh(new THREE.PlaneGeometry(.45, .63), std({ map: posterTex })); poster.position.set(KW - .035, 1.55, -.55); poster.rotation.y = -Math.PI / 2; K.add(poster);
+  const poster = new THREE.Mesh(new THREE.PlaneGeometry(.45, .63), std({ map: posterTex })); poster.position.set(KW - .035, 1.55, -.55); poster.rotation.y = -Math.PI / 2; K.add(poster); poster.visible = false; // заменён советскими плакатами пользователя
   // Настенные кварцевые часы на правой стене (рядом с ружьём и над календарём)
   const clockDialTex = regTex(ctex(512, 512, (g, w, h) => {
     const cx = w / 2, cy = h / 2, r = w * .45;
@@ -829,6 +829,10 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- дверь ----------
   const doorPivot = new THREE.Group(); doorPivot.position.set(1.2, 0, -KD); K.add(doorPivot); doorPivot.userData.dyn = true;
   const doorMesh = box(.8, 2.04, .05, [MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT.wallpaper, MAT_SOYUZ_EXT], -.4, 1.02, 0, doorPivot);
+  // советские плакаты пользователя: «Мир и дружба!» на правой стене под ружьём, «Закуска градус крадёт!» на внутренней стороне двери
+  { const posterMat = file => { const m = std({ color: 0xffffff, roughness: .78 }); TL.load('assets/tex/' + file, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; m.map = t; m.needsUpdate = true; }, undefined, () => {}); return m; };
+    const pMir = new THREE.Mesh(new THREE.PlaneGeometry(.66, .46), posterMat('poster_mir.jpg')); pMir.position.set(KW - .033, 1.12, -.52); pMir.rotation.y = -Math.PI / 2; pMir.receiveShadow = true; K.add(pMir);
+    const pZak = new THREE.Mesh(new THREE.PlaneGeometry(.36, .512), posterMat('poster_zakuska.jpg')); pZak.position.set(0, .48, .027); pZak.receiveShadow = true; doorMesh.add(pZak); }
   const handleM = std({ color: 0x777777, metalness: .8, roughness: .3 });
   box(.12, .025, .04, handleM, -.72, 1.0, .05, doorPivot); box(.12, .025, .04, handleM, -.72, 1.0, -.05, doorPivot);
   occ(doorMesh);
@@ -2454,7 +2458,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (ASSETS.cigarette) life.setCigaretteModel(ASSETS.cigarette.scene.clone(true));
     if (ASSETS.vodka) life.setBottleModel(ASSETS.vodka.scene.clone(true));
     if (ASSETS.chair) { placeModel(ASSETS.chair, STOOL.x, STOOL.z - .02, Math.PI); stool.visible = false; } // стул продавца вместо табуретки: спинкой к двери, лицом к прилавку
-    if (ASSETS.poster) { poster.visible = false; const o = placeModel(ASSETS.poster, KW - .025, -.62, -Math.PI / 2, .9); o.position.y = 1.18; }
+    // место модели плаката на правой стене занял советский плакат «Мир и дружба!» (см. ниже у двери)
     if (ASSETS.nodrink) { const ms = meshesOf(ASSETS.nodrink); let big = ms[0]; ms.forEach(m => { m.geometry.computeBoundingBox(); big.geometry.computeBoundingBox(); if (m.geometry.boundingBox.getSize(tmpV).y > big.geometry.boundingBox.getSize(tmpV2).y) big = m; });
       const g = big.geometry.clone().applyMatrix4(big.matrixWorld); g.computeBoundingBox(); const bb = g.boundingBox, c = bb.getCenter(new THREE.Vector3()); g.translate(-c.x, -bb.min.y, -c.z); const sc = .55 / (bb.max.y - bb.min.y); g.scale(sc, sc, sc);
       const m = new THREE.Mesh(g, big.material); m.position.set(-.35, 1.25, -KD + .04); m.rotation.y = Math.abs(bb.max.x - bb.min.x) < Math.abs(bb.max.z - bb.min.z) ? Math.PI / 2 : 0; scene.add(m); }
