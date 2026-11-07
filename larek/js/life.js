@@ -1310,8 +1310,9 @@ export function createLife(env) {
       mats.forEach(mt => {
         if (!glassOrig.has(mt)) glassOrig.set(mt, { c: mt.color ? mt.color.getHex() : 0xffffff, op: mt.opacity, rgh: mt.roughness });
         if (/label/i.test(mt.name)) {
-          mt.map = lblMat.map;
-          mt.needsUpdate = true;
+          // своя этикетка модели развёрнута иначе: наша текстура растягивалась на неё огромными буквами («странный раскрас»).
+          // Прячем её — этикетку рисует отдельный цилиндр fpLabelMesh с правильной развёрткой.
+          mt.visible = false;
         } else if (/glass/i.test(mt.name) || mt.transparent) {
           mt.color.setHex(cfg.glass);
           mt.opacity = cfg.op;

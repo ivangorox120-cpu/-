@@ -399,14 +399,27 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const K = new THREE.Group(); scene.add(K); const seasonHooks = [];
   const KW = 1.5, KD = 1.2, KH = 2.5, T_ = .06;
   drift(KW + .98, -KD + .3, KW + .98, KD - .3, .55, .36, 1); drift(-KW - .98, -KD + .3, -KW - .98, KD - .3, .55, .34, 2); flushDrifts(); // наносы снаружи у боковых стен ларька (не заходят внутрь)
-  const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : MAT.kiosk);
+  // «Союзпечать»: стены снаружи — гофрированный лист в частую бело-голубую вертикальную полоску, со следами ржавчины и грязи
+  const soyuzTex = regTex(ctex(256, 256, (g, w, h) => {
+    for (let i = 0; i < 16; i++) { const x = i * 16; g.fillStyle = '#e9ecef'; g.fillRect(x, 0, 16, h); g.fillStyle = '#3d6fb0'; g.fillRect(x + 9, 0, 7, h);
+      const gr = g.createLinearGradient(x, 0, x + 16, 0); gr.addColorStop(0, 'rgba(255,255,255,.18)'); gr.addColorStop(.5, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.18)'); g.fillStyle = gr; g.fillRect(x, 0, 16, h); } // рёбра гофры
+    speckle(g, w, h, 900, ['#0002', '#fff3', '#7a4a2a22'], 2); stains(g, w, h, 6);
+    const dirt = g.createLinearGradient(0, h * .7, 0, h); dirt.addColorStop(0, 'rgba(70,60,50,0)'); dirt.addColorStop(1, 'rgba(70,60,50,.35)'); g.fillStyle = dirt; g.fillRect(0, 0, w, h); }));
+  soyuzTex.wrapS = soyuzTex.wrapT = THREE.RepeatWrapping; soyuzTex.repeat.set(2.2, 1);
+  const soyuzMat = std({ map: soyuzTex, roughness: .55, metalness: .35 });
+  const greyPaint = std({ color: 0xc9cdd0, roughness: .6, metalness: .3 }), bluePaint = std({ color: 0x3a6cad, roughness: .45, metalness: .3 });
+  const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : soyuzMat);
   const kioskWalls = [];
   const kw = (...a) => { const m = box(...a); kioskWalls.push(m); occ(m); return m; };
   kw(1.9, KH, T_, wm(4), -.55, KH / 2, -KD, K); kw(.3, KH, T_, wm(4), 1.35, KH / 2, -KD, K); kw(.8, KH - 2.05, T_, wm(4), .8, 2.05 + (KH - 2.05) / 2, -KD, K);
   kw(KW * 2, 1.0, T_, wm(5), 0, .5, KD, K); kw(KW * 2, KH - 2.15, T_, wm(5), 0, 2.15 + (KH - 2.15) / 2, KD, K);
   kw(.15, 1.15, T_, wm(5), -1.425, 1.575, KD, K); kw(.15, 1.15, T_, wm(5), 1.425, 1.575, KD, K);
   kw(T_, KH, KD * 2, wm(0), -KW, KH / 2, 0, K); kw(T_, KH, KD * 2, wm(1), KW, KH / 2, 0, K);
-  box(KW * 2 + .3, .1, KD * 2 + .3, MAT.roofTin, 0, KH + .05, 0, K);
+  box(KW * 2 + .5, .1, KD * 2 + .5, greyPaint, 0, KH + .05, 0, K); // плоская крыша с выносом
+  box(KW * 2 + .54, .2, .04, greyPaint, 0, KH + .02, KD + .27, K); box(KW * 2 + .54, .2, .04, greyPaint, 0, KH + .02, -KD - .27, K); // бортики-фризы
+  box(.04, .2, KD * 2 + .54, greyPaint, KW + .27, KH + .02, 0, K); box(.04, .2, KD * 2 + .54, greyPaint, -KW - .27, KH + .02, 0, K);
+  box(KW * 2 + .02, .06, KD * 2 + .02, greyPaint, 0, .03, 0, K); box(KW * 2 + .2, .07, KD * 2 + .2, std({ color: 0x8e9192, roughness: .8, metalness: .2 }), 0, .035, 0, K); // цоколь
+  box(KW * 2 + .14, .05, .2, bluePaint, 0, 1.0, KD + .1, K); // выносной подоконник-полочка под витриной
   box(KW * 2 - .02, .02, KD * 2 - .02, MAT.ceiling, 0, KH - .01, 0, K, false);
   box(KW * 2 - .04, .03, KD * 2 - .04, MAT.floor, 0, .02, 0, K, false);
   // коллизии стен с дверным проёмом x 0.4..1.2
@@ -417,12 +430,13 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   addCol(-KW, .3, -KD, -KD + .34, 'shelf'); addCol(-KW, -KW + .3, -KD, .45, 'shelf');
   // козырёк, вывеска
   const stripes = (a, b) => regTex(ctex(128, 128, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 16, 0, 16, h); } speckle(g, w, h, 600, ['#0003', '#fff2'], 2); stains(g, w, h, 5); }));
-  const awn = new THREE.Mesh(new THREE.PlaneGeometry(KW * 2 + .2, .9), std({ map: stripes('#a8352a', '#d9d2c0'), side: THREE.DoubleSide }));
-  awn.position.set(0, 2.32, KD + .4); awn.rotation.x = -Math.PI / 2 + .55; awn.castShadow = true; K.add(awn);
-  const awnSnow = box(KW * 2 + .2, .05, .9, MAT.snow, 0, 2.36, KD + .4, K, false); awnSnow.rotation.x = .55; awnSnow.userData.winter = true;
+  // полосатый навес убран — у «Союзпечати» плоская крыша
   const roofSnow = box(KW * 2 + .3, .08, KD * 2 + .3, MAT.snow, 0, KH + .14, 0, K, false); roofSnow.userData.winter = true;
-  const signTex = textTex(512, 96, 'ПРОДУКТЫ · 24 ЧАСА', '#d9b23a', '#7a1f16', '900 46px "Arial Black", Arial, sans-serif');
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, .33), std({ map: signTex, emissive: 0x332200, emissiveMap: signTex, emissiveIntensity: 0 })); sign.position.set(0, 2.32, KD + .035); K.add(sign);
+  // вывеска «Союзпечать»: синяя табличка с белой рукописной надписью по центру фриза, над витриной
+  const signTex = regTex(ctex(512, 96, (g, w, h) => { g.fillStyle = '#2c5c9e'; g.fillRect(0, 0, w, h); g.strokeStyle = '#d8dde2'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6);
+    g.fillStyle = '#f2f4f6'; g.font = 'italic 700 58px "Times New Roman", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('Союзпечать', w / 2, h / 2 + 4); speckle(g, w, h, 300, ['#0002', '#fff2'], 1.5); }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .28), std({ map: signTex, emissive: 0x112244, emissiveMap: signTex, emissiveIntensity: 0, roughness: .5 })); sign.position.set(0, KH + .02, KD + .295); K.add(sign);
+  const signBack = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .28), std({ map: signTex, roughness: .5 })); signBack.position.set(0, KH + .02, -KD - .295); signBack.rotation.y = Math.PI; K.add(signBack);
   // панорамная витрина без решёток: стекло в алюминиевой раме; зимой — иней от краёв, в остальное время — пыль и потёки
   const winTexes = (() => { const W = 512, H = 224;
     const mk = draw => { const t = regTex(ctex(W, H, g => draw(g, W, H))); return t; };
@@ -439,7 +453,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     return { frost, dirt }; })();
   const winGlassMat = new THREE.MeshStandardMaterial({ map: winTexes.frost, transparent: true, roughness: .12, metalness: .1, color: 0xffffff, depthWrite: false, side: THREE.DoubleSide });
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.86, 1.15), winGlassMat); glass.position.set(0, 1.575, KD + .012); glass.renderOrder = 2; K.add(glass);
-  const alu = std({ color: 0x9a9c98, roughness: .45, metalness: .75 });
+  const alu = std({ color: 0x3a6cad, roughness: .42, metalness: .35 }); // рама витрины выкрашена в синий, как у «Союзпечати»
   box(2.96, .05, .07, alu, 0, 2.15, KD + .01, K); box(2.96, .05, .08, alu, 0, 1.005, KD + .01, K); // рама сверху и снизу
   for (const x of [-1.455, -.5, .5, 1.455]) box(.045, 1.15, .07, alu, x, 1.575, KD + .01, K); // стойки (по центру — окошко выдачи)
   box(.95, .03, .05, alu, 0, 1.36, KD + .015, K); // перемычка над окошком
@@ -527,47 +541,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     K.add(tapeStrip);
   }
 
-  // Советский гранёный стакан с чаем в металлическом подстаканнике на прилавке
-  {
-    const pod = new THREE.Group();
-    pod.position.set(-0.48, 1.015, KD - 0.26);
-    pod.userData.dyn = true;
-    const podMat = std({ color: 0x9a9890, metalness: 0.85, roughness: 0.25 });
-    cyl(0.038, 0.036, 0.055, podMat, 0, 0.028, 0, 16, pod);
-    cyl(0.041, 0.041, 0.006, podMat, 0, 0.003, 0, 16, pod);
-    cyl(0.039, 0.039, 0.006, podMat, 0, 0.055, 0, 16, pod);
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.004, 6, 12, Math.PI), podMat);
-    handle.position.set(-0.042, 0.032, 0);
-    handle.rotation.z = Math.PI / 2;
-    pod.add(handle);
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, roughness: 0.08, clearcoat: 1 });
-    cyl(0.035, 0.031, 0.095, glassMat, 0, 0.048, 0, 14, pod);
-    const teaMat = std({ color: 0x8b3a0e, roughness: 0.15, transparent: true, opacity: 0.82 });
-    cyl(0.033, 0.030, 0.068, teaMat, 0, 0.036, 0, 12, pod);
-    const spoonMat = std({ color: 0xb5b7b8, metalness: 0.9, roughness: 0.2 });
-    const spoon = cyl(0.002, 0.002, 0.12, spoonMat, 0.008, 0.075, 0.005, 6, pod);
-    spoon.rotation.z = 0.32;
-    spoon.rotation.x = -0.15;
-    K.add(pod);
-  }
-
-  // Штырь для товарных чеков на деревянной подставке
-  {
-    const spindle = new THREE.Group();
-    spindle.position.set(0.46, 1.015, KD - 0.26);
-    spindle.userData.dyn = true;
-    box(0.075, 0.014, 0.075, MAT.wood, 0, 0.007, 0, spindle);
-    cyl(0.0022, 0.0012, 0.13, MAT.steel, 0, 0.072, 0, 6, spindle);
-    const receiptMat = std({ color: 0xede6d4, roughness: 0.85 });
-    for (let r = 0; r < 5; r++) {
-      const rec = new THREE.Mesh(new THREE.PlaneGeometry(0.048, 0.040), receiptMat);
-      rec.rotation.x = -Math.PI / 2 + (r * 0.04 - 0.08);
-      rec.rotation.z = r * 0.65;
-      rec.position.set((r % 2 === 0 ? 0.002 : -0.002), 0.025 + r * 0.008, (r % 3 === 0 ? 0.002 : -0.002));
-      spindle.add(rec);
-    }
-    K.add(spindle);
-  }
+  // стакан в подстаканнике и штырь для чеков убраны с прилавка (мешали)
 
   // Паутина по углам ларька
   {
@@ -692,7 +666,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // ---------- дверь ----------
   const doorPivot = new THREE.Group(); doorPivot.position.set(1.2, 0, -KD); K.add(doorPivot); doorPivot.userData.dyn = true;
-  const doorMesh = box(.8, 2.04, .05, [MAT.kiosk, MAT.kiosk, MAT.kiosk, MAT.kiosk, MAT.wallpaper, MAT.kiosk], -.4, 1.02, 0, doorPivot);
+  const doorMesh = box(.8, 2.04, .05, [bluePaint, bluePaint, bluePaint, bluePaint, MAT.wallpaper, soyuzMat], -.4, 1.02, 0, doorPivot);
   const handleM = std({ color: 0x777777, metalness: .8, roughness: .3 });
   box(.12, .025, .04, handleM, -.72, 1.0, .05, doorPivot); box(.12, .025, .04, handleM, -.72, 1.0, -.05, doorPivot);
   occ(doorMesh);
@@ -1746,6 +1720,63 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const signs = [['ВИДЕОПРОКАТ', '#1a2a4a', '#e8d070', -32, 18.95], ['КОМИССИОННЫЙ', '#4a1a1a', '#f0e0c0', 14, 18.95], ['ГАСТРОНОМ', '#2a3a2a', '#e0d8b0', -14, 18.95], ['РЕМОНТ ОБУВИ', '#3a3a3a', '#f0e8d0', 30, 18.95]];
   for (const [t, bg, fg, x, z] of signs) { const tx = textTex(512, 96, t, bg, fg, '900 52px Arial'); const m = new THREE.Mesh(new THREE.PlaneGeometry(3.2, .6), std({ map: tx, emissive: 0xffffff, emissiveMap: tx, emissiveIntensity: 0 })); m.position.set(x, 3.4, z); scene.add(m); m.userData.neon = true; neons.push(m); }
 
+  // ---------- советские мелочи на улице: таксофон, автомат газводы, бочка кваса, афишные тумбы, почтовый ящик, табличка улицы, стенд ----------
+  {
+    const at = (o, x, z, ry = 0) => { o.position.set(x, 0, z); o.rotation.y = ry; o.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); scene.add(o); return o; };
+    const plate = (tex, w, h, x, y, z, parent, ry = 0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), std({ map: tex, roughness: .7 })); m.position.set(x, y, z); m.rotation.y = ry; parent.add(m); return m; };
+    const steel = std({ color: 0x6d7275, roughness: .5, metalness: .6 }), glassS = std({ color: 0x9fb0b8, roughness: .1, metalness: .2, transparent: true, opacity: .35 });
+    // таксофон: будка из серого металла с красной полосой и стеклом, внутри аппарат
+    { const g = new THREE.Group(), red = std({ color: 0xa8302a, roughness: .55, metalness: .3 }), grey = std({ color: 0xb9bcb8, roughness: .6, metalness: .35 });
+      box(.95, .08, .95, grey, 0, 2.28, 0, g); box(.9, .25, .9, red, 0, 2.12, 0, g); box(.9, .06, .9, grey, 0, .03, 0, g);
+      for (const [x, z] of [[-.44, -.44], [.44, -.44], [-.44, .44], [.44, .44]]) box(.05, 2.0, .05, grey, x, 1.0, z, g);
+      box(.88, 2.0, .03, grey, 0, 1.0, -.44, g); box(.03, 1.1, .88, grey, -.44, .55, 0, g); box(.03, 1.1, .88, grey, .44, .55, 0, g);
+      box(.03, .85, .86, glassS, -.44, 1.55, 0, g); box(.03, .85, .86, glassS, .44, 1.55, 0, g);
+      const tt = textTex(256, 48, 'ТАКСОФОН', '#a8302a', '#f2ede2', '700 34px Arial'); plate(tt, .8, .16, 0, 2.12, .452, g);
+      box(.26, .4, .14, std({ color: 0x3a3c3e, roughness: .4, metalness: .6 }), 0, 1.35, -.36, g); box(.06, .2, .06, std({ color: 0x1a1a1a, roughness: .5 }), -.09, 1.42, -.27, g); // аппарат и трубка
+      at(g, -11.2, 1.25, 0); addCol(-11.7, -10.7, .78, 1.72); }
+    // автомат «Газированная вода»: красный шкаф, стакан в мойке
+    { const g = new THREE.Group(), red = std({ color: 0xb33a2e, roughness: .5, metalness: .35 });
+      box(.7, 1.6, .5, red, 0, .8, 0, g); box(.72, .06, .52, std({ color: 0xd8d4c8, roughness: .5, metalness: .3 }), 0, 1.63, 0, g);
+      const gt = regTex(ctex(256, 128, (c, w, h) => { c.fillStyle = '#efe7d2'; c.fillRect(0, 0, w, h); c.fillStyle = '#a3261d'; c.font = '700 30px Arial'; c.textAlign = 'center'; c.fillText('ГАЗИРОВАННАЯ', w / 2, 44); c.fillText('ВОДА', w / 2, 82); c.font = '20px Arial'; c.fillStyle = '#333'; c.fillText('без сиропа 1 к.  с сиропом 3 к.', w / 2, 114); speckle(c, w, h, 400, ['#0003', '#fff2'], 2); }));
+      plate(gt, .6, .3, 0, 1.38, .252, g); box(.34, .36, .1, std({ color: 0x2a2c2e, roughness: .4, metalness: .5 }), 0, .9, .22, g); // ниша с мойкой
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(.035, .03, .1, 10), glassS); cup.position.set(.05, .78, .24); g.add(cup);
+      at(g, -9.8, 1.05, 0); addCol(-10.15, -9.45, .8, 1.3); }
+    // бочка «КВАС» на колёсах (зимой закрыта, стоит под снегом)
+    { const g = new THREE.Group(), yel = std({ color: 0xd9a42a, roughness: .55, metalness: .25 });
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 1.9, 18), yel); barrel.rotation.z = Math.PI / 2; barrel.position.y = 1.05; g.add(barrel);
+      for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .14, 14), std({ color: 0x222222, roughness: .8 })); w.rotation.x = Math.PI / 2; w.position.set(0, .3, s * .5); g.add(w); }
+      box(.08, .08, 1.1, steel, 1.25, .45, 0, g); box(.5, .06, .06, steel, 1.0, .45, 0, g); // дышло
+      const kv = textTex(256, 96, 'КВАС', '#d9a42a', '#7a2a12', '900 64px Arial'); plate(kv, .9, .34, 0, 1.1, .556, g); plate(kv, .9, .34, 0, 1.1, -.556, g, Math.PI);
+      const sn = box(1.6, .06, .5, MAT.snow, 0, 1.6, 0, g, false); sn.userData.winter = true;
+      at(g, -5.5, 18.0, 0); addCol(-6.6, -4.3, 17.4, 18.6); }
+    // афишные тумбы с облезлыми плакатами
+    const afTex = regTex(ctex(512, 256, (c, w, h) => { c.fillStyle = '#d8d0bc'; c.fillRect(0, 0, w, h);
+      const ps = [['#b23a2a', '#f0e6cc', 'ЦИРК'], ['#2a4a7a', '#f0e6cc', 'КИНО'], ['#e0c050', '#3a2a1a', 'ВЫБОРЫ'], ['#3a6a3a', '#f0e6cc', 'ТАНЦЫ'], ['#8a2a5a', '#f0e6cc', 'ЛОТО']];
+      ps.forEach(([bg, fg, t], i) => { const x = i * 102 + 4, y = 14 + (i % 2) * 30; c.fillStyle = bg; c.fillRect(x, y, 94, 190); c.fillStyle = fg; c.font = '700 22px Arial'; c.textAlign = 'center'; c.fillText(t, x + 47, y + 40); c.fillRect(x + 12, y + 60, 70, 3); c.fillRect(x + 12, y + 75, 50, 3); });
+      for (let i = 0; i < 26; i++) { c.fillStyle = '#d8d0bc'; c.globalAlpha = .9; c.fillRect(R(0, w), R(0, h), R(8, 40), R(6, 30)); } c.globalAlpha = 1; speckle(c, w, h, 1500, ['#0003', '#fff2'], 2); stains(c, w, h, 10); }));
+    for (const [x, z] of [[21, 1.4], [-42, 17.9]]) { const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 2.2, 20, 1, true), std({ map: afTex, roughness: .8, side: THREE.DoubleSide })); body.position.y = 1.25; g.add(body);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(.35, .65, .3, 20), std({ color: 0x5a6a5e, roughness: .6, metalness: .3 })); cap.position.y = 2.5; g.add(cap);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(.6, .62, .15, 20), std({ color: 0x5a6a5e, roughness: .6, metalness: .3 })); base.position.y = .075; g.add(base);
+      at(g, x, z, R(0, 6.28)); addCol(x - .6, x + .6, z - .6, z + .6); }
+    // синий почтовый ящик на столбике
+    { const g = new THREE.Group(), blue = std({ color: 0x2c5aa0, roughness: .45, metalness: .4 });
+      box(.06, 1.0, .06, steel, 0, .5, 0, g); box(.42, .5, .26, blue, 0, 1.25, 0, g); box(.3, .03, .02, std({ color: 0x111111 }), 0, 1.4, .135, g);
+      plate(textTex(128, 40, 'ПОЧТА', '#2c5aa0', '#f2f2f2', '700 26px Arial'), .3, .09, 0, 1.18, .132, g);
+      at(g, -12.6, 1.4, 0); addCol(-12.85, -12.35, 1.2, 1.6); }
+    // табличка с названием улицы на столбике у перехода
+    { const g = new THREE.Group(); box(.06, 2.6, .06, steel, 0, 1.3, 0, g);
+      const st = textTex(384, 96, 'ул. Индустриальная', '#1f3f7a', '#f2f2f2', '700 40px Arial'); plate(st, 1.0, .25, 0, 2.45, .035, g); plate(st, 1.0, .25, 0, 2.45, -.035, g, Math.PI);
+      at(g, -7.0, 5.4, 0); addCol(-7.08, -6.92, 5.32, 5.48); }
+    // стенд-лозунг «Слава труду!» у дороги (облупленный, остался с советских времён)
+    { const g = new THREE.Group();
+      const sl = regTex(ctex(512, 160, (c, w, h) => { c.fillStyle = '#9c2a22'; c.fillRect(0, 0, w, h); c.strokeStyle = '#d9b44a'; c.lineWidth = 6; c.strokeRect(8, 8, w - 16, h - 16); c.fillStyle = '#e8d9a8'; c.font = '900 64px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('СЛАВА ТРУДУ!', w / 2, h / 2 + 4);
+        for (let i = 0; i < 40; i++) { c.fillStyle = '#7a6a5a'; c.globalAlpha = R(.3, .8); c.fillRect(R(0, w), R(0, h), R(2, 18), R(2, 10)); } c.globalAlpha = 1; speckle(c, w, h, 1200, ['#0004', '#fff2'], 2); stains(c, w, h, 8); }));
+      for (const x of [-1.7, 1.7]) box(.1, 3.2, .1, steel, x, 1.6, 0, g);
+      plate(sl, 3.8, 1.2, 0, 2.6, .06, g); box(3.9, 1.26, .06, std({ color: 0x55595b, roughness: .7, metalness: .4 }), 0, 2.6, 0, g);
+      at(g, -48, 0.6, 0); addCol(-49.8, -46.2, .5, .7); }
+  }
+
   // ---------- газеты на дороге и тротуарах (вымышленные городские газеты 1992 г.), часть носит ветром ----------
   const paperTex = ['ВЕЧЕРНИЙ КУРЬЕР', 'ГОЛОС ТРУДА', 'ГОРОДСКИЕ ВЕСТИ'].map((title, vi) => regTex(ctex(512, 360, (g, w, h) => {
     g.fillStyle = ['#e4dcc6', '#ddd5bd', '#e8e2d0'][vi]; g.fillRect(0, 0, w, h);
@@ -2159,7 +2190,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         g.putImageData(d, 0, 0); const nt = new THREE.CanvasTexture(c); nt.colorSpace = THREE.SRGBColorSpace; nt.flipY = t.flipY; nt.magFilter = THREE.NearestFilter; maskCache.set(t, nt); return nt; };
       A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
       { const done = new Set(); A.scene.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (!done.has(m)) { done.add(m); facadeDetail(m); } }); }); }
-      for (const [x, z, r] of [[-95, 27, 0], [-32, 27, 0], [30, 27, 0], [0, -36, -Math.PI / 2], [-156, -6, 0], [70, -6, Math.PI]]) {
+      for (const [x, z, r] of [[-95, 28, Math.PI / 2], [-32, 28, Math.PI / 2], [30, 28, Math.PI / 2], [0, -36, -Math.PI / 2], [-156, -26, -Math.PI / 2], [70, -26, -Math.PI / 2]]) { // все дома длинной стороной вдоль улицы, подъездами к дороге
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o); reflectLayer(o);
         { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
       }
