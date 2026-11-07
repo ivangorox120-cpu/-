@@ -828,13 +828,22 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // ---------- дверь ----------
   const doorPivot = new THREE.Group(); doorPivot.position.set(1.2, 0, -KD); K.add(doorPivot); doorPivot.userData.dyn = true;
-  const doorMesh = box(.8, 2.04, .05, [MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT.wallpaper, MAT_SOYUZ_EXT], -.4, 1.02, 0, doorPivot);
+  // дверь: старая филёнчатая из серого дерева с облезшей белой краской (фото пользователя); изнутри — то же полотно зеркально
+  const doorEdgeM = std({ color: 0x7d7468, roughness: .9 });
+  const doorOutM = std({ color: 0x8f877c, roughness: .88 }), doorInM = std({ color: 0x8f877c, roughness: .88 });
+  TL.load('assets/tex/door_wood.jpg', t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; doorOutM.map = t; doorOutM.color.set(0xffffff); doorOutM.needsUpdate = true;
+    const ti = t.clone(); ti.wrapS = THREE.RepeatWrapping; ti.repeat.x = -1; ti.offset.x = 1; ti.needsUpdate = true; doorInM.map = ti; doorInM.color.set(0xffffff); doorInM.needsUpdate = true; }, undefined, () => {});
+  const doorMesh = box(.8, 2.04, .05, [doorEdgeM, doorEdgeM, doorEdgeM, doorEdgeM, doorInM, doorOutM], -.4, 1.02, 0, doorPivot);
+  // деревянный наличник вокруг проёма снаружи
+  { const frM = std({ color: 0x8a8174, roughness: .92 }); const fz = -KD - T_ / 2 - .015;
+    box(.07, 2.12, .03, frM, .365, 1.06, fz, K); box(.07, 2.12, .03, frM, 1.235, 1.06, fz, K); box(.94, .07, .03, frM, .8, 2.085, fz, K); }
   // советские плакаты пользователя: «Мир и дружба!» на правой стене под ружьём, «Закуска градус крадёт!» на внутренней стороне двери
   { const posterMat = file => { const m = std({ color: 0xffffff, roughness: .78 }); TL.load('assets/tex/' + file, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; m.map = t; m.needsUpdate = true; }, undefined, () => {}); return m; };
     const pMir = new THREE.Mesh(new THREE.PlaneGeometry(.66, .46), posterMat('poster_mir.jpg')); pMir.position.set(KW - .033, 1.12, -.52); pMir.rotation.y = -Math.PI / 2; pMir.receiveShadow = true; K.add(pMir);
     const pZak = new THREE.Mesh(new THREE.PlaneGeometry(.36, .512), posterMat('poster_zakuska.jpg')); pZak.position.set(0, .48, .027); pZak.receiveShadow = true; doorMesh.add(pZak); }
-  const handleM = std({ color: 0x777777, metalness: .8, roughness: .3 });
-  box(.12, .025, .04, handleM, -.72, 1.0, .05, doorPivot); box(.12, .025, .04, handleM, -.72, 1.0, -.05, doorPivot);
+  // чёрная нажимная ручка на длинной планке с замочной скважиной — с обеих сторон
+  const handleM = std({ color: 0x1c1c1e, metalness: .55, roughness: .45 });
+  for (const sd of [1, -1]) { box(.045, .2, .012, handleM, -.735, .97, sd * .031, doorPivot); box(.12, .022, .022, handleM, -.69, 1.03, sd * .05, doorPivot); box(.022, .022, .03, handleM, -.735, 1.03, sd * .04, doorPivot); }
   occ(doorMesh);
   let doorOpen = 0, doorTarget = 0;
   addCol(-KW - .05, KW + .05, KD - .02, KD + .06); // перед окном снаружи — стена
