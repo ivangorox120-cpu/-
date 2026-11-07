@@ -16,7 +16,7 @@ export function createLife(env) {
   const SURF = [
     { name: 'floor',   y: .035,  x1: -KW + .08, x2: KW - .08,  z1: -KD + .08, z2: KD - .50 },
     { name: 'counter', y: 1.005, x1: -1.42,     x2: 1.42,      z1: KD - .44,  z2: KD - .02 },
-    // 4 задние полки (SH_BACK = 0.75, 1.20, 1.65, 2.05) — x1 начинается с -1.14, чтобы не пересекаться в углу с боковыми полками SH_SIDE
+    // 4 задние полки (SH_BACK = 0.75, 1.20, 1.65, 2.05)
     { name: 'shelf',   y: .763,  x1: -1.14,     x2: .27,       z1: -KD + .02, z2: -KD + .33, axis: 'x', rowIdx: 0 },
     { name: 'shelf',   y: 1.213, x1: -1.14,     x2: .27,       z1: -KD + .02, z2: -KD + .33, axis: 'x', rowIdx: 1 },
     { name: 'shelf',   y: 1.663, x1: -1.14,     x2: .27,       z1: -KD + .02, z2: -KD + .33, axis: 'x', rowIdx: 2 },
@@ -25,6 +25,11 @@ export function createLife(env) {
     { name: 'shelf',   y: .863,  x1: -KW + .02, x2: -KW + .33, z1: -.78,      z2: .38,       axis: 'z', rowIdx: 4 },
     { name: 'shelf',   y: 1.313, x1: -KW + .02, x2: -KW + .33, z1: -.42,      z2: .38,       axis: 'z', rowIdx: 5 },
     { name: 'shelf',   y: 1.763, x1: -KW + .02, x2: -KW + .33, z1: -.78,      z2: .38,       axis: 'z', rowIdx: 6 },
+    // 4 стеклянные полки витрины над прилавком у окна (левая и правая стороны, нижний и верхний ярусы)
+    { name: 'shelf',   y: 1.368, x1: -1.33,     x2: -.47,      z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 7 },
+    { name: 'shelf',   y: 1.768, x1: -1.33,     x2: -.47,      z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 8 },
+    { name: 'shelf',   y: 1.368, x1: .47,      x2: 1.33,       z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 9 },
+    { name: 'shelf',   y: 1.768, x1: .47,      x2: 1.33,       z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 10 },
   ];
   const _surfBox = new THREE.Box3(), _surfHit = new THREE.Vector3();
   const inK = (x, z) => Math.abs(x) < KW && Math.abs(z) < KD;
@@ -119,10 +124,13 @@ export function createLife(env) {
   }
   function canStackHeldOnBase(heldItem, hExt, baseObs) {
     if (!baseObs || !baseObs.stack) return false;
-    // Коробки (kind === 'box') никогда не ставятся друг на друга башней, чтобы они не зависали в воздухе;
-    // на открытую коробку сверху тоже ничего не ставится (предметы падают внутрь неё на дно)
-    if (heldItem.kind === "box") return false;
-    if (baseObs.kind === "box") return false;
+    if (heldItem.kind === "box") {
+      return baseObs.kind === "box";
+    }
+    if (baseObs.kind === "box") {
+      if (heldItem.kind === "bottle" || (heldItem.kind === "good" && heldItem.goodPhys && heldItem.goodPhys.shape === "bottle")) return false;
+      return true;
+    }
     if (heldItem.kind === "bottle") return false;
     if (heldItem.kind === "good" && heldItem.goodPhys && heldItem.goodPhys.shape === "bottle") return false;
     if (heldItem.kind === "pack") {
@@ -139,12 +147,23 @@ export function createLife(env) {
     let curX = x, curY = y, curZ = z;
     const obstacles = getAllObstacles(heldItem);
 
-    const collidesAt = (tx, ty, tz) => obstacles.find(o => {
-      const vertHit = (ty < o.y + o.h - .004) && (ty + hExt.h > o.y + .004);
-      if (!vertHit) return false;
-      const dx = Math.abs(tx - o.x), dz = Math.abs(tz - o.z);
-      return dx < (hExt.hx + o.hx - .002) && dz < (hExt.hz + o.hz - .002);
-    });
+    if (inK(curX, curZ)) {
+      const wallPadX = Math.min(.48, hExt.hx + .03);
+      const wallPadZ = Math.min(.48, hExt.hz + .03);
+      curX = clamp(curX, -KW + wallPadX, KW - wallPadX);
+      curZ = clamp(curZ, -KD + wallPadZ, KD - wallPadZ);
+    }
+    const collidesAt = (tx, ty, tz) => {
+      if (inK(tx, tz)) {
+        if (tx - hExt.hx < -KW + .02 || tx + hExt.hx > KW - .02 || tz - hExt.hz < -KD + .02 || tz + hExt.hz > KD - .02) return { wall: true };
+      }
+      return obstacles.find(o => {
+        const vertHit = (ty < o.y + o.h - .004) && (ty + hExt.h > o.y + .004);
+        if (!vertHit) return false;
+        const dx = Math.abs(tx - o.x), dz = Math.abs(tz - o.z);
+        return dx < (hExt.hx + o.hx - .002) && dz < (hExt.hz + o.hz - .002);
+      });
+    };
 
     // 1) Проверяем, не наведён ли предмет прямо на другой предмет/стопку, на который его можно положить сверху («вверх по одной»)
     const underStack = obstacles.filter(o => {
@@ -156,7 +175,7 @@ export function createLife(env) {
       underStack.sort((a, b) => (b.y + b.h) - (a.y + a.h));
       const topObs = underStack[0];
       const nextY = topObs.y + topObs.h;
-      const maxAllowance = (surf && surf.name === 'shelf') ? (surf.y + .34) : (curY + .85);
+      const maxAllowance = (surf && surf.name === 'shelf') ? (surf.y + .34) : (curY + 1.85);
       if (nextY + hExt.h <= maxAllowance && !collidesAt(topObs.x, nextY, topObs.z)) {
         return { x: topObs.x, y: nextY, z: topObs.z, stackedOn: topObs, blocked: false };
       }
@@ -191,7 +210,7 @@ export function createLife(env) {
     // 3) Если сбоку места нет, но на предмет firstHit можно положить сверху — кладём сверху!
     if (canStackHeldOnBase(heldItem, hExt, firstHit)) {
       const nextY = firstHit.y + firstHit.h;
-      const maxAllowance = (surf && surf.name === 'shelf') ? (surf.y + .34) : (curY + .85);
+      const maxAllowance = (surf && surf.name === 'shelf') ? (surf.y + .34) : (curY + 1.85);
       if (nextY + hExt.h <= maxAllowance && !collidesAt(firstHit.x, nextY, firstHit.z)) {
         return { x: firstHit.x, y: nextY, z: firstHit.z, stackedOn: firstHit, blocked: false };
       }
@@ -205,16 +224,21 @@ export function createLife(env) {
       if (forItem && forItem.kind === "box" && s.name === "shelf") continue;
       if (x > s.x1 && x < s.x2 && z > s.z1 && z < s.z2 && s.y <= yTop + .04 && s.y > best) best = s.y;
     }
-    // Коробки всегда стоят твёрдо на земле, полу или прилавке и никогда не зависают друг на друге в воздухе!
-    if (forItem && forItem.kind === "box") return best;
     for (const it of items) {
       if (it === forItem || it.inBoxId || it.state !== "rest" || !it.stack) continue;
       const { inside } = pointInBox(x, z, it, -.01);
       if (!inside) continue;
       if (it.kind === "box") {
-        // Внутри открытой коробки предметы лежат на её дне (y + 0.028)
         if (it.data && it.data.opened) {
-          const surfY = it.obj.position.y + .028;
+          if (forItem && forItem.kind === "box") {
+            const surfY = it.obj.position.y + it.half.y * 2;
+            if (surfY <= yTop + .08 && surfY > best) best = surfY;
+          } else {
+            const surfY = it.obj.position.y + .028;
+            if (surfY <= yTop + .08 && surfY > best) best = surfY;
+          }
+        } else {
+          const surfY = it.obj.position.y + it.half.y * 2;
           if (surfY <= yTop + .08 && surfY > best) best = surfY;
         }
         continue;
@@ -230,15 +254,21 @@ export function createLife(env) {
     const cand = SURF.filter(s => !(heldItem && heldItem.kind === "box" && s.name === "shelf"));
     if (!inK(P.x, P.z)) cand.push({ name: "ground", y: groundHeightAt(P.x, P.z), x1: -999, x2: 999, z1: -999, z2: 999 });
     for (const it of items) if (it !== heldItem && it.state === "rest" && it.stack && !it.inBoxId) {
-      if (heldItem && heldItem.kind === "box") continue;
       const p = it.obj.position;
       if (it.kind === "box") {
+        const ext = itemWorldHalf(it);
         if (it.data && it.data.opened) {
-          const ext = itemWorldHalf(it);
-          cand.push({ name: "box_inside", itemRef: it, box: it, y: p.y + .028, x1: p.x - ext.hx + .02, x2: p.x + ext.hx - .02, z1: p.z - ext.hz + .02, z2: p.z + ext.hz - .02 });
+          if (heldItem && heldItem.kind === "box") {
+            cand.push({ name: "item", itemRef: it, box: it, y: p.y + ext.h, x1: p.x - ext.hx, x2: p.x + ext.hx, z1: p.z - ext.hz, z2: p.z + ext.hz });
+          } else {
+            cand.push({ name: "box_inside", itemRef: it, box: it, y: p.y + .028, x1: p.x - ext.hx + .02, x2: p.x + ext.hx - .02, z1: p.z - ext.hz + .02, z2: p.z + ext.hz - .02 });
+          }
+        } else {
+          cand.push({ name: "item", itemRef: it, box: it, y: p.y + ext.h, x1: p.x - ext.hx - .02, x2: p.x + ext.hx + .02, z1: p.z - ext.hz - .02, z2: p.z + ext.hz + .02 });
         }
         continue;
       }
+      if (heldItem && heldItem.kind === "box") continue;
       const ext = itemWorldHalf(it);
       cand.push({ name: "item", itemRef: it, box: null, y: p.y + ext.h, x1: p.x - ext.hx - .01, x2: p.x + ext.hx + .01, z1: p.z - ext.hz - .01, z2: p.z + ext.hz + .01 });
     }
@@ -250,10 +280,14 @@ export function createLife(env) {
         if (t > 0 && t <= maxD) {
           const x = o.x + d.x * t, z = o.z + d.z * t;
           if (x > s.x1 && x < s.x2 && z > s.z1 && z < s.z2) {
-            if (s.name === 'item' && s.itemRef) {
-              candHit = { t, x: s.itemRef.obj.position.x, z: s.itemRef.obj.position.z, y: s.y, s };
-            } else {
-              candHit = { t, x, z, y: s.y, s };
+            const dPlayer = Math.hypot(x - P.x, z - P.z);
+            const limitD = (s.name === 'shelf' || s.name === 'counter') ? .92 : 1.15;
+            if (dPlayer <= limitD) {
+              if (s.name === 'item' && s.itemRef) {
+                candHit = { t, x: s.itemRef.obj.position.x, z: s.itemRef.obj.position.z, y: s.y, s };
+              } else {
+                candHit = { t, x, z, y: s.y, s };
+              }
             }
           }
         }
@@ -268,14 +302,18 @@ export function createLife(env) {
         if (hp) {
           const t = hp.distanceTo(o);
           if (t > 0 && t <= maxD) {
-            if (s.name === 'item' && s.itemRef) {
-              candHit = { t, x: s.itemRef.obj.position.x, z: s.itemRef.obj.position.z, y: s.y, s };
-            } else {
-              const padX = Math.min(.06, (s.x2 - s.x1) * .22);
-              const padZ = Math.min(.06, (s.z2 - s.z1) * .22);
-              const cx = clamp(hp.x, s.x1 + padX, s.x2 - padX);
-              const cz = clamp(hp.z, s.z1 + padZ, s.z2 - padZ);
-              candHit = { t, x: cx, z: cz, y: s.y, s };
+            const dPlayer = Math.hypot(hp.x - P.x, hp.z - P.z);
+            const limitD2 = (s.name === 'shelf' || s.name === 'counter') ? .92 : 1.15;
+            if (dPlayer <= limitD2) {
+              if (s.name === 'item' && s.itemRef) {
+                candHit = { t, x: s.itemRef.obj.position.x, z: s.itemRef.obj.position.z, y: s.y, s };
+              } else {
+                const padX = Math.min(.06, (s.x2 - s.x1) * .22);
+                const padZ = Math.min(.06, (s.z2 - s.z1) * .22);
+                const cx = clamp(hp.x, s.x1 + padX, s.x2 - padX);
+                const cz = clamp(hp.z, s.z1 + padZ, s.z2 - padZ);
+                candHit = { t, x: cx, z: cz, y: s.y, s };
+              }
             }
           }
         }
@@ -551,7 +589,7 @@ export function createLife(env) {
       it.stack = false;
     }
     const baseFl = surfaceBelow(rec.x || 0, rec.z || 0, (rec.y || 0) + .1, it);
-    const startY = (rec.kind === "box" || rec.y == null) ? baseFl : Math.max(baseFl, rec.y);
+    const startY = rec.y == null ? baseFl : Math.max(baseFl, rec.y);
     it.obj.position.set(rec.x, startY, rec.z);
     it.obj.rotation.y = rec.ry || 0;
     it.obj.traverse(o => { if (o.isMesh) o.userData.item = it; });
@@ -579,6 +617,13 @@ export function createLife(env) {
     items.slice().forEach(i => { scene.remove(i.obj); if (i.col) colliders.splice(colliders.indexOf(i.col), 1); });
     items.length = 0; held = null;
     const s = S();
+    if (s && Array.isArray(s.items)) {
+      for (const rec of s.items) {
+        if (rec.id === 'pk_start_cig' && rec.y < .2)  { rec.x = -.82;  rec.y = 1.213; rec.z = -1.03; rec.ry = 0; }
+        if (rec.id === 'pk_start_beer' && rec.y < .2) { rec.x = -.24;  rec.y = 1.213; rec.z = -1.03; rec.ry = 0; }
+        if (rec.id === 'pk_start_gum' && rec.y < .2)  { rec.x = -1.33; rec.y = .863;  rec.z = -.22;  rec.ry = Math.PI / 2; }
+      }
+    }
     (s && s.items || []).forEach(addItem);
     // Опускаем любые зависшие в воздухе коробки/предметы из прошлых сохранений на поверхность под ними
     const freeItems = items.filter(i => !i.inBoxId).sort((a, b) => a.obj.position.y - b.obj.position.y);
@@ -642,12 +687,11 @@ export function createLife(env) {
     }
     heldYaw = it.obj.rotation.y - P.yaw; heldYawT = heldYaw; syncCol(it); env.audio && env.audio.click(700, .4, 0, .05); env.onCtl();
   }
-  const REACH = 1.45; // дотянуться рукой: ставить предмет можно только вплотную к полке/витрине
   function placeHeld() {
     if (!held) return false;
-    const openBx = held.kind !== "box" ? lookingAtOpenBox(REACH + .2) : null;
+    const openBx = held.kind !== "box" ? lookingAtOpenBox(1.15) : null;
     if (openBx) return throwIntoBox(openBx);
-    const t = rayPlace(REACH, held); if (!t) return false;
+    const t = rayPlace(1.25, held); if (!t) return false;
     const it = held; held = null;
     if (isPhysicsProp(it)) { it.data.lying = false; it.data.rollAng = 0; applyBottlePose(it); }
     if (t.s && t.s.axis === 'z') it.obj.rotation.y = Math.PI / 2;
@@ -683,19 +727,27 @@ export function createLife(env) {
   }
   function dropHeld() {
     if (!held) return;
-    const openBx = held.kind !== "box" ? lookingAtOpenBox(2.4) : null;
+    const openBx = held.kind !== "box" ? lookingAtOpenBox(1.35) : null;
     if (openBx) { throwIntoBox(openBx); return; }
     const it = held; held = null;
+    it.dropOriginY = camera.position.y;
     if (isPhysicsProp(it)) {
       camera.getWorldDirection(tmp);
-      const sp = 2.65 + Math.max(0, tmp.y) * 2.1;
+      const isCrouched = !!P.crouch;
+      const lookingDown = tmp.y < -0.55;
+      const softDrop = isCrouched || lookingDown;
+      const sp = softDrop ? 1.05 : (2.75 + Math.max(0, tmp.y) * 2.2);
       it.state = "ragdoll";
       it.bounces = 0;
       it.targetBox = null;
-      it.vel = new THREE.Vector3(tmp.x * sp + (P.vx || 0) * .45, tmp.y * sp + 1.05, tmp.z * sp + (P.vz || 0) * .45);
-      it.tiltVel = R(6.0, 10.0);
+      it.vel = new THREE.Vector3(
+        tmp.x * sp + (P.vx || 0) * .45,
+        softDrop ? -0.35 : (tmp.y * sp + 1.1),
+        tmp.z * sp + (P.vz || 0) * .45
+      );
+      it.tiltVel = softDrop ? R(2.0, 4.0) : R(6.0, 10.0);
       it.yawVel = R(-3.5, 3.5);
-      it.spinVel = R(-9, 9);
+      it.spinVel = softDrop ? R(-3, 3) : R(-9, 9);
     } else {
       camera.getWorldDirection(tmp); tmp.y = 0; tmp.normalize();
       it.state = "fall"; it.vy = .8;
@@ -703,7 +755,14 @@ export function createLife(env) {
     }
     env.onCtl();
   }
-  function rotateHeld() { if (held) heldYawT += Math.PI / 2; }
+  function rotateHeld(dir = 1) {
+    if (!held) return;
+    heldYaw = (heldYaw + (Math.PI / 2) * dir);
+    heldYawT = heldYaw;
+    env.audio && env.audio.click(750, .3, 0, .05);
+    if (ctx.toast) ctx.toast('Повернули предмет');
+    env.onCtl && env.onCtl();
+  }
   function trashHeld(bin, done) {
     if (!held) return false;
     const it = held; held = null;
@@ -791,27 +850,55 @@ export function createLife(env) {
         tmp.normalize();
         let tgt;
         if (it.kind === "box") {
-          // Коробка в руках несётся плавно и стабильно перед игроком без дёрганий и прилипания к полкам/стенкам
+          // Коробка в руках несётся плавно и стабильно перед игроком без захода в стены
           const hDirX = -Math.sin(P.yaw), hDirZ = -Math.cos(P.yaw);
+          let bReach = .62;
+          for (let step = .24; step <= bReach; step += .06) {
+            if (hitsWallCollider(camera.position.x + hDirX * step, camera.position.z + hDirZ * step, .26)) {
+              bReach = Math.max(.22, step - .06);
+              break;
+            }
+          }
           tgt = tmp2.set(
-            camera.position.x + hDirX * .66,
+            camera.position.x + hDirX * bReach,
             clamp(camera.position.y - .42 + tmp.y * .22, groundHeightAt(P.x, P.z) + .04, camera.position.y - .15),
-            camera.position.z + hDirZ * .66
+            camera.position.z + hDirZ * bReach
           );
+          if (inK(P.x, P.z)) {
+            tgt.x = clamp(tgt.x, -KW + .28, KW - .28);
+            tgt.z = clamp(tgt.z, -KD + .28, KD - .28);
+          }
           it.obj.rotation.y = P.yaw + heldYaw;
         } else {
-          const pl = rayPlace(2.6, it);
-          if (pl && (pl.s.name === 'shelf' || pl.s.name === 'counter' || pl.s.name === 'box_inside' || pl.s.name === 'item') && pl.t < 2.35) {
-            // Когда прицел наведён на полку, прилавок или стопку — предмет плавно следует за свободной точкой установки (обходя чужие модельки!)
+          const pl = rayPlace(1.25, it);
+          if (pl && (pl.s.name === 'shelf' || pl.s.name === 'counter' || pl.s.name === 'box_inside' || pl.s.name === 'item') && pl.t < 1.25) {
             tgt = tmp2.set(pl.x, pl.y + .008, pl.z);
             if (pl.s.axis === 'z') it.obj.rotation.y = Math.PI / 2;
             else if (pl.s.axis === 'x') it.obj.rotation.y = 0;
             else it.obj.rotation.y = P.yaw + heldYaw;
           } else {
-            const reach = it.kind === "pack" ? .56 : .48;
-            const vOff = it.kind === "pack" ? -.07 : -.05;
+            let reach = it.kind === "pack" ? .48 : it.kind === "gun" ? .46 : .42;
+            const vOff = it.kind === "pack" ? -.07 : it.kind === "gun" ? -.10 : -.05;
+            const itemR = it.kind === "gun" ? .28 : .14;
+            if (inK(camera.position.x, camera.position.z)) {
+              const toWallX = tmp.x > 0 ? (KW - camera.position.x) / tmp.x : (-KW - camera.position.x) / tmp.x;
+              const toWallZ = tmp.z > 0 ? (KD - camera.position.z) / tmp.z : (-KD - camera.position.z) / tmp.z;
+              const wDist = Math.min(toWallX > 0 ? toWallX : 99, toWallZ > 0 ? toWallZ : 99);
+              if (wDist < reach + itemR) reach = Math.max(.18, wDist - itemR);
+            }
+            for (let step = .18; step <= reach; step += .05) {
+              if (hitsWallCollider(camera.position.x + tmp.x * step, camera.position.z + tmp.z * step, itemR * .65)) {
+                reach = Math.max(.18, step - .05);
+                break;
+              }
+            }
             tgt = tmp2.copy(camera.position).addScaledVector(tmp, reach);
             tgt.y += vOff;
+            if (inK(P.x, P.z)) {
+              const padW = it.kind === "gun" ? .36 : .14;
+              tgt.x = clamp(tgt.x, -KW + padW, KW - padW);
+              tgt.z = clamp(tgt.z, -KD + padW, KD - padW);
+            }
             const minFl = groundHeightAt(tgt.x, tgt.z);
             if (tgt.y < minFl + .02) tgt.y = minFl + .02;
             it.obj.rotation.y = P.yaw + heldYaw;
@@ -871,10 +958,14 @@ export function createLife(env) {
           it.obj.position.y = fl;
           const hSpd = Math.hypot(it.vel.x, it.vel.z);
           const imp = Math.abs(it.vel.y) + hSpd * .42;
-          const onHardRoadOrFloor = inK(nx, nz) || (nz > 6.3 && nz < 14.1);
-          if (!bx && isBreakableGlass(it) && ((onHardRoadOrFloor && imp > 4.0) || imp > 4.65 || (imp > 3.55 && Math.random() < .52))) {
-            shatterBottle(it);
-            continue;
+          const fallDist = (it.dropOriginY != null ? it.dropOriginY : (fl + 1.3)) - fl;
+          if (!bx && isBreakableGlass(it)) {
+            const highOrFar = fallDist > 0.65 || imp > 2.85 || hSpd > 1.75;
+            const softDrop = fallDist < 0.48 && imp < 2.45 && hSpd < 1.35;
+            if (highOrFar && !softDrop && Math.random() < 0.85) {
+              shatterBottle(it);
+              continue;
+            }
           }
           it.bounces = (it.bounces || 0) + 1;
           if (isBreakableGlass(it)) env.audio && env.audio.click(1650 + R(-220, 220), Math.min(.5, imp * .09), 0, .05);
@@ -951,11 +1042,19 @@ export function createLife(env) {
         if (it.vx || it.vz) {
           let nx = it.obj.position.x + (it.vx || 0) * dt;
           let nz = it.obj.position.z + (it.vz || 0) * dt;
+          const wallR = it.kind === "gun" ? .32 : it.kind === "box" ? .24 : .08;
           const bx = findOpenBoxAt(nx, nz, it.obj.position.y, it);
           if (bx && it.obj.position.y < bx.obj.position.y + bx.half.y * 2 + .05) {
             const cl = clampInsideBoxWalls(nx, nz, bx, .06);
             nx = cl.x; nz = cl.z;
             if (cl.hitWall) { it.vx *= -.25; it.vz *= -.25; }
+          } else if (hitsWallCollider(nx, nz, wallR)) {
+            it.vx *= -.3; it.vz *= -.3;
+            nx = it.obj.position.x; nz = it.obj.position.z;
+          }
+          if (inK(it.obj.position.x, it.obj.position.z)) {
+            nx = clamp(nx, -KW + wallR, KW - wallR);
+            nz = clamp(nz, -KD + wallR, KD - wallR);
           }
           it.obj.position.x = nx; it.obj.position.z = nz;
         }
@@ -1167,7 +1266,7 @@ export function createLife(env) {
   function hangUp() { ph.hangUp(); }
 
   // ================= блокнот на прилавке =================
-  const NOTE_REST = { x: .05, y: 1.005, z: KD - .31, ry: Math.PI + .2 };
+  const NOTE_REST = { x: -.66, y: 1.005, z: KD - .24, ry: Math.PI + .14 };
   let note = null, noteState = 'rest', noteT = 0, noteOnDone = null;
   function setNotepadModel(o) {
     note = o; note.position.set(NOTE_REST.x, NOTE_REST.y, NOTE_REST.z); note.rotation.set(0, NOTE_REST.ry, 0); scene.add(note);
@@ -1283,89 +1382,103 @@ export function createLife(env) {
   const fpLabelMesh = new THREE.Mesh(btlLabelGeo, getBottleLabelMat('vodka'));
   fpLabelMesh.position.set(0, .105, 0);
   fpLabelMesh.frustumCulled = false;
-  const glassOrig = new Map();
-  function styleBottle(kind) {
-    const lblMat = getBottleLabelMat(kind || 'vodka');
-    fpLabelMesh.material = lblMat;
-    if (!bottleModel) return;
-    const cfg = kind === 'beer'
-      ? { glass: 0x5c3214, op: .90, rgh: .15, cap: 0xd4a72c }
-      : kind === 'samogon'
-      ? { glass: 0xc8d2c4, op: .75, rgh: .30, cap: 0x5c432e }
-      : kind === 'soda'
-      ? { glass: 0xc97b28, op: .85, rgh: .14, cap: 0xc0392b }
-      : { glass: 0x2d5a36, op: .80, rgh: .12, cap: 0xc8b06a };
-    capMat.color.setHex(cfg.cap);
-    bottleModel.traverse(m => {
-      if (!m.isMesh || m === cap || m === bore) return;
-      if (!m.geometry.userData.capTrimmed) {
-        m.geometry = m.geometry.clone();
-        const pos = m.geometry.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-          if (pos.getY(i) > 7.72) pos.setY(i, 7.72);
+  let curDrinkMesh = null;
+  function updateDrinkBottleMesh(kind) {
+    while (bottleNode.children.length > 0) {
+      bottleNode.remove(bottleNode.children[0]);
+    }
+    curDrinkMesh = null;
+    const g = new THREE.Group();
+    const drinkId = (kind === 'buratino' || kind === 'soda') ? 'soda' : (kind || 'vodka');
+    const bMesh = env.getItemMesh ? env.getItemMesh(drinkId) : null;
+    const bH = drinkId === 'beer' ? .24 : drinkId === 'samogon' ? .26 : drinkId === 'soda' ? .23 : .28;
+    if (bMesh) {
+      const capsToRemove = [];
+      bMesh.traverse(m => {
+        if (m.userData && m.userData.isCap) {
+          capsToRemove.push(m);
+          return;
         }
-        pos.needsUpdate = true;
-        m.geometry.userData.capTrimmed = true;
-      }
-      const mats = Array.isArray(m.material) ? m.material : [m.material];
-      mats.forEach(mt => {
-        if (!glassOrig.has(mt)) glassOrig.set(mt, { c: mt.color ? mt.color.getHex() : 0xffffff, op: mt.opacity, rgh: mt.roughness });
-        if (/label/i.test(mt.name)) {
-          // корпус-«этикетка» модели: родная развёртка растягивала нашу текстуру. Материал общий с бутылками в мире — не трогаем его,
-          // а этому мешу в руке даём собственное непрозрачное стекло нужного цвета; этикетку рисует цилиндр fpLabelMesh.
-          if (!m.userData.fpBody) { m.userData.fpBody = new THREE.MeshStandardMaterial({ roughness: .18, metalness: .1 }); m.userData.fpBody.name = 'fpLabelBody'; }
-          m.userData.fpBody.color.setHex(cfg.glass); m.userData.fpBody.roughness = cfg.rgh;
-          if (Array.isArray(m.material)) m.material = m.material.map(x => x === mt ? m.userData.fpBody : x); else m.material = m.userData.fpBody;
-        } else if (/glass/i.test(mt.name) || mt.transparent) {
-          mt.color.setHex(cfg.glass);
-          mt.opacity = cfg.op;
-          mt.roughness = cfg.rgh;
-          mt.needsUpdate = true;
+        if (m.isMesh && m.position && m.position.y > bH * .91) {
+          capsToRemove.push(m);
+          return;
+        }
+        if (m.isMesh) {
+          m.frustumCulled = false;
+          if (m.material) {
+            const mats = Array.isArray(m.material) ? m.material : [m.material];
+            mats.forEach(mt => {
+              mt.depthWrite = true;
+              mt.depthTest = true;
+              if (mt.transparent && mt.opacity < .70) mt.opacity = .82;
+            });
+          }
         }
       });
-    });
+      for (const cm of capsToRemove) if (cm.parent) cm.parent.remove(cm);
+      bMesh.position.set(0, -GRIP_Y, 0);
+      g.add(bMesh);
+    } else {
+      const cfg = drinkId === 'beer'
+        ? { glass: 0x5c3214, cap: 0xd4a72c }
+        : drinkId === 'samogon'
+        ? { glass: 0xc8d2c4, cap: 0x5c432e }
+        : drinkId === 'soda'
+        ? { glass: 0xc97b28, cap: 0xc0392b }
+        : { glass: 0x2d5a36, cap: 0xc8b06a };
+      const bm = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .27, 14), std({ color: cfg.glass, roughness: .14, transparent: true, opacity: .88, depthWrite: true }));
+      bm.position.set(0, 0, 0); g.add(bm);
+      const lm = new THREE.Mesh(btlLabelGeo, getBottleLabelMat(drinkId));
+      lm.position.set(0, 0, 0); g.add(lm);
+    }
+    const capC = (drinkId === 'beer' || drinkId === 'vodka') ? 0xd4a72c : (drinkId === 'samogon') ? 0x5c3c24 : 0xc0392b;
+    capMat.color.setHex(capC);
+    const capY = bH * .945 - GRIP_Y;
+    cap.userData.restY = capY;
+    cap.position.set(0, capY, 0);
+    cap.rotation.set(0, 0, 0);
+    g.add(cap);
+    curDrinkMesh = g;
+    bottleNode.add(curDrinkMesh);
+  }
+  function styleBottle(kind) {
+    updateDrinkBottleMesh(kind);
   }
   function emptyBottleMesh(kind = "vodka") {
-    const cfg = kind === "beer"
-      ? { glass: 0x6b3a16, op: .88, rgh: .14 }
-      : kind === "samogon"
-      ? { glass: 0xc8d2c4, op: .78, rgh: .28 }
-      : kind === "soda"
-      ? { glass: 0xc97b28, op: .82, rgh: .14 }
-      : { glass: 0x2d5a36, op: .76, rgh: .12 };
+    const drinkId = (kind === 'buratino' || kind === 'soda') ? 'soda' : (kind || 'vodka');
+    const cfg = drinkId === "beer"
+      ? { glass: 0x5c3214, op: .85, rgh: .15, h: .24, r: .034 }
+      : drinkId === "samogon"
+      ? { glass: 0xc8d2c4, op: .75, rgh: .30, h: .26, r: .038 }
+      : drinkId === "soda"
+      ? { glass: 0xc97b28, op: .80, rgh: .14, h: .23, r: .032 }
+      : { glass: 0x2d5a36, op: .78, rgh: .12, h: .28, r: .036 };
     const g = new THREE.Group();
     const piv = new THREE.Group();
-    piv.position.set(0, .135, 0);
+    piv.position.set(0, cfg.h / 2, 0);
     const spin = new THREE.Group();
     piv.add(spin);
     g.add(piv);
     g.userData.piv = piv;
     g.userData.spin = spin;
-    if (bottleModel) {
-      const c = bottleModel.clone(true);
-      c.traverse(m => {
-        if (m === cap || m.geometry === cap.geometry) { m.visible = false; return; }
-        if (m.isMesh) {
-          m.castShadow = true; m.frustumCulled = true;
-          const cloneMat = mt => {
-            if (!mt) return mt;
-            if (/glass/i.test(mt.name) || mt.transparent) {
-              const nm = mt.clone();
-              nm.color.setHex(cfg.glass); nm.opacity = cfg.op; nm.roughness = cfg.rgh;
-              return nm;
-            }
-            return mt;
-          };
-          m.material = Array.isArray(m.material) ? m.material.map(cloneMat) : cloneMat(m.material);
-        }
-      });
-      c.rotation.set(0, 0, 0); c.position.set(0, -.135, 0); spin.add(c);
-    } else {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .27, 10), std({ color: cfg.glass, roughness: cfg.rgh, transparent: true, opacity: cfg.op }));
-      m.position.y = 0; spin.add(m);
-    }
-    const lb = new THREE.Mesh(btlLabelGeo, getBottleLabelMat(kind || 'vodka'));
-    lb.position.set(0, -.03, 0);
+
+    // Честная стеклянная бутылка стандартного размера (23-28 см) с горлышком и этикеткой
+    const bm = new THREE.MeshStandardMaterial({ color: cfg.glass, roughness: cfg.rgh, metalness: .08, transparent: true, opacity: cfg.op, depthWrite: true });
+    // Корпус бутылки
+    const bodyM = new THREE.Mesh(new THREE.CylinderGeometry(cfg.r, cfg.r, cfg.h * .62, 14), bm);
+    bodyM.position.y = -cfg.h * .19; bodyM.castShadow = true; spin.add(bodyM);
+    // Плечи бутылки
+    const shM = new THREE.Mesh(new THREE.CylinderGeometry(cfg.r * .40, cfg.r, cfg.h * .20, 12), bm);
+    shM.position.y = cfg.h * .22; shM.castShadow = true; spin.add(shM);
+    // Горлышко
+    const nkM = new THREE.Mesh(new THREE.CylinderGeometry(cfg.r * .36, cfg.r * .36, cfg.h * .18, 10), bm);
+    nkM.position.y = cfg.h * .41; nkM.castShadow = true; spin.add(nkM);
+
+    // Этикетка на пустой бутылке
+    const lbMat = getBottleLabelMat(drinkId);
+    const lbGeo = new THREE.CylinderGeometry(cfg.r * 1.02, cfg.r * 1.02, cfg.h * .34, 16, 1, true);
+    const lb = new THREE.Mesh(lbGeo, lbMat);
+    lb.position.y = -cfg.h * .18;
     lb.castShadow = true;
     spin.add(lb);
     return g;
@@ -1400,9 +1513,6 @@ export function createLife(env) {
   }
   function setBottleModel(o) {
     bottleModel = o;
-    o.traverse(m => { if (m.isMesh) m.frustumCulled = false; });
-    bottleNode.add(o); o.position.set(0, -GRIP_Y, 0);
-    cap.position.set(0, .281, 0); bore.position.set(0, .2746, 0); o.add(bore); o.add(cap); o.add(fpLabelMesh);
     // Обновляем уже созданные пустые бутылки в мире, чтобы у них тоже была 3D-модель
     for (const it of items) if (it.kind === "bottle") {
       const pos = it.obj.position.clone(), ry = it.obj.rotation.y;
@@ -1501,10 +1611,10 @@ export function createLife(env) {
   }
   function startDrink(kind, firstSip = true) {
     if (hab.busy) return false;
-    styleBottle(kind);
+    updateDrinkBottleMesh(kind);
     Object.assign(hab, { busy: 'drink', kind, firstSip, t: 0, out: 0, sips: 0, gulps: 0, flick: 0, capOff: !firstSip });
     handR.visible = true; cigNode.visible = false; bottleNode.visible = true;
-    cap.visible = !!firstSip; cap.position.set(0, .281, 0); cap.rotation.set(0, 0, 0);
+    cap.visible = !!firstSip; cap.position.set(0, cap.userData.restY ?? (.25 - GRIP_Y), 0); cap.rotation.set(0, 0, 0);
     handR.position.set(.14, -.42, -.34);
     handR.pose(HAND_POSES.grip, null);
     env.onCtl();
@@ -1516,6 +1626,8 @@ export function createLife(env) {
       else if (how === 'urn') { env.audio && env.audio.click(500, .3, 0, .04); }
       else if (how === 'throw') {
         const b = new THREE.Mesh(new THREE.CylinderGeometry(.004, .004, .025, 6), buttM); camera.getWorldDirection(tmp); b.position.copy(camera.position).addScaledVector(tmp, .3); b.userData.v = tmp.clone().multiplyScalar(3).add(tmp2.set(0, 1.5, 0)); scene.add(b); thrown.push(b); }
+    } else if (hab.busy === 'drink') {
+      bottleNode.visible = false;
     }
     hab.busy = null; hab.out = .4; fx.handOut = true; env.onCtl();
   }
@@ -1747,9 +1859,13 @@ export function createLife(env) {
   const habit = { get busy() { return hab.busy; }, get canFinish() { return hab.busy === 'smoke' && hab.doneAsk; }, startSmoke, startDrink, finishHabit, giveEmptyBottle, stashHeldBottle, set onDrinkEnd(f) { hab.onDrinkEnd = f; }, debugPose(t) { hab.t = t; hab.freeze = t != null; }, get hand() { return handR; } };
 
   return {
-    makeHand, items, addItem, removeItem, rebuildPackItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, rotateHeld, trashHeld, unpack, lookingAtOpenBox, throwIntoBox, shatterBottle, get held() { return held; },
-    canPlace: () => !!(held && rayPlace(REACH, held)),
-    rayPlaceShelf: (maxD = REACH) => {
+    makeHand, items, addItem, removeItem, rebuildPackItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, trashHeld, unpack, lookingAtOpenBox, throwIntoBox, shatterBottle, rayPlace, surfaceBelow, get held() { return held; },
+    canPlace: () => {
+      if (!held) return false;
+      const pl = rayPlace(1.25, held);
+      return !!pl;
+    },
+    rayPlaceShelf: (maxD = 1.05) => {
       const pl = rayPlace(maxD, held);
       return (pl && pl.s && pl.s.name === 'shelf') ? { point: new THREE.Vector3(pl.x, pl.y, pl.z), rowIdx: pl.s.rowIdx } : null;
     },

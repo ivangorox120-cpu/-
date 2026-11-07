@@ -31,7 +31,7 @@ export const HAND_POSES = {
 };
 
 export function makeRigHand(std) {
-  const skin = std({ color: 0xd4a080, roughness: .74 }), skinDark = std({ color: 0xb88264, roughness: .82 }), nailM = std({ color: 0xe2b89e, roughness: .48 }), sleeveM = std({ color: 0x2b3540, roughness: .88 });
+  const skin = std({ color: 0xd2987a, roughness: .88, metalness: .02 }), skinDark = std({ color: 0xb67d5e, roughness: .90, metalness: .02 }), nailM = std({ color: 0xdfb49a, roughness: .55 }), sleeveM = std({ color: 0x25303a, roughness: .92 });
   const root = new THREE.Group();
   const add = (geo, m, p, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); p.add(o); return o; };
   const palmGeo = new THREE.BoxGeometry(.084, .027, .094, 4, 2, 4); { const p = palmGeo.attributes.position; for (let i = 0; i < p.count; i++) { const z = p.getZ(i), k = .88 + .12 * ((-z + .047) / .094); p.setX(i, p.getX(i) * k); if (p.getY(i) > 0) p.setY(i, p.getY(i) * (1 + .25 * Math.cos(p.getX(i) * 30))); } palmGeo.computeVertexNormals(); }

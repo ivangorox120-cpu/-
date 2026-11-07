@@ -145,9 +145,9 @@ function newGame(name, sex) {
   S.slotCounts = [0,0,0,0,0,0];
   S.shelfPlacements = [];
   S.items = [
-    { id: 'pk_start_cig',  kind: 'pack', x: -1.12, y: .035, z: -.48, ry: .15,  data: { goodId: 'cig',  count: 5, maxCount: 5, unitCost: S.prices.cig,  opened: false } },
-    { id: 'pk_start_beer', kind: 'pack', x: -.74,  y: .035, z: -.52, ry: -.08, data: { goodId: 'beer', count: 5, maxCount: 5, unitCost: S.prices.beer, opened: false } },
-    { id: 'pk_start_gum',  kind: 'pack', x: -.38,  y: .035, z: -.50, ry: .05,  data: { goodId: 'gum',  count: 5, maxCount: 5, unitCost: S.prices.gum,  opened: false } },
+    { id: 'pk_start_cig',  kind: 'pack', x: -.82, y: 1.213, z: -1.03, ry: 0,           data: { goodId: 'cig',  count: 5, maxCount: 5, unitCost: S.prices.cig,  opened: false } },
+    { id: 'pk_start_beer', kind: 'pack', x: -.24, y: 1.213, z: -1.03, ry: 0,           data: { goodId: 'beer', count: 5, maxCount: 5, unitCost: S.prices.beer, opened: false } },
+    { id: 'pk_start_gum',  kind: 'pack', x: -1.33, y: .863, z: -.22,  ry: Math.PI / 2, data: { goodId: 'gum',  count: 5, maxCount: 5, unitCost: S.prices.gum,  opened: false } },
   ];
 }
 function save() {
@@ -569,7 +569,7 @@ function customerScared(c) {
   if (!T || !c) return;
   if (c.special) {
     if (c.k === 'racket') { rep('street', -10); S.flags.angryRacket = true; toast('Колян: «Ты чё, ствол на нас наставил? Ну, жди гостей…» Улица −10', 'bad'); }
-    else if (c.k === 'police') { rep('law', -20); S.gun = false; if (W) W.weapon.holster(); toast('Навести ружьё на участкового?! Ружьё изъяли. Закон −20', 'bad'); }
+    else if (c.k === 'police') { rep('law', -20); S.gun = false; S.gunState = 'gone'; if (W && W.weapon.forceHolster) W.weapon.forceHolster(); toast('Навести ружьё на участкового?! Ружьё изъяли. Закон −20', 'bad'); }
     else rep('folk', -3);
   } else { T.lost++; rep('folk', -2); c.lostAngry = true; }
   if (T.cur === c) T.cur = null; T.queue = T.queue.filter(q => q !== c); T.walking = T.walking.filter(q => q !== c);
@@ -592,7 +592,7 @@ function onKill(role, c, kind) {
   if (!S) return;
   S.flags.kills = (S.flags.kills || 0) + 1;
   if (role === 'gop') { rep('street', -6); rep('law', -10); toast('Гопник убит. Свидетели разбежались. Закон −10, Улица −6', 'bad'); }
-  else if (c && c.k === 'police') { rep('law', -60); S.gun = false; if (W) W.weapon.holster(); toast('Убит участковый. Ружьё конфисковано, по району ищут стрелка. Закон −60', 'bad'); }
+  else if (c && c.k === 'police') { rep('law', -60); S.gun = false; S.gunState = 'gone'; if (W && W.weapon.forceHolster) W.weapon.forceHolster(); toast('Убит участковый. Ружьё конфисковано, по району ищут стрелка. Закон −60', 'bad'); }
   else if (role === 'marat') { rep('street', -25); rep('law', -15); toast('Марат убит. Улица этого не простит. Улица −25, Закон −15', 'bad'); }
   else { rep('law', -30); rep('folk', -15); toast('Убит человек. Закон −30, Народ −15', 'bad'); }
   sfx.bad && sfx.bad();
@@ -1475,11 +1475,11 @@ function gopnikDemand(g) {
     { label: 'Позвать милицию', fn() { closeDialog(); if (S.rep.law >= 10) { rep('law', 2); rep('street', -5); W.gopLeave(g, 'flee'); toast('Свисток участкового — гопники разбежались', 'good'); } else { say(g.leader, 'Ха! Какая тебе милиция?'); } } },
   ] });
 }
-function syncAmmoToWeapon() { if (!W || !S) return; W.weapon.ammo = S.ammo ?? 2; W.weapon.reserve = S.shells ?? 4; }
+function syncAmmoToWeapon() { if (!W || !S) return; W.weapon.ammo = S.ammo ?? 2; W.weapon.reserve = S.shells ?? 4; if (!S.gun && W.weapon.forceHolster) W.weapon.forceHolster(); }
 function syncAmmoFromWeapon() { if (!W || !S) return; S.ammo = W.weapon.ammo; S.shells = W.weapon.reserve; }
 function look(dx, dy, kind) { if (controls && kind !== 'mouse') controls.look(dx, dy); else W && W.look(dx, dy, kind); }
 const W = (() => { try { return createWorld({
-  getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET,
+  getS: () => S, getT: () => T, cardOpen: () => cardOpen || dialogOpen, sheetOpen: () => sheetOpen, settings: () => SET, save,
   toast, openSheet, onCtl, rep, qOf, addStock, takeStock, slotCount,
   onGumUnpacked(n) {
     if (!S) return;
@@ -1556,7 +1556,7 @@ if (W) {
     aim:       { label: 'Прицел', icon: 'aim', kind: 'hold', down() { if (canUseWeapon()) W.weapon.aim(true); }, up() { W.weapon.aim(false); }, visible: () => canUseWeapon() && W.weapon.drawn, active: () => W.weapon.aiming },
     reload:    { label: 'Перезарядка', icon: 'reload', kind: 'tap', down() { if (!canUseWeapon()) return; if (!W.weapon.reload()) { if (W.weapon.reserve <= 0) toast('Патронов нет — спросите у Марата на остановке'); } setTimeout(() => { syncAmmoFromWeapon(); renderHud(); }, 2500); }, visible: () => canUseWeapon() && W.weapon.drawn && W.weapon.ammo < 2 },
     weapon:    { label: 'Ружьё', icon: 'weapon', kind: 'tap', down() { if (!canUseWeapon()) return; W.weapon.toggle(); setTimeout(() => { renderHud(); renderControls(); }, 500); }, visible: canUseWeapon, active: () => W.weapon.drawn },
-    gunput:    { label: 'Положить ружьё', icon: 'drop', kind: 'tap', down() { if (!canUseWeapon()) return; W.putGunDown(); }, visible: () => canUseWeapon() && !W.weapon.aiming },
+    gunput:    { label: 'Положить ружьё', icon: 'drop', kind: 'tap', down() { if (!canUseWeapon()) return; W.putGunDown(); save(); renderHud(); renderControls(); }, visible: () => canUseWeapon() && !W.weapon.aiming },
     sprint:    { label: 'Бег', icon: 'sprint', kind: 'hold', down() { W.setSprint(true); }, up() { W.setSprint(false); }, active: () => W.sprint, visible: () => !W.P.seated },
     crouch:    { label: 'Присесть', icon: 'crouch', kind: 'tap', down() { W.toggleCrouch(); }, active: () => W.crouch, visible: () => !W.P.seated },
     inventory: { label: 'Меню', icon: 'menu', kind: 'tap', down() { openSheet(); } },

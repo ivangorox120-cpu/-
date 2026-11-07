@@ -17,8 +17,8 @@ export function createWeapon({ audio, onShot }) {
   const flashLight = new THREE.PointLight(0xff9838, 0, 5.5, 1.8); scene.add(flashLight);
 
   const std = o => new THREE.MeshStandardMaterial(Object.assign({ roughness: .75, metalness: .05 }, o));
-  const steel = new THREE.MeshStandardMaterial({ color: 0x34383e, metalness: .78, roughness: .32 });
-  const steelLight = new THREE.MeshStandardMaterial({ color: 0x9a9ca2, metalness: .8, roughness: .28 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x34383e, metalness: .78, roughness: .32, side: THREE.DoubleSide, depthWrite: true });
+  const steelLight = new THREE.MeshStandardMaterial({ color: 0x9a9ca2, metalness: .8, roughness: .28, side: THREE.DoubleSide, depthWrite: true });
   const woodTex = (() => {
     const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d');
     g.fillStyle = '#6e401e'; g.fillRect(0, 0, 128, 256);
@@ -29,7 +29,7 @@ export function createWeapon({ audio, onShot }) {
     }
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })();
-  const wood = new THREE.MeshStandardMaterial({ map: woodTex, roughness: .55, metalness: 0 });
+  const wood = new THREE.MeshStandardMaterial({ map: woodTex, roughness: .55, metalness: 0, side: THREE.DoubleSide, depthWrite: true });
   const B = (w, h, d, m, x, y, z, p) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); p.add(o); return o; };
   const C = (r, l, m, x, y, z, p, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, l, seg), m); o.rotation.x = Math.PI / 2; o.position.set(x, y, z); p.add(o); return o; };
 
@@ -233,7 +233,7 @@ export function createWeapon({ audio, onShot }) {
     barrelHeat: 0, wispTimer: 0,
   };
   const HIP = new THREE.Vector3(.125, -.092, -.265);
-  const ADS = new THREE.Vector3(0, -.042, -.205);
+  const ADS = new THREE.Vector3(0, -.038, -.235);
   const DOWN = new THREE.Vector3(.18, -.42, -.22);
   const tmp = new THREE.Vector3(), wp = new THREE.Vector3(), bDir = new THREE.Vector3();
 
@@ -264,6 +264,11 @@ export function createWeapon({ audio, onShot }) {
       return true;
     }
     return false;
+  }
+  function forceHolster() {
+    W.state = 'holstered'; W.t = 0; W.wantAim = false;
+    rig.visible = false;
+    if (sling) sling.reset();
   }
   function toggle() { return W.state === 'holstered' ? draw() : holster(); }
   function aim(on) { W.wantAim = on; if (on && W.state === 'holstered') draw(); }
@@ -480,25 +485,19 @@ export function createWeapon({ audio, onShot }) {
       if (cz < zSplit) barrelTris.push(t);
       else stockTris.push(t);
     }
-    // если после нормализации модели (поворот осей может оказаться отражением) обход треугольников вывернут — грани смотрят внутрь
-    // и ружьё выглядит «прозрачным». Сверяем геометрическую нормаль треугольников с вершинными и при необходимости разворачиваем обход.
-    const nrm = g.attributes.normal; let agree = 0;
-    if (nrm) { const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), vn = new THREE.Vector3();
-      for (let t = 0; t < nTris; t++) { const i0 = t * 3; a.fromBufferAttribute(pos, i0); b.fromBufferAttribute(pos, i0 + 1).sub(a); c.fromBufferAttribute(pos, i0 + 2).sub(a); b.cross(c);
-        vn.fromBufferAttribute(nrm, i0).add(c.fromBufferAttribute(nrm, i0 + 1)).add(c.fromBufferAttribute(nrm, i0 + 2)); agree += Math.sign(b.dot(vn)); } }
-    const flip = agree < 0;
     const GET = ['getX', 'getY', 'getZ', 'getW'];
     const buildSub = tris => {
       const sub = new THREE.BufferGeometry();
       for (const name of Object.keys(g.attributes)) {
-        const a = g.attributes[name], itemSize = a.itemSize; // читаем через getX..getW — работает и с interleaved/квантованными атрибутами glTF
+        const a = g.attributes[name], itemSize = a.itemSize;
         const arr = new Float32Array(tris.length * 3 * itemSize);
-        for (let k = 0; k < tris.length; k++) for (let v = 0; v < 3; v++) {
-          const src = tris[k] * 3 + (flip && v ? 3 - v : v);
-          for (let j = 0; j < itemSize; j++) arr[(k * 3 + v) * itemSize + j] = a[GET[j]](src);
+        for (let k = 0; k < tris.length; k++) {
+          const base = tris[k] * 3 * itemSize;
+          for (let v = 0; v < 3; v++) for (let j = 0; j < itemSize; j++) arr[(k * 3 + v) * itemSize + j] = a[GET[j]](tris[k] * 3 + v); // getX..getW — работает и с interleaved/квантованными атрибутами
         }
         sub.setAttribute(name, new THREE.BufferAttribute(arr, itemSize));
       }
+      sub.computeVertexNormals();
       return sub;
     };
     return { stockGeo: buildSub(stockTris), barrelGeo: buildSub(barrelTris) };
@@ -511,19 +510,46 @@ export function createWeapon({ audio, onShot }) {
     const zOffset = .435, yOffset = -.022;
     if (srcMesh && srcMesh.geometry) {
       const { stockGeo, barrelGeo } = splitGunGeometry(srcMesh.geometry, -.490);
-      const stockMesh = new THREE.Mesh(stockGeo, srcMesh.material);
+      const makeOpaqueGunMat = (baseMat) => {
+        const m = (baseMat && baseMat.clone) ? baseMat.clone() : steel.clone();
+        m.transparent = false;
+        m.opacity = 1.0;
+        m.depthWrite = true;
+        m.depthTest = true;
+        m.side = THREE.DoubleSide;
+        m.needsUpdate = true;
+        return m;
+      };
+      const gunMatClean = makeOpaqueGunMat(srcMesh.material);
+      const stockMesh = new THREE.Mesh(stockGeo, gunMatClean);
       stockMesh.position.set(0, yOffset, zOffset);
       stockMesh.frustumCulled = false;
       gun.add(stockMesh);
 
-      const barrelMesh = new THREE.Mesh(barrelGeo, srcMesh.material);
+      const barrelMesh = new THREE.Mesh(barrelGeo, gunMatClean);
       barrelMesh.position.set(0, yOffset - hinge.position.y, zOffset - hinge.position.z);
       barrelMesh.frustumCulled = false;
       hinge.add(barrelMesh);
     } else {
       const holder = new THREE.Group();
       holder.position.set(0, yOffset, zOffset);
-      model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
+      model.traverse(o => {
+        if (o.isMesh) {
+          o.frustumCulled = false;
+          o.castShadow = false;
+          if (o.material) {
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach(mt => {
+              mt.transparent = false;
+              mt.opacity = 1.0;
+              mt.depthWrite = true;
+              mt.depthTest = true;
+              mt.side = THREE.DoubleSide;
+              mt.needsUpdate = true;
+            });
+          }
+        }
+      });
       holder.add(model);
       gun.add(holder);
     }
@@ -542,7 +568,7 @@ export function createWeapon({ audio, onShot }) {
   return {
     lights: { hemi, key, localLight },
     setModel, slingTick,
-    scene, cam, update, draw, holster, toggle, aim, fire, reload,
+    scene, cam, update, draw, holster, forceHolster, toggle, aim, fire, reload,
     get state() { return W.state; },
     get drawn() { return W.state !== 'holstered' && W.state !== 'holstering'; },
     get aiming() { return W.aimK > .6; },

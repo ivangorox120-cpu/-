@@ -16,10 +16,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 
 export const QUALITY = {
-  low:    { label: 'Низкое',       dpr: .8,  shadows: 0,    draw: 75,  light: 0, snow: 700,  npc: 12,  aniso: 1 },
-  medium: { label: 'Среднее',      dpr: 1.1, shadows: 1024, draw: 115, light: 1, snow: 1600, npc: 18, aniso: 2 },
-  high:   { label: 'Высокое',      dpr: 1.4, shadows: 2048, draw: 160, light: 2, snow: 3000, npc: 24, aniso: 4 },
-  max:    { label: 'Максимальное', dpr: 2,   shadows: 4096, draw: 230, light: 2, snow: 5000, npc: 32, aniso: 8 },
+  low:    { label: 'Низкое',       dpr: .75, shadows: 0,    draw: 70,  light: 0, snow: 450,  npc: 8,   aniso: 1 },
+  medium: { label: 'Среднее',      dpr: .95, shadows: 1024, draw: 105, light: 1, snow: 1200, npc: 14,  aniso: 2 },
+  high:   { label: 'Высокое',      dpr: 1.2, shadows: 1536, draw: 145, light: 2, snow: 2200, npc: 20, aniso: 4 },
+  max:    { label: 'Максимальное', dpr: 1.5, shadows: 2048, draw: 185, light: 2, snow: 3200, npc: 26, aniso: 4 },
 };
 
 export function createWorld(ctx) {
@@ -30,7 +30,7 @@ export function createWorld(ctx) {
   const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
   const Q = Object.assign({}, QUALITY[ctx.settings().quality || (isMobile ? 'medium' : 'high')], ctx.settings().custom || {});
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(72, 1, .05, 400); camera.rotation.order = 'YXZ'; scene.add(camera);
@@ -56,7 +56,7 @@ export function createWorld(ctx) {
   // ---------- пост-обработка ----------
   const gl2 = renderer.capabilities.isWebGL2;
   const halfOk = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
-  const rt = new THREE.WebGLRenderTarget(4, 4, { type: halfOk ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: gl2 ? 4 : 0 });
+  const rt = new THREE.WebGLRenderTarget(4, 4, { type: halfOk ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: 0 });
   const post = new THREE.ShaderMaterial({
     uniforms: { tDiffuse: { value: rt.texture }, time: { value: 0 }, exposure: { value: 1 }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 1 }, sat: { value: .72 }, hurt: { value: 0 }, blur: { value: 0 }, dbl: { value: 0 }, smoke: { value: 0 }, dbt: { value: 0 }, retro: { value: 0 }, blink: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
@@ -172,24 +172,29 @@ export function createWorld(ctx) {
   // обои: «бумага» пользователя + советский узор + потёртости
   function makeWallpaper(img) {
     return regTex(ctex(512, 512, (g, w, h) => {
-      if (img) g.drawImage(img, 0, 0, w, h); else { g.fillStyle = '#cbb894'; g.fillRect(0, 0, w, h); }
-      g.globalAlpha = .9; g.fillStyle = 'rgba(160,120,70,.25)'; g.fillRect(0, 0, w, h); g.globalAlpha = 1;
-      // вертикальные полосы-бордюры и ромбики с цветком
-      for (let x = 0; x < w; x += 64) { g.fillStyle = 'rgba(120,70,40,.28)'; g.fillRect(x, 0, 3, h); g.fillRect(x + 7, 0, 1, h); }
-      for (let y = 0; y < h; y += 64) for (let x = 0; x < w; x += 64) {
-        const cx = x + 32 + ((y / 64) % 2) * 0, cy = y + 32;
-        g.strokeStyle = 'rgba(110,60,35,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, cy - 20); g.lineTo(cx + 16, cy); g.lineTo(cx, cy + 20); g.lineTo(cx - 16, cy); g.closePath(); g.stroke();
-        g.fillStyle = 'rgba(150,60,45,.35)'; for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; g.beginPath(); g.ellipse(cx + Math.cos(a) * 5, cy + Math.sin(a) * 5, 4, 2.5, a, 0, 7); g.fill(); }
-        g.fillStyle = 'rgba(90,110,60,.35)'; g.beginPath(); g.ellipse(cx, cy + 10, 2, 6, 0, 0, 7); g.fill();
+      // Тёплая чистая советская бумага обоев с гармоничным ромбовидным узором без искусственных тёмных швов и пятен
+      if (img) g.drawImage(img, 0, 0, w, h); else { g.fillStyle = '#dcceb4'; g.fillRect(0, 0, w, h); }
+      g.fillStyle = 'rgba(185,150,105,.22)'; g.fillRect(0, 0, w, h);
+      // Бесшовные вертикальные декоративные бордюры
+      for (let x = 0; x < w; x += 64) {
+        g.fillStyle = 'rgba(130,85,50,.18)'; g.fillRect(x, 0, 2, h);
+        g.fillStyle = 'rgba(130,85,50,.10)'; g.fillRect(x + 5, 0, 1, h);
       }
-      // выцветание, пятна, отклеившиеся швы, затёртости у пола
-      const gr = g.createLinearGradient(0, h * .7, 0, h); gr.addColorStop(0, 'rgba(60,40,20,0)'); gr.addColorStop(1, 'rgba(60,40,20,.45)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      stains(g, w, h, 18, 'rgba(90,60,30,');
-      for (let i = 0; i < 8; i++) { g.fillStyle = `rgba(255,245,220,${R(.08, .2)})`; g.beginPath(); g.ellipse(R(0, w), R(0, h), R(15, 50), R(8, 30), R(0, 3), 0, 7); g.fill(); }
-      g.strokeStyle = 'rgba(60,40,20,.5)'; g.lineWidth = 1; g.beginPath(); g.moveTo(256, 0); g.lineTo(258, h); g.stroke();
-      g.fillStyle = 'rgba(240,230,200,.6)'; g.beginPath(); g.moveTo(258, 40); g.lineTo(272, 46); g.lineTo(260, 70); g.fill(); // отклеилось
-      speckle(g, w, h, 5000, ['rgba(60,40,20,.5)', 'rgba(255,250,235,.4)'], 2);
-    }, [2.2, 1.4]));
+      // Ромбический узор с традиционным стилизованным цветком
+      for (let y = 0; y < h; y += 64) for (let x = 0; x < w; x += 64) {
+        const cx = x + 32, cy = y + 32;
+        g.strokeStyle = 'rgba(125,75,40,.24)'; g.lineWidth = 1.5;
+        g.beginPath(); g.moveTo(cx, cy - 18); g.lineTo(cx + 15, cy); g.lineTo(cx, cy + 18); g.lineTo(cx - 15, cy); g.closePath(); g.stroke();
+        g.fillStyle = 'rgba(155,70,50,.28)';
+        for (let k = 0; k < 5; k++) {
+          const a = k / 5 * Math.PI * 2;
+          g.beginPath(); g.ellipse(cx + Math.cos(a) * 4.5, cy + Math.sin(a) * 4.5, 3.5, 2.2, a, 0, 7); g.fill();
+        }
+        g.fillStyle = 'rgba(95,115,65,.28)';
+        g.beginPath(); g.ellipse(cx, cy + 9, 2, 5, 0, 0, 7); g.fill();
+      }
+      speckle(g, w, h, 2000, ['rgba(100,70,40,.12)', 'rgba(255,250,235,.25)'], 1.5);
+    }, [2.0, 1.0]));
   }
 
   // ---------- материалы ----------
@@ -220,7 +225,7 @@ vec2 hdUV(out vec3 T, out vec3 B, out vec3 N){ vec3 a = abs(vHN);
     kiosk: hdMat('kiosk', { scale: 1.6, rough: 1, metal: .45 }),
     wallpaper: std({ map: makeWallpaper(null), roughness: .92 }),
     floor: hdMat('floor', { scale: 1.4, rough: .96, nrm: .35, rotY: 1, color: 0xc8a888 }),
-    ceiling: hdMat('plaster', { scale: 1.5, color: 0xe8e2d4 }),
+    ceiling: hdMat('plaster', { scale: 2.2, color: 0xddd6ca, rough: .94, nrm: 1.15 }),
     roofTin: hdMat('metal', { scale: 1.2, metal: .6, color: 0xb0b0ac }),
     wood: hdMat('panel', { scale: .9, color: 0xb59a80, rough: .9 }),
     shelf: hdMat('dsp', { scale: .6, rough: .95 }),
@@ -231,7 +236,7 @@ vec2 hdUV(out vec3 T, out vec3 B, out vec3 N){ vec3 a = abs(vHN);
     rust: std({ map: TX.rust, roughness: .8, metalness: .25 }),
     concrete: std({ color: 0x8b8880 }), bin: hdMat('bin', { scale: .9, metal: .5 }),
     lampHead: std({ color: 0x333, emissive: 0xffc070, emissiveIntensity: 0 }),
-    bulb: std({ color: 0xfff2d0, emissive: 0xffd9a0, emissiveIntensity: 3 }),
+    bulb: std({ color: 0xffe4b5, emissive: 0xffb858, emissiveIntensity: 1.5 }),
     snow: std({ map: TX.snow, roughness: .95 }),
     woodFence: std({ map: TX.woodFence, roughness: .9 }),
   };
@@ -274,17 +279,34 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   TL.load('assets/tex/paper.jpg', img => { MAT.wallpaper.map = makeWallpaper(img.image); MAT.wallpaper.needsUpdate = true; }, undefined, () => {});
 
   // ---------- свет ----------
-  const hemi = new THREE.HemisphereLight(0xbfc8cc, 0x4a4636, .9); scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0dc, 2.2);
+  const hemi = new THREE.HemisphereLight(0x94adc2, 0x5a5448, .85); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff2e2, 2.4);
   sun.shadow.bias = -0.0005; sun.shadow.normalBias = .04;
   Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 150 });
   scene.add(sun); scene.add(sun.target);
-  const bulbLight = new THREE.PointLight(0xffaa32, 3.8, 5.2, 1.8); bulbLight.position.set(0, 2.22, -.1); scene.add(bulbLight);
-  bulbLight.shadow.mapSize.set(256, 256); bulbLight.shadow.bias = -0.004; bulbLight.shadow.radius = 3; bulbLight.shadow.camera.far = 3.6; // кубическая тень рисует сцену 6 раз — только ближний радиус
-  const fillLight = new THREE.PointLight(0xffe0b0, 1.2, 4, 2); fillLight.position.set(0, 1.0, .2); scene.add(fillLight); // «отражённый» свет от прилавка
-  // дневной свет из витрины: холодный рассеянный свет неба/снега падает внутрь через окно — контраст с тёплой лампой
-  const winLight = new THREE.SpotLight(0xd8e4f0, 0, 7.5, 1.05, 1, 1.4); winLight.position.set(0, 2.3, 3.8); // перед витриной (KD = 1.2) winLight.target.position.set(0, .3, -.9); scene.add(winLight); scene.add(winLight.target);
-  let dayLightK = 0, inSm = 0;
+  // Реалистичный тёплый направленный свет в ларьке с быстрыми 2D-тенями (SpotLight вместо 6-проходного кубического PointLight)
+  const kioskSpot = new THREE.SpotLight(0xffa63c, 1.75, 4.5, Math.PI * 0.43, 0.72, 1.9);
+  kioskSpot.position.set(0, 2.24, -.1);
+  kioskSpot.target.position.set(0, 0, -.1);
+  scene.add(kioskSpot); scene.add(kioskSpot.target);
+  kioskSpot.castShadow = true;
+  kioskSpot.shadow.mapSize.set(512, 512);
+  kioskSpot.shadow.bias = -0.0015;
+  kioskSpot.shadow.normalBias = 0.02;
+  kioskSpot.shadow.camera.near = 0.15;
+  kioskSpot.shadow.camera.far = 4.2;
+
+  const bulbLight = new THREE.PointLight(0xff9e32, 0.58, 3.6, 2.1);
+  bulbLight.position.set(0, 2.22, -.1); scene.add(bulbLight);
+  bulbLight.castShadow = false;
+
+  // Приглушённая мягкая подсветка потолка от тусклой лампы накаливания
+  const ceilingBounce = new THREE.PointLight(0xffb878, 0.62, 3.1, 2.0);
+  ceilingBounce.position.set(0, 2.12, -.1); scene.add(ceilingBounce);
+  ceilingBounce.castShadow = false;
+
+  const fillLight = new THREE.PointLight(0xffb880, 0.32, 2.8, 2.1);
+  fillLight.position.set(0, 1.0, .2); scene.add(fillLight);
   const streetLights = [];
   const flashlight = new THREE.SpotLight(0xfff4e0, 0, 28, .45, .5, 1.5); flashlight.position.set(.15, -.1, 0); camera.add(flashlight); camera.add(flashlight.target); flashlight.target.position.set(0, 0, -5);
 
@@ -402,28 +424,70 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const K = new THREE.Group(); scene.add(K); const seasonHooks = [];
   const KW = 1.5, KD = 1.2, KH = 2.5, T_ = .06;
   drift(KW + .98, -KD + .3, KW + .98, KD - .3, .55, .36, 1); drift(-KW - .98, -KD + .3, -KW - .98, KD - .3, .55, .34, 2); flushDrifts(); // наносы снаружи у боковых стен ларька (не заходят внутрь)
-  // «Союзпечать»: стены снаружи — гофрированный лист в частую бело-голубую вертикальную полоску, со следами ржавчины и грязи
-  const soyuzTex = regTex(ctex(256, 256, (g, w, h) => {
-    for (let i = 0; i < 16; i++) { const x = i * 16; g.fillStyle = '#e9ecef'; g.fillRect(x, 0, 16, h); g.fillStyle = '#3d6fb0'; g.fillRect(x + 9, 0, 7, h);
-      const gr = g.createLinearGradient(x, 0, x + 16, 0); gr.addColorStop(0, 'rgba(255,255,255,.18)'); gr.addColorStop(.5, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.18)'); g.fillStyle = gr; g.fillRect(x, 0, 16, h); } // рёбра гофры
-    speckle(g, w, h, 900, ['#0002', '#fff3', '#7a4a2a22'], 2); stains(g, w, h, 6);
-    const dirt = g.createLinearGradient(0, h * .7, 0, h); dirt.addColorStop(0, 'rgba(70,60,50,0)'); dirt.addColorStop(1, 'rgba(70,60,50,.35)'); g.fillStyle = dirt; g.fillRect(0, 0, w, h); }));
-  soyuzTex.wrapS = soyuzTex.wrapT = THREE.RepeatWrapping; soyuzTex.repeat.set(2.2, 1);
-  const soyuzMat = std({ map: soyuzTex, roughness: .55, metalness: .35 });
-  const greyPaint = std({ color: 0xc9cdd0, roughness: .6, metalness: .3 }), bluePaint = std({ color: 0x3a6cad, roughness: .45, metalness: .3 });
-  const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : soyuzMat);
+  // Наружные материалы киоска «Союзпечать» (по референсу 5731.jpg):
+  // Рифлёные сине-белые металлические панели по всему наружному периметру
+  const soyuzStripesTex = regTex(ctex(256, 256, (g, w, h) => {
+    for (let i = 0; i < 16; i++) {
+      g.fillStyle = i % 2 === 0 ? '#1b4c7c' : '#f0ece2';
+      g.fillRect(i * 16, 0, 16, h);
+    }
+    g.strokeStyle = 'rgba(20,40,70,.28)'; g.lineWidth = 1;
+    for (let i = 0; i < 16; i++) g.strokeRect(i * 16, 0, 16, h);
+    g.fillStyle = 'rgba(0,0,0,.15)'; g.fillRect(0, 0, w, 4); g.fillRect(0, h - 6, w, 6);
+  }));
+  const MAT_SOYUZ_EXT = std({ map: soyuzStripesTex, roughness: .50, metalness: .35 });
+  const MAT_SOYUZ_BLUE = std({ color: 0x164270, roughness: .40, metalness: .55 });
+
+  const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : MAT_SOYUZ_EXT);
   const kioskWalls = [];
   const kw = (...a) => { const m = box(...a); kioskWalls.push(m); occ(m); return m; };
   kw(1.9, KH, T_, wm(4), -.55, KH / 2, -KD, K); kw(.3, KH, T_, wm(4), 1.35, KH / 2, -KD, K); kw(.8, KH - 2.05, T_, wm(4), .8, 2.05 + (KH - 2.05) / 2, -KD, K);
   kw(KW * 2, 1.0, T_, wm(5), 0, .5, KD, K); kw(KW * 2, KH - 2.15, T_, wm(5), 0, 2.15 + (KH - 2.15) / 2, KD, K);
   kw(.15, 1.15, T_, wm(5), -1.425, 1.575, KD, K); kw(.15, 1.15, T_, wm(5), 1.425, 1.575, KD, K);
   kw(T_, KH, KD * 2, wm(0), -KW, KH / 2, 0, K); kw(T_, KH, KD * 2, wm(1), KW, KH / 2, 0, K);
-  box(KW * 2 + .5, .1, KD * 2 + .5, greyPaint, 0, KH + .05, 0, K); // плоская крыша с выносом
-  box(KW * 2 + .54, .2, .04, greyPaint, 0, KH + .02, KD + .27, K); box(KW * 2 + .54, .2, .04, greyPaint, 0, KH + .02, -KD - .27, K); // бортики-фризы
-  box(.04, .2, KD * 2 + .54, greyPaint, KW + .27, KH + .02, 0, K); box(.04, .2, KD * 2 + .54, greyPaint, -KW - .27, KH + .02, 0, K);
-  box(KW * 2 + .02, .06, KD * 2 + .02, greyPaint, 0, .03, 0, K); box(KW * 2 + .2, .07, KD * 2 + .2, std({ color: 0x8e9192, roughness: .8, metalness: .2 }), 0, .035, 0, K); // цоколь
-  box(KW * 2 + .14, .05, .2, bluePaint, 0, 1.0, KD + .1, K); // выносной подоконник-полочка под витриной
+
+  // Тёмный защитный цоколь-плинтус по всему периметру киоска
+  const plinthM = std({ color: 0x181a1c, roughness: .85, metalness: .3 });
+  box(KW * 2 + .08, .08, .06, plinthM, 0, .04, KD + .02, K);
+  box(KW * 2 + .08, .08, .06, plinthM, 0, .04, -KD - .02, K);
+  box(.06, .08, KD * 2 + .08, plinthM, -KW - .02, .04, 0, K);
+  box(.06, .08, KD * 2 + .08, plinthM, KW + .02, .04, 0, K);
+  box(KW * 2 + .3, .1, KD * 2 + .3, MAT.roofTin, 0, KH + .05, 0, K);
   box(KW * 2 - .02, .02, KD * 2 - .02, MAT.ceiling, 0, KH - .01, 0, K, false);
+  // Реалистичный деревянный потолочный плинтус (галтель) с фаской, поперечными балками и мягкой контактной тенью (AO) на стыке с обоями
+  const moldingMat = std({ color: 0x5c3e26, roughness: .72, metalness: .05 });
+  const moldingSubMat = std({ color: 0x462e1b, roughness: .78, metalness: .05 });
+  // Двухступенчатый деревянный карниз по периметру
+  box(KW * 2 - .05, .036, .038, moldingMat, 0, KH - .018, KD - .026, K, false);
+  box(KW * 2 - .05, .018, .052, moldingSubMat, 0, KH - .042, KD - .019, K, false);
+  box(KW * 2 - .05, .036, .038, moldingMat, 0, KH - .018, -KD + .026, K, false);
+  box(KW * 2 - .05, .018, .052, moldingSubMat, 0, KH - .042, -KD + .019, K, false);
+  box(.038, .036, KD * 2 - .05, moldingMat, -KW + .026, KH - .018, 0, K, false);
+  box(.052, .018, KD * 2 - .05, moldingSubMat, -KW + .019, KH - .042, 0, K, false);
+  box(.038, .036, KD * 2 - .05, moldingMat, KW - .026, KH - .018, 0, K, false);
+  box(.052, .018, KD * 2 - .05, moldingSubMat, KW - .019, KH - .042, 0, K, false);
+  // Аккуратная потолочная розетка под шнур лампочки на штукатурном потолке
+  cyl(.042, .052, .018, moldingSubMat, 0, KH - .016, -.10, 16, K);
+  // Мягкая градиентная тень (Ambient Occlusion) вдоль верхнего края обоев под потолком и в углах стен
+  {
+    const aoWallTex = regTex(ctex(64, 256, (g, w, h) => {
+      const gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, 'rgba(18, 12, 6, 0.62)');
+      gr.addColorStop(0.28, 'rgba(24, 16, 8, 0.30)');
+      gr.addColorStop(0.65, 'rgba(30, 20, 10, 0.08)');
+      gr.addColorStop(1, 'rgba(30, 20, 10, 0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    }));
+    const aoWallMat = new THREE.MeshBasicMaterial({ map: aoWallTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
+    const addWallAO = (w, h, x, y, z, ry) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), aoWallMat);
+      m.position.set(x, y, z); m.rotation.y = ry; m.userData.keep = true; K.add(m);
+    };
+    addWallAO(KW * 2 - .06, .26, 0, KH - .16, -KD + .032, 0);
+    addWallAO(KW * 2 - .06, .26, 0, KH - .16, KD - .032, Math.PI);
+    addWallAO(KD * 2 - .06, .26, -KW + .032, KH - .16, 0, Math.PI / 2);
+    addWallAO(KD * 2 - .06, .26, KW - .032, KH - .16, 0, -Math.PI / 2);
+  }
   box(KW * 2 - .04, .03, KD * 2 - .04, MAT.floor, 0, .02, 0, K, false);
   // коллизии стен с дверным проёмом x 0.4..1.2
   addCol(-KW - .04, .4, -KD - .04, -KD + .04); addCol(1.2, KW + .04, -KD - .04, -KD + .04);
@@ -431,15 +495,78 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const doorCol = addCol(.4, 1.2, -KD - .05, -KD + .05, 'door');
   const counterCol = addCol(-KW, KW, KD - .48, KD, 'counter');
   addCol(-KW, .3, -KD, -KD + .34, 'shelf'); addCol(-KW, -KW + .3, -KD, .45, 'shelf');
-  // козырёк, вывеска
-  const stripes = (a, b) => regTex(ctex(128, 128, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 16, 0, 16, h); } speckle(g, w, h, 600, ['#0003', '#fff2'], 2); stains(g, w, h, 5); }));
-  // полосатый навес убран — у «Союзпечати» плоская крыша
-  const roofSnow = box(KW * 2 + .3, .08, KD * 2 + .3, MAT.snow, 0, KH + .14, 0, K, false); roofSnow.userData.winter = true;
-  // вывеска «Союзпечать»: синяя табличка с белой рукописной надписью по центру фриза, над витриной
-  const signTex = regTex(ctex(512, 96, (g, w, h) => { g.fillStyle = '#2c5c9e'; g.fillRect(0, 0, w, h); g.strokeStyle = '#d8dde2'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6);
-    g.fillStyle = '#f2f4f6'; g.font = 'italic 700 58px "Times New Roman", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('Союзпечать', w / 2, h / 2 + 4); speckle(g, w, h, 300, ['#0002', '#fff2'], 1.5); }));
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .28), std({ map: signTex, emissive: 0x112244, emissiveMap: signTex, emissiveIntensity: 0, roughness: .5 })); sign.position.set(0, KH + .02, KD + .295); K.add(sign);
-  const signBack = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .28), std({ map: signTex, roughness: .5 })); signBack.position.set(0, KH + .02, -KD - .295); signBack.rotation.y = Math.PI; K.add(signBack);
+  // КИОСК «СОЮЗПЕЧАТЬ» (по референсу 5731.jpg)
+  // 1) Крыша: плоский советский козырёк с белой металлической фаской
+  const canopyMat = std({ color: 0xedeae2, roughness: .45, metalness: .3 });
+  box(KW * 2 + .42, .08, KD * 2 + .45, canopyMat, 0, KH + .05, .08, K);
+  const roofSnow = box(KW * 2 + .44, .08, KD * 2 + .46, MAT.snow, 0, KH + .13, .08, K, false); roofSnow.userData.winter = true;
+
+  // 2) Вывеска «Союзпечать»: тёмно-синяя эмалированная табличка с белым курсивом
+  const signTex = regTex(ctex(512, 128, (g, w, h) => {
+    g.fillStyle = '#144275'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#f4efe4'; g.lineWidth = 5; g.strokeRect(6, 6, w - 12, h - 12);
+    g.fillStyle = '#f8f5ee';
+    g.font = 'italic 700 64px "Times New Roman", Georgia, serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('Союзпечать', w / 2, h / 2 + 2);
+    speckle(g, w, h, 600, ['#0003', '#fff2'], 2);
+  }));
+  const signBox = box(1.78, .30, .08, std({ color: 0x144275, roughness: .4, metalness: .3 }), 0, KH + .23, KD + .22, K);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.75, .28), std({ map: signTex, emissive: 0x144275, emissiveMap: signTex, emissiveIntensity: .35 }));
+  sign.position.set(0, KH + .23, KD + .265); K.add(sign);
+
+  // 3) Птичка-снегирь на крыше на вывеске «Союзпечать» (по референсу 5731.jpg)
+  const bird = new THREE.Group(); bird.position.set(0.14, KH + .41, KD + .22); K.add(bird);
+  const birdBreast = new THREE.Mesh(new THREE.SphereGeometry(.026, 8, 8), std({ color: 0xd62e1c, roughness: .75 }));
+  birdBreast.scale.set(1.0, 1.2, 1.15); bird.add(birdBreast);
+  const birdBack = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 8), std({ color: 0x181615, roughness: .7 }));
+  birdBack.scale.set(.95, 1.15, .7); birdBack.position.set(0, .005, -.012); bird.add(birdBack);
+  const birdHead = new THREE.Mesh(new THREE.SphereGeometry(.016, 8, 8), std({ color: 0x12100e, roughness: .6 }));
+  birdHead.position.set(0, .026, .012); bird.add(birdHead);
+  const birdBeak = new THREE.Mesh(new THREE.ConeGeometry(.0045, .012, 5), std({ color: 0x22201e, roughness: .5 }));
+  birdBeak.rotation.x = Math.PI / 2; birdBeak.position.set(0, .026, .027); bird.add(birdBeak);
+  const birdTail = new THREE.Mesh(new THREE.BoxGeometry(.015, .004, .042), std({ color: 0x141210, roughness: .7 }));
+  birdTail.position.set(0, -.016, -.034); birdTail.rotation.x = .4; bird.add(birdTail);
+  const birdWingL = new THREE.Mesh(new THREE.BoxGeometry(.006, .028, .036), std({ color: 0x161412, roughness: .7 }));
+  birdWingL.position.set(-.022, .004, -.008); birdWingL.rotation.y = .15; bird.add(birdWingL);
+  const birdWingR = new THREE.Mesh(new THREE.BoxGeometry(.006, .028, .036), std({ color: 0x161412, roughness: .7 }));
+  birdWingR.position.set(.022, .004, -.008); birdWingR.rotation.y = -.15; bird.add(birdWingR);
+  // Ножки-проволочки, держащиеся за верх вывески
+  cyl(.0018, .0018, .022, MAT.dark, -.008, -.026, 0, 4, bird);
+  cyl(.0018, .0018, .022, MAT.dark, .008, -.026, 0, 4, bird);
+
+  // 4) Нижний фасад киоска: вертикальные сине-белые рифлёные полосы (как на референсе 5731.jpg)
+  const frontSkirt = new THREE.Mesh(new THREE.PlaneGeometry(KW * 2 - .02, .98), MAT_SOYUZ_EXT);
+  frontSkirt.position.set(0, .49, KD + .018); K.add(frontSkirt);
+  // Горизонтальный защитный поручень/рейка вдоль низа витрины (как на референсе)
+  cyl(.012, .012, KW * 2 + .06, std({ color: 0x225588, metalness: .7, roughness: .35 }), 0, .72, KD + .042, 8, K).rotation.z = Math.PI / 2;
+
+  // 5) Наклонные витринные стеллажи с советскими газетами, журналами и открытками в левой и правой секциях (референс 5731.jpg)
+  const rackTexLeft = regTex(ctex(256, 256, (g, w, h) => {
+    g.fillStyle = '#b8823c'; g.fillRect(0, 0, w, h);
+    // Миниатюрные обложки журналов и портрет с гитарой (Высоцкий)
+    g.fillStyle = '#222'; g.fillRect(16, 16, 100, 110);
+    g.fillStyle = '#d43628'; g.font = '900 16px Arial'; g.fillText('ВЫСОЦКИЙ', 20, 36);
+    g.fillStyle = '#e8dfcc'; g.fillRect(135, 16, 105, 110);
+    g.fillStyle = '#1a3a6a'; g.font = '900 18px Arial'; g.fillText('ОГОНЁК', 145, 38);
+    g.fillStyle = '#f5efe0'; g.fillRect(16, 138, 224, 105);
+    g.fillStyle = '#9b1c14'; g.font = '900 22px "Times New Roman"'; g.fillText('ПРАВДА', 30, 168);
+  }));
+  const rackTexRight = regTex(ctex(256, 256, (g, w, h) => {
+    g.fillStyle = '#b8823c'; g.fillRect(0, 0, w, h);
+    // Миниатюрные плакаты (Ленин, космос, советский экран)
+    g.fillStyle = '#9b1c14'; g.fillRect(16, 16, 105, 110);
+    g.fillStyle = '#ffd244'; g.font = '900 16px Arial'; g.fillText('ЛЕНИН', 32, 38);
+    g.fillStyle = '#1c3654'; g.fillRect(135, 16, 105, 110);
+    g.fillStyle = '#fff'; g.font = '900 16px Arial'; g.fillText('КОСМОС', 145, 38);
+    g.fillStyle = '#f2ece0'; g.fillRect(16, 138, 224, 105);
+    g.fillStyle = '#1c1a18'; g.font = '900 22px "Times New Roman"'; g.fillText('ИЗВЕСТИЯ', 30, 168);
+  }));
+  const rackGeo = new THREE.PlaneGeometry(.88, .85);
+  const showRackL = new THREE.Mesh(rackGeo, std({ map: rackTexLeft, roughness: .6 }));
+  showRackL.position.set(-.98, 1.48, KD - .10); showRackL.rotation.x = -.22; K.add(showRackL);
+  const showRackR = new THREE.Mesh(rackGeo, std({ map: rackTexRight, roughness: .6 }));
+  showRackR.position.set(.98, 1.48, KD - .10); showRackR.rotation.x = -.22; K.add(showRackR);
   // панорамная витрина без решёток: стекло в алюминиевой раме; зимой — иней от краёв, в остальное время — пыль и потёки
   const winTexes = (() => { const W = 512, H = 224;
     const mk = draw => { const t = regTex(ctex(W, H, g => draw(g, W, H))); return t; };
@@ -455,11 +582,43 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 18; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 40 + Math.random() * 60, Math.random() * 3, Math.random() * 3 + 2); g.stroke(); } }); // разводы от тряпки
     return { frost, dirt }; })();
   const winGlassMat = new THREE.MeshStandardMaterial({ map: winTexes.frost, transparent: true, roughness: .12, metalness: .1, color: 0xffffff, depthWrite: false, side: THREE.DoubleSide });
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.86, 1.15), winGlassMat); glass.position.set(0, 1.575, KD + .012); glass.renderOrder = 2; K.add(glass);
-  const alu = std({ color: 0x3a6cad, roughness: .42, metalness: .35 }); // рама витрины выкрашена в синий, как у «Союзпечати»
+  // Боковые глухие стёкла витрины и центральное глухое стекло над окошком выдачи
+  for (const [gx, gy, gw, gh] of [
+    [-.977, 1.575, .91, 1.15],
+    [ .977, 1.575, .91, 1.15],
+    [ 0,    1.765, .95, .77]
+  ]) {
+    const gm = new THREE.Mesh(new THREE.PlaneGeometry(gw, gh), winGlassMat);
+    gm.position.set(gx, gy, KD + .012); gm.renderOrder = 2; gm.userData.keep = true; K.add(gm);
+  }
+  const alu = std({ color: 0x1b4c7c, roughness: .40, metalness: .55 }); // Тёмно-синяя эмаль Союзпечати
   box(2.96, .05, .07, alu, 0, 2.15, KD + .01, K); box(2.96, .05, .08, alu, 0, 1.005, KD + .01, K); // рама сверху и снизу
   for (const x of [-1.455, -.5, .5, 1.455]) box(.045, 1.15, .07, alu, x, 1.575, KD + .01, K); // стойки (по центру — окошко выдачи)
-  box(.95, .03, .05, alu, 0, 1.36, KD + .015, K); // перемычка над окошком
+  box(.95, .03, .05, alu, 0, 1.38, KD + .015, K); // перемычка над окошком
+  // Подвижное окошко выдачи товара (поднимается вверх по полозьям и опускается вниз)
+  let hatchOpen = 0, hatchTarget = 0, hatchAutoTimer = 0;
+  const hatchGroup = new THREE.Group();
+  hatchGroup.position.set(0, 1.19, KD + .018);
+  hatchGroup.userData = { keep: true, dyn: true };
+  K.add(hatchGroup);
+  // Стекло окошка выдачи в тонкой металлической рамке с ручкой-планкой снизу
+  const hatchPane = new THREE.Mesh(new THREE.PlaneGeometry(.92, .33), winGlassMat);
+  hatchPane.renderOrder = 3; hatchPane.userData.keep = true; hatchGroup.add(hatchPane);
+  const hatchFrameMat = std({ color: 0x245688, roughness: .35, metalness: .65 });
+  const hatchHandleMat = std({ color: 0x3b2818, roughness: .55, metalness: .15 });
+  box(.95, .022, .026, hatchFrameMat, 0,  .17, 0, hatchGroup, false);
+  box(.95, .024, .028, hatchFrameMat, 0, -.17, 0, hatchGroup, false);
+  box(.022, .36, .026, hatchFrameMat, -.465, 0, 0, hatchGroup, false);
+  box(.022, .36, .026, hatchFrameMat,  .465, 0, 0, hatchGroup, false);
+  // Ручка для поднятия и опускания окошка (изнутри и снаружи)
+  box(.18, .018, .038, hatchHandleMat, 0, -.145, -.016, hatchGroup, false);
+  box(.18, .018, .038, hatchHandleMat, 0, -.145,  .016, hatchGroup, false);
+  const hatchBox = new THREE.Box3(new THREE.Vector3(-.48, 1.01, KD - .12), new THREE.Vector3(.48, 1.56, KD + .12));
+  function toggleHatch(forceState = null) {
+    hatchTarget = forceState != null ? (forceState ? 1 : 0) : (hatchTarget > .5 ? 0 : 1);
+    ctx.audio && ctx.audio.click(hatchTarget > .5 ? 640 : 480, .38, 0, .06);
+    ctx.onCtl && ctx.onCtl();
+  }
   seasonHooks.push(w => { winGlassMat.map = w ? winTexes.frost : winTexes.dirt; winGlassMat.needsUpdate = true; });
   // прилавок, витрина
   box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(2.9, .93, .06, MAT.wood, 0, .47, KD - .44, K); box(1.0, .04, .25, MAT.counter, 0, 1.0, KD + .14, K);
@@ -544,7 +703,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     K.add(tapeStrip);
   }
 
-  // стакан в подстаканнике и штырь для чеков убраны с прилавка (мешали)
+  // Стакан и чеки убраны со стола по запросу игрока
 
   // Паутина по углам ларька
   {
@@ -669,7 +828,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // ---------- дверь ----------
   const doorPivot = new THREE.Group(); doorPivot.position.set(1.2, 0, -KD); K.add(doorPivot); doorPivot.userData.dyn = true;
-  const doorMesh = box(.8, 2.04, .05, [bluePaint, bluePaint, bluePaint, bluePaint, MAT.wallpaper, soyuzMat], -.4, 1.02, 0, doorPivot);
+  const doorMesh = box(.8, 2.04, .05, [MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT_SOYUZ_BLUE, MAT.wallpaper, MAT_SOYUZ_EXT], -.4, 1.02, 0, doorPivot);
   const handleM = std({ color: 0x777777, metalness: .8, roughness: .3 });
   box(.12, .025, .04, handleM, -.72, 1.0, .05, doorPivot); box(.12, .025, .04, handleM, -.72, 1.0, -.05, doorPivot);
   occ(doorMesh);
@@ -745,10 +904,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       cyl(r * .36, r * .36, h * .10, bm, 0, h * .89, 0, 10, g);
       if (cork) {
         // Деревянно-сургучная пробка самогона и бечёвка на горлышке
-        cyl(r * .34, r * .28, h * .08, lbl(capCol), 0, h * .95, 0, 10, g);
+        const ck = cyl(r * .34, r * .28, h * .08, lbl(capCol), 0, h * .95, 0, 10, g);
+        ck.userData.isCap = true;
         cyl(r * .42, r * .42, h * .025, lbl(0x8c734b), 0, h * .83, 0, 10, g);
       } else {
-        cyl(r * .41, r * .41, h * .055, std({ color: capCol, metalness: .7, roughness: .3 }), 0, h * .94, 0, 12, g);
+        const cp = cyl(r * .41, r * .41, h * .055, std({ color: capCol, metalness: .7, roughness: .3 }), 0, h * .94, 0, 12, g);
+        cp.userData.isCap = true;
       }
       if (neckCol !== null) cyl(r * .44, r * .55, h * .06, lbl(neckCol), 0, h * .81, 0, 10, g);
       const lbGeo = new THREE.CylinderGeometry(r * 1.025, r * 1.025, h * .34, 16, 1, true);
@@ -2193,7 +2354,15 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         g.putImageData(d, 0, 0); const nt = new THREE.CanvasTexture(c); nt.colorSpace = THREE.SRGBColorSpace; nt.flipY = t.flipY; nt.magFilter = THREE.NearestFilter; maskCache.set(t, nt); return nt; };
       A.scene.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { if (m.emissiveMap) { try { m.emissiveMap = maskOf(m.emissiveMap); } catch (e) {} m.emissive.set(0xffffff); windowShader(m); winMats.push(m); } }); } });
       { const done = new Set(); A.scene.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (!done.has(m)) { done.add(m); facadeDetail(m); } }); }); }
-      for (const [x, z, r] of [[-95, 28, Math.PI / 2], [-32, 28, Math.PI / 2], [30, 28, Math.PI / 2], [0, -36, -Math.PI / 2], [-156, -26, -Math.PI / 2], [70, -26, -Math.PI / 2]]) { // все дома длинной стороной вдоль улицы, подъездами к дороге
+      for (const [x, z, r] of [
+        [-95, 28, Math.PI / 2],
+        [-34, 28, Math.PI / 2],
+        [28, 28, Math.PI / 2],
+        [90, 28, Math.PI / 2],
+        [-156, -25, Math.PI / 2],
+        [-60, -25, Math.PI / 2],
+        [30, -25, Math.PI / 2]
+      ]) {
         const o = placeModel(A, x, z, r); colFromBox(o, .5); occ(o); reflectLayer(o);
         { const b = new THREE.Box3().setFromObject(o), e = .5; drift(b.min.x, b.min.z - e, b.max.x, b.min.z - e, 1.6, .55, x); drift(b.min.x, b.max.z + e, b.max.x, b.max.z + e, 1.6, .55, z); drift(b.min.x - e, b.min.z, b.min.x - e, b.max.z, 1.5, .5, x + z); drift(b.max.x + e, b.min.z, b.max.x + e, b.max.z, 1.5, .5, x - z); }
       }
@@ -2304,7 +2473,24 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         }
       }
     }
-    if (ASSETS.gun) { const gm = meshesOf(ASSETS.gun)[0]; gunGeo = fixWinding(normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld))); gunMat = gm.material; weapon.setModel(gunHoldMesh(), life.makeHand); buildWallGun(); }
+    if (ASSETS.gun) {
+      const gm = meshesOf(ASSETS.gun)[0];
+      gunGeo = fixWinding(normGun(gm.geometry.clone().applyMatrix4(gm.matrixWorld)));
+      gunMat = gm.material;
+      weapon.setModel(gunHoldMesh(), life.makeHand);
+      buildWallGun();
+      for (const it of life.items) {
+        if (it.kind === 'gun') {
+          const pos = it.obj.position.clone(), ry = it.obj.rotation.y;
+          scene.remove(it.obj);
+          it.obj = gunWorldMesh();
+          it.obj.position.copy(pos);
+          it.obj.rotation.y = ry;
+          it.obj.traverse(o => { if (o.isMesh) o.userData.item = it; });
+          scene.add(it.obj);
+        }
+      }
+    }
     spawnMarat();
     spawnZavodNpc();
     // уличные продавцы стояли неподвижно с позированными руками и выглядели как баг — убраны
@@ -2525,11 +2711,13 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function sit() {
     P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI;
     P.seated = true; P.locked = false; P.crouch = false; P.vx = P.vz = 0;
+    hatchTarget = 1;
     ctx.onSitCounter && ctx.onSitCounter();
     ctx.onCtl();
   }
   function stand() {
     P.locked = false; P.seated = false;
+    hatchTarget = 0;
     const S = ctx.getS(); S && (S.flags.stood = true);
     ctx.onStandCounter && ctx.onStandCounter();
     ctx.onCtl();
@@ -2539,11 +2727,11 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function goCounter() {
     const doIt = () => {
       P.x = STOOL.x; P.z = STOOL.z; P.yaw = Math.PI; P.pitch = -.1;
-      P.seated = true; P.locked = false; P.vx = P.vz = 0; doorTarget = 0;
+      P.seated = true; P.locked = false; P.vx = P.vz = 0; doorTarget = 0; hatchTarget = 1;
       ctx.onSitCounter && ctx.onSitCounter();
       ctx.onCtl();
     };
-    if (inKiosk() && P.seated) { P.locked = false; P.yaw = Math.PI; ctx.onSitCounter && ctx.onSitCounter(); ctx.onCtl(); } else fade(doIt);
+    if (inKiosk() && P.seated) { P.locked = false; P.yaw = Math.PI; hatchTarget = 1; ctx.onSitCounter && ctx.onSitCounter(); ctx.onCtl(); } else fade(doIt);
   }
   function toggleDoor() { doorTarget = doorTarget > .5 ? 0 : 1; ctx.audio && ctx.audio.door(doorTarget > .5); }
 
@@ -2687,6 +2875,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   function arrive(p) { if (p.arrived) return; p.arrived = true; p.state = 'queue'; ctx.arrive(p.c); }
   function customerEvent(c, ev) {
+    if (ev === 'sold' || ev === 'talk') { hatchTarget = 1; hatchAutoTimer = 2.5; }
     const p = c && c.person; if (!p) return;
     if (ev === 'sold') { p.anim = 'pay'; p.h.setExpr('smile'); p.timer = 1.4; p.state = 'paying'; }
     if (ev === 'refused') { p.h.setExpr('angry'); }
@@ -2963,9 +3152,30 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function buildWallGun() { if (wallGun) scene.remove(wallGun); wallGun = gunHoldMesh(true); scene.add(wallGun); if (!wallRope) wallRope = new Rope(scene, { n: 13, length: .79, width: .026, thick: .009, color: 0x4a321e }); }
   const rackBox = new THREE.Box3(new THREE.Vector3(RACK.x - .22, RACK.y - .22, RACK.z - .68), new THREE.Vector3(RACK.x + .08, NAIL.y + .10, RACK.z + .68));
   const gunState = () => { const S = ctx.getS(); return S ? (S.gunState || 'wall') : 'wall'; };
-  function setGunState(st) { const S = ctx.getS(); if (!S) return; S.gunState = st; S.gun = st === 'carried'; if (st !== 'carried' && weapon.drawn) weapon.holster(); ctx.onCtl(); }
+  function setGunState(st) {
+    const S = ctx.getS(); if (!S) return;
+    S.gunState = st;
+    S.gun = st === 'carried';
+    if (st !== 'carried') {
+      if (weapon.forceHolster) weapon.forceHolster();
+      else if (weapon.holster) weapon.holster();
+    }
+    if (st === 'wall') {
+      if (wallGun) wallGun.visible = true;
+      if (wallRope) wallRope.visible = true;
+    } else {
+      if (wallGun) wallGun.visible = false;
+      if (wallRope) wallRope.visible = false;
+    }
+    ctx.save && ctx.save();
+    ctx.onCtl && ctx.onCtl();
+  }
   function wallGunTick(dt) {
-    const on = gunState() === 'wall'; if (wallGun) wallGun.visible = on; if (!wallRope) return; wallRope.visible = on && !!wallGun;
+    const on = gunState() === 'wall';
+    if (wallGun) wallGun.visible = on;
+    if (wallRope) wallRope.visible = on && !!wallGun;
+    if (gunState() !== 'carried' && (weapon.drawn || weapon.state !== 'holstered')) weapon.forceHolster();
+    if (!on) return;
     if (on && wallGun) {
       wallGun.position.set(RACK.x, RACK.y, NAIL.z + .46);
       wallGun.rotation.set(-.03, 0, 0);
@@ -3174,7 +3384,12 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const dayF = (h - rise) / (set - rise);
     const el = dayF > 0 && dayF < 1 ? Math.sin(dayF * Math.PI) * maxEl : -8 - Math.min(Math.abs(h - rise), Math.abs(h - set)) * 3;
     const elR = el * Math.PI / 180, az = (dayF - .5) * Math.PI * .9;
-    sun.position.set(Math.sin(az) * 60 * Math.cos(Math.max(elR, .05)) + P.x, Math.sin(Math.max(elR, .08)) * 60, -Math.cos(az) * 50 * .3 + 40 + P.z); sun.target.position.set(P.x, 0, P.z);
+    const shadowMapSz = (Q.shadows && Q.shadows > 0) ? Math.min(Q.shadows, 1024) : 1024;
+    const texelSz = 64.0 / shadowMapSz;
+    const sPx = Math.floor(P.x / texelSz) * texelSz;
+    const sPz = Math.floor(P.z / texelSz) * texelSz;
+    sun.position.set(Math.sin(az) * 60 * Math.cos(Math.max(elR, .05)) + sPx, Math.sin(Math.max(elR, .08)) * 60, -Math.cos(az) * 50 * .3 + 40 + sPz);
+    sun.target.position.set(sPx, 0, sPz);
 
     const dayAmt = clamp((el + 3) / 12, 0, 1);
     nightK = 1 - dayAmt;
@@ -3203,20 +3418,19 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     scene.fog.far = lerp(Q.draw * (1 - weather.snow * .45) * (1 - weather.fog * .65), 9, stormK);
 
     sun.color.set(sunCol);
-    sun.intensity = el > 0 ? (2.6 * clamp(el / 15, 0, 1)) * (1 - over * .8) : 0;
-    hemi.intensity = .12 + dayAmt * (1.05 - over * .2);
-    dayLightK = dayAmt * (1 - over * .45); winLight.color.copy(topC).lerp(cA.set(winter ? '#eef4ff' : '#fff6e8'), .6);
-    hemi.color.copy(topC).lerp(cA.set('#ffffff'), .45);
-    hemi.groundColor.set(winter ? '#9aa0a6' : '#4a4636').multiplyScalar(.5 + dayAmt * .5);
-    if (dayAmt < .2) { hemi.color.lerp(cA.set('#5a6a8a'), .6); }
-    post.uniforms.exposure.value = 1.05 + nightK * .45;
+    sun.intensity = el > 0 ? (2.4 * clamp(el / 15, 0, 1)) * (1 - over * .75) : 0;
+    hemi.intensity = .18 + dayAmt * (0.90 - over * .18);
+    hemi.color.copy(topC).lerp(cA.set('#d8e2ea'), .40);
+    hemi.groundColor.set(winter ? '#abb4bc' : '#524c3e').multiplyScalar(.55 + dayAmt * .45);
+    if (dayAmt < .2) { hemi.color.lerp(cA.set('#1c283c'), .75); }
+    post.uniforms.exposure.value = 1.02 + nightK * .18;
     winU.night.value = nightK; winU.time.value = tAll; snowU.sparkle.value = 1 - nightK * .7;
     MAT.lampHead.emissiveIntensity = nightK > .35 ? 4 : 0;
     streetLights.forEach(l => l.intensity = nightK > .35 ? 55 * nightK : 0); poolMat.opacity = nightK > .35 ? nightK : 0;
     sign.material.emissiveIntensity = nightK * .9;
     neons.forEach(o => o.material.emissiveIntensity = nightK * .7);
     cars.forEach(c => { c.m.userData.hl.emissiveIntensity = nightK > .3 ? 3 : 0; });
-    bulbLight.intensity = 3.6 + nightK * 1.8; MAT.bulb.emissiveIntensity = 2.2;
+    bulbLight.intensity = 0.58 + nightK * 0.25; kioskSpot.intensity = 1.75 + nightK * 0.65; MAT.bulb.emissiveIntensity = 1.5;
     if (snowPts) snowPts.material.uniforms.light.value = .35 + dayAmt * .65;
   }
   function setSeason() {
@@ -3233,8 +3447,14 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     Object.assign(Q, q);
     const sh = Q.shadows > 0;
     renderer.shadowMap.enabled = sh;
-    sun.castShadow = sh; if (sh) { sun.shadow.mapSize.set(Q.shadows, Q.shadows); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-    bulbLight.castShadow = sh && Q.light >= 1; fillLight.visible = Q.light >= 2;
+    sun.castShadow = sh; if (sh) { sun.shadow.mapSize.set(Math.min(Q.shadows, 1024), Math.min(Q.shadows, 1024)); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+    kioskSpot.castShadow = sh;
+    if (sh) {
+      const spSz = Math.min(512, Math.max(256, Math.round(Q.shadows / 2)));
+      kioskSpot.shadow.mapSize.set(spSz, spSz);
+      if (kioskSpot.shadow.map) { kioskSpot.shadow.map.dispose(); kioskSpot.shadow.map = null; }
+    }
+    bulbLight.castShadow = false; fillLight.visible = Q.light >= 1;
     camera.far = Q.draw + 60; camera.updateProjectionMatrix(); sky.scale.setScalar(Math.min(1, (Q.draw + 40) / 380));
     allTex.forEach(t => { t.anisotropy = Q.aniso; if (t.image) t.needsUpdate = true; });
     buildSnow(Q.snow); buildRain(Math.round(Q.snow * .8)); buildPuddles(Q.light >= 1);
@@ -3294,11 +3514,11 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const lookStorageShelfHit = () => {
       if (!inKiosk()) return null;
       if (life.rayPlaceShelf) {
-        const rp = life.rayPlaceShelf(1.45);
-        if (rp) return rp;
+        const rp = life.rayPlaceShelf(1.05);
+        if (rp && Math.hypot(rp.point.x - P.x, rp.point.z - P.z) <= .92) return rp;
       }
-      const h = lookingAt([...shelfHitTargets, foodGroup], 1.6);
-      if (!h) return null;
+      const h = lookingAt([...shelfHitTargets, foodGroup], 1.05);
+      if (!h || Math.hypot(h.point.x - P.x, h.point.z - P.z) > .92) return null;
       let o = h.object, rowIdx = null;
       while (o) {
         if (o.userData && o.userData.shelfRowIdx != null) { rowIdx = o.userData.shelfRowIdx; break; }
@@ -3308,8 +3528,8 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     };
     const lookShowcaseSlot = () => {
       if (!inKiosk()) return null;
-      const h = lookingAt(shelfGroup.children, 1.7);
-      if (h && h.object) {
+      const h = lookingAt(shelfGroup.children, 1.15);
+      if (h && h.object && Math.hypot(h.point.x - P.x, h.point.z - P.z) <= .98) {
         let o = h.object;
         while (o && o.userData.showcaseSlot == null && o.parent && o.parent !== shelfGroup) o = o.parent;
         if (o && o.userData.showcaseSlot != null) return o.userData.showcaseSlot;
@@ -3393,7 +3613,8 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const binBig = !inKiosk() && nearestOf(TRASH_BIG, 2.4), binSmall = !inKiosk() && nearestOf(TRASH_SMALL, 1.7);
     if (life.held) {
       const h = life.held, small = h.kind === 'bottle' || h.kind === 'good' || h.kind === 'pack', bin = small ? (binSmall || binBig) : binBig;
-      const openBx = h.kind !== 'box' && life.lookingAtOpenBox && life.lookingAtOpenBox(2.4);
+      if (h.kind === 'gun' && inKiosk() && lookingAtBox(rackBox, 1.35)) return { label: 'Повесить ружьё на стену', icon: 'weapon', fn: () => { life.removeItem(h); setGunState('wall'); ctx.audio && ctx.audio.click(900, .5, 0, .06); } };
+      const openBx = h.kind !== 'box' && life.lookingAtOpenBox && life.lookingAtOpenBox(1.15);
       if (openBx) return { label: 'Бросить в коробку', icon: 'box', fn: () => life.throwIntoBox(openBx), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } };
       const putHeldCigInPocket = () => {
         if (!h || h.kind !== 'good') return;
@@ -3447,7 +3668,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
               ctx.toast && ctx.toast(`${gName} поставлен на витрину (${ctx.fmt(ctx.sellPrice(gid))} ₽)`, 'good');
               shelfSig = ''; updateShelves(); ctx.onStockChange && ctx.onStockChange();
             },
-            alt: cigPocketAlt
+            alt: null
           };
         }
         const shHit = lookStorageShelfHit();
@@ -3460,12 +3681,15 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
               ctx.audio && ctx.audio.click(720, .4, 0, .05);
               ctx.toast && ctx.toast(`${gName} поставлен на полку`);
             },
-            alt: cigPocketAlt
+            alt: null
           };
         }
       }
-      if (bin) return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : small ? (bin === binSmall ? 'Выбросить в урну' : 'Выбросить в бак') : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(bin), alt: { label: 'Бросить', icon: 'drop', fn: () => life.dropHeld() } };
-      return { label: life.canPlace() ? 'Поставить' : 'Бросить', icon: life.canPlace() ? 'place' : 'drop', fn: () => { if (!life.placeHeld()) life.dropHeld(); }, alt: cigPocketAlt };
+      if (bin) return { label: h.kind === 'gun' ? 'Выбросить ружьё в бак' : small ? (bin === binSmall ? 'Выбросить в урну' : 'Выбросить в бак') : h.data.contents ? 'Выбросить коробку с товаром' : 'Выбросить в мусорку', icon: 'drop', fn: () => trashIt(bin) };
+      if (life.canPlace()) {
+        return { label: 'Поставить', icon: 'place', fn: () => life.placeHeld(), alt: { label: 'Выбросить', icon: 'drop', fn: () => life.dropHeld() } };
+      }
+      return { label: 'Выбросить', icon: 'drop', fn: () => life.dropHeld() };
     }
     if (!life.held && gunState() === 'carried' && binBig && !weapon.aiming) return { label: 'Выбросить ружьё в бак', icon: 'drop', fn: () => { const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); trashIt(binBig); } };
     if (!life.held && gunState() === 'carried' && weapon.drawn && !weapon.aiming) {
@@ -3479,7 +3703,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     { const busSeat = transport.lookedSeat && transport.lookedSeat(0, 0, 2.6);
       if (busSeat) return { label: 'Сесть на место', icon: '🪑', fn: () => transport.sitOnSeat(busSeat) }; }
     const li = life.lookItem(2.2);
-    if (li && li.kind === 'gun') return { label: 'Поднять ружьё', icon: 'weapon', fn: () => { life.removeItem(li); setGunState('carried'); weapon.draw(); } };
+    if (li && li.kind === 'gun') return { label: 'Поднять ружьё', icon: 'weapon', fn: () => { life.removeItem(li); setGunState('carried'); weapon.draw(); ctx.save && ctx.save(); ctx.onCtl && ctx.onCtl(); } };
     if (li && li.kind === 'bottle') return { label: 'Поднять пустую бутылку', icon: 'drink', fn: () => life.pick(li) };
     if (li && li.kind === 'pack') {
       const pTitle = packTitleOf(li.data);
@@ -3591,6 +3815,16 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (inKiosk() && life.lookingAtPhone()) return { label: 'Позвонить', icon: 'phone', fn: () => ctx.phoneCall() };
     if (inKiosk() && life.lookingAtNotepad()) return { label: 'Открыть блокнот заказов', icon: 'notepad', fn: () => ctx.openOrders() };
     if (lookingAt([doorMesh], 2.4)) return { label: doorTarget > .5 ? 'Закрыть дверь' : (inKiosk() ? 'Открыть дверь' : 'Открыть дверь'), icon: '🚪', fn: toggleDoor };
+    if (inKiosk() && !life.held && lookingAtBox(hatchBox, 1.55)) {
+      return {
+        label: hatchTarget > .5 ? 'Опустить окошко выдачи' : 'Поднять окошко выдачи',
+        icon: 'interact',
+        fn: () => toggleHatch(),
+        alt: (!P.seated && Math.hypot(P.x - STOOL.x, P.z - STOOL.z) < .95)
+          ? { label: S.phase === 'night' ? 'Уснуть до утра' : 'Сесть за прилавок', icon: 'sit', fn: () => { if (S.phase === 'night') ctx.sleep(); else sit(); } }
+          : (P.seated ? { label: S.phase === 'night' ? 'Уснуть до утра' : 'Встать из-за прилавка', icon: 'sit', fn: () => { if (S.phase === 'night') ctx.sleep(); else stand(); } } : null)
+      };
+    }
     if (inKiosk()) {
       if (lookingAtBox(clockBox, 2.2)) {
         const hh = String(Math.floor(hour) % 24).padStart(2, '0'), mm = String(Math.floor((hour % 1) * 60)).padStart(2, '0');
@@ -3841,9 +4075,6 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     let ix = 0, iz = 0;
     if (moveOK) { ix = input.mx; iz = input.my; const k = input.keys; if (k.KeyW || k.ArrowUp) iz -= 1; if (k.KeyS || k.ArrowDown) iz += 1; if (k.KeyA || k.ArrowLeft) ix -= 1; if (k.KeyD || k.ArrowRight) ix += 1; const l = Math.hypot(ix, iz); if (l > 1) { ix /= l; iz /= l; } }
     const inside = inKiosk();
-    inSm += ((inside ? 1 : 0) - inSm) * Math.min(1, dt * 2.5);
-    hemi.intensity *= 1 - inSm * .5; fillLight.intensity = 1.2 * (1 - inSm * .35);
-    winLight.intensity = dayLightK * (2.5 + inSm * 9); winLight.visible = winLight.intensity > .02;
     if (!inside && S && !S.flags.wentOut) { S.flags.wentOut = true; ctx.onCtl(); }
     const dr = Math.min(1.65, life.fx.drunk);
     if (dr > .04 && !P.seated) { ix += Math.sin(tAll * .73) * dr * .38 + Math.sin(tAll * 1.9) * dr * .14; iz += Math.cos(tAll * .51) * dr * .16; P.yaw += Math.sin(tAll * .37) * dr * .14 * dt; }
@@ -3947,8 +4178,12 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     post.uniforms.blur.value += (targetBlur - post.uniforms.blur.value) * Math.min(1, dt * 6);
     camera.fov += ((baseFov * (1 - weapon.aimK * .22) * (run ? 1.06 : 1)) - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix();
     post.uniforms.hurt.value = Math.max(0, post.uniforms.hurt.value - dt * .4);
-    // дверь
+    // дверь и подъёмное окошко выдачи товара
     doorOpen += (doorTarget - doorOpen) * Math.min(1, dt * 5); doorPivot.rotation.y = -doorOpen * 1.6;
+    if (hatchAutoTimer > 0) hatchAutoTimer = Math.max(0, hatchAutoTimer - dt);
+    if (T && T.cur && !T.paused && P.seated) hatchTarget = 1;
+    hatchOpen += (hatchTarget - hatchOpen) * Math.min(1, dt * 6.5);
+    hatchGroup.position.y = 1.19 + hatchOpen * 0.31;
     // люди
     if (S) { ambientTick(dt); gopTick(dt); }
     peopleTick(dt);
@@ -3966,8 +4201,12 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     { const wt = weather.wet; roadS.material.roughness = 1 - wt * .55; walkS.material.roughness = 1 - wt * .5; roadS.material.color.setScalar(1 - wt * .35); walkS.material.color.set(0xb8b4ac).multiplyScalar(1 - wt * .3); }
     if (snowPts) { const u = snowPts.material.uniforms; u.time.value = tAll; u.origin.value.copy(camera.position); u.windOff.value.copy(weather.windOff); u.fallOff.value = weather.fallOff; u.swirl.value = weather.wind * .6 + weather.gust; u.density.value = Math.max(weather.snow, stormK); snowPts.visible = winter && (weather.snow > .03 || stormK > .05); u.scale.value = window.innerHeight * DPR * .035; }
     sky.position.copy(camera.position); skyMat.uniforms.t.value = tAll;
-    bulbLight.intensity *= 1 + Math.sin(tAll * 31) * .01;
-    bulbLight.castShadow = renderer.shadowMap.enabled && Q.light >= 1 && inside;
+    const bulbFlicker = 1 + Math.sin(tAll * 31) * .008 + Math.sin(tAll * 73) * .004;
+    kioskSpot.intensity = (1.75 + nightK * 0.65) * bulbFlicker;
+    bulbLight.intensity = (0.58 + nightK * 0.25) * bulbFlicker;
+    ceilingBounce.intensity = (0.62 + nightK * 0.18) * bulbFlicker;
+    kioskSpot.castShadow = renderer.shadowMap.enabled && (inside || (typeof bDist !== 'undefined' && bDist < 7.5));
+    bulbLight.castShadow = false;
     // звук
     ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: Math.min(1.5, (winter ? weather.wind : weather.wind * .4) + weather.gust * .5 + stormK), night: nightK > .6, rain: weather.rain });
     // контекстная кнопка
@@ -3979,24 +4218,36 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (weapon.state !== 'holstered' || life.habit.busy || life.fx.handOut) {
       if (weapon.lights) {
         const L = weapon.lights, invQ = camera.quaternion.clone().invert();
-        L.hemi.color.copy(hemi.color); L.hemi.groundColor.copy(hemi.groundColor);
-        L.hemi.intensity = Math.max(.34, hemi.intensity * (inside ? .75 : .90));
-        // Солнце / направление света неба в координатах камеры (меняется при повороте игрока!)
-        const sDir = sun.position.clone().sub(sun.target.position).normalize().applyQuaternion(invQ);
-        if (sun.intensity > .05) {
-          L.key.color.copy(sun.color); L.key.intensity = sun.intensity * (inside ? .35 : .85); L.key.position.copy(sDir);
-        } else {
-          L.key.color.copy(hemi.color); L.key.intensity = Math.max(.28, hemi.intensity * .65); L.key.position.set(-.3, 1, .4).applyQuaternion(invQ);
-        }
-        // Локальный свет: лампа в ларьке, ближайший уличный фонарь ночью и фонарик игрока
         const bPos = bulbLight.position.clone().sub(camera.position), bDist = bPos.length();
         let locInt = 0;
-        if (bDist < 6.5) {
-          const wK = inside ? 1 : clamp(1 - (bDist - 1.2) / 5.0, 0, .75);
-          locInt = bulbLight.intensity * .42 * wK;
-          L.localLight.color.copy(bulbLight.color);
-          L.localLight.position.copy(bPos.applyQuaternion(invQ));
-          L.localLight.distance = 6.5;
+        if (inside) {
+          // Внутри ларька: приглушённый тёплый свет лампочки сверху
+          L.hemi.color.set(0x8a6d52);
+          L.hemi.groundColor.set(0x3e2a18);
+          L.hemi.intensity = 0.82;
+          L.key.color.set(0xffa23e);
+          L.key.intensity = 1.05;
+          L.key.position.set(0, 1.8, 0.3).applyQuaternion(invQ);
+          L.localLight.color.set(0xffa23e);
+          L.localLight.intensity = 0.78;
+          L.localLight.position.set(0, 0.8, -0.2);
+          L.localLight.distance = 4.0;
+        } else {
+          L.hemi.color.copy(hemi.color); L.hemi.groundColor.copy(hemi.groundColor);
+          L.hemi.intensity = Math.max(.34, hemi.intensity * .90);
+          const sDir = sun.position.clone().sub(sun.target.position).normalize().applyQuaternion(invQ);
+          if (sun.intensity > .05) {
+            L.key.color.copy(sun.color); L.key.intensity = sun.intensity * .85; L.key.position.copy(sDir);
+          } else {
+            L.key.color.copy(hemi.color); L.key.intensity = Math.max(.28, hemi.intensity * .65); L.key.position.set(-.3, 1, .4).applyQuaternion(invQ);
+          }
+          if (bDist < 6.5) {
+            const wK = clamp(1 - (bDist - 1.2) / 5.0, 0, .75);
+            locInt = bulbLight.intensity * .42 * wK;
+            L.localLight.color.copy(bulbLight.color);
+            L.localLight.position.copy(bPos.applyQuaternion(invQ));
+            L.localLight.distance = 6.5;
+          }
         }
         if (nightK > .35 && !inside && streetLights.length) {
           let bestD = 999, bestL = null;
@@ -4101,7 +4352,18 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     radioNear() { return inKiosk(); },
     gopLeave, get gopnik() { return gopnikGroup; },
     get hour() { return hour; }, get doorOpen() { return doorOpen; },
-    reset() { life.loadItems(); const S0 = ctx.getS(); if (S0) { S0.gunState = S0.gunState || 'wall'; S0.gun = S0.gunState === 'carried'; life.setButts(S0.butts || 0); }
+    reset() {
+      life.loadItems();
+      const S0 = ctx.getS();
+      if (S0) {
+        S0.gunState = S0.gunState || 'wall';
+        if (S0.gunState === 'world' && !life.items.some(i => i.kind === 'gun')) {
+          S0.gunState = 'wall';
+        }
+        S0.gun = S0.gunState === 'carried';
+        if (!S0.gun && weapon.forceHolster) weapon.forceHolster();
+        life.setButts(S0.butts || 0);
+      }
       P.x = STOOL.x; P.z = -.25; P.yaw = Math.PI; P.pitch = -.08; P.seated = false; P.locked = false; P.crouch = false; P.vx = P.vz = 0; shelfSig = ''; season = -1; hour = 8; doorTarget = 0; people.slice().forEach(p => { if (p.role !== 'vendor' && p.role !== 'marat' && p.role !== 'zavod') removePerson(p); }); gopnikGroup = null; },
     transport, life, env2, gunState, setGunState, openNotepadAnim: f => life.openNotepad(f), closeNotepadAnim: f => life.closeNotepad(f),
     spawnFactoryBox(contents, label = '«КРАСНОЗАВОДСК · СБЫТ»') {
@@ -4111,7 +4373,18 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       const it = life.addItem({ kind: 'box', x: bx, y: 0, z: bz, ry: R(-.2, .2), data: { contents, hidden: false, label, opened: false } });
       return it;
     },
-    putGunDown() { if (gunState() !== 'carried' || life.habit.busy) return; const openBx = life.lookingAtOpenBox && life.lookingAtOpenBox(2.4); const it = life.addItem({ kind: 'gun', x: P.x, y: camera.position.y - .5, z: P.z, ry: P.yaw }); setGunState('world'); life.pick(it); if (openBx) life.throwIntoBox(openBx); },
+    putGunDown() {
+      if (gunState() !== 'carried' || life.habit.busy || life.held) return;
+      setGunState('world');
+      const gx = P.x - Math.sin(P.yaw) * .35;
+      const gz = P.z - Math.cos(P.yaw) * .35;
+      const gy = Math.max(.1, camera.position.y - .25);
+      const it = life.addItem({ kind: 'gun', x: gx, y: gy, z: gz, ry: P.yaw });
+      life.pick(it);
+      life.persist && life.persist();
+      ctx.save && ctx.save();
+      ctx.onCtl && ctx.onCtl();
+    },
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
     setRetro(v) { post.uniforms.retro.value = v ? 1 : 0; },
