@@ -692,6 +692,7 @@ class SessionService : Service() {
         sessionPid = pid
         if (pid > 1) {
             raiseTracer(pid, gen)
+            guestStartedAt = android.os.SystemClock.elapsedRealtime()
             SessionEvents.guestStarted(pid)
         } else {
             SessionEvents.record("guest.start_failed", mapOf("pid" to pid))
@@ -1748,7 +1749,7 @@ class SessionService : Service() {
                 releaseLocks()
                 MemoryLog.stop()
                 com.droiddeck.launcher.core.BackgroundAppLimit.restoreAsync(applicationContext)
-                if (status == 0) {
+                if (status == 0 && SessionState.failureCode == null) {
                     SessionEvents.transition(SessionPhase.IDLE, "session.stopped", mapOf("status" to status))
                 } else {
                     val code = SessionState.failureCode ?: "GUEST_EXIT"
@@ -1787,6 +1788,9 @@ class SessionService : Service() {
         }, "tracer-priority").start()
     }
 
+    /** Fallout Droid: когда окружение игры стартовало (для разбора мгновенных выходов). */
+    private var guestStartedAt = 0L
+
     private fun stopSession(status: Int) {
         cancelQueuedSteamGame()
         gameExitWatchToken++
@@ -1794,6 +1798,15 @@ class SessionService : Service() {
         val (ended, endedArch) = synchronized(stopLock) {
             if (!SessionState.running) return
             SessionEvents.record("guest.exited", mapOf("status" to status))
+            // Fallout Droid: мгновенный «чистый» выход — не игра, а сбой запуска
+            val ranMs = if (guestStartedAt > 0L) android.os.SystemClock.elapsedRealtime() - guestStartedAt else Long.MAX_VALUE
+            if (status == 0 && ranMs < INSTANT_EXIT_MS && SessionState.failureCode == null) {
+                SessionState.failureCode = "GUEST_INSTANT_EXIT"
+                SessionState.failureMessage = "Окружение игры закрылось через ${ranMs / 1000} с, не запустив игру. " +
+                    "Чаще всего Android выгружает фоновые процессы: включите «Отключить ограничения дочерних процессов» " +
+                    "в параметрах разработчика, затем перезапустите телефон и попробуйте снова."
+                SessionState.failureStatus = 70
+            }
             SessionEvents.transition(SessionPhase.STOPPING, "session.stopping", mapOf("status" to status))
             SessionState.running = false
             val ended = SessionPaths.take()
@@ -2139,6 +2152,9 @@ class SessionService : Service() {
         private const val NO_DECK_PAD_SWITCH = "Download/droiddeck-no-deck-pad"
         private const val NO_STEAM_TOUCH_SWITCH = "Download/droiddeck-no-steam-touch"
         private const val FIRST_VIRTUAL_PAD = 16
+
+        /** Fallout Droid: сессия короче этого времени — сбой запуска, а не игра. */
+        private const val INSTANT_EXIT_MS = 20_000L
 
         const val EXTRA_MODE = "mode"
         const val MODE_STEAM = "steam"

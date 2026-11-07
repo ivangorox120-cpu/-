@@ -29,6 +29,8 @@ public final class Prefs {
     public static final String GAME_LOGS = "game_logs";
     /** Прямой звук (DirectAudio) вместо обычного PulseAudio. */
     public static final String DIRECT_AUDIO = "direct_audio";
+    /** Дописывать в реестр префикса ключ установщика игры. */
+    public static final String FIX_REGISTRY = "fix_registry";
 
     private Prefs() {}
 

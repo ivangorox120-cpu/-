@@ -27,6 +27,12 @@ const val SCREEN_KEY_TRIGGER = 4
 const val SCREEN_KEY_DPAD = 5
 const val SCREEN_KEY_STICK = 6
 
+// Fallout Droid: дополнительные формы кнопок
+const val SCREEN_KEY_OVAL = 7
+const val SCREEN_KEY_DIAMOND = 8
+const val SCREEN_KEY_HEX = 9
+const val SCREEN_KEY_NONE = 10
+
 val SCREEN_KEY_DPAD_DIRS = listOf("↑", "→", "↓", "←")
 val SCREEN_KEY_STICK_DIRS = listOf("↑", "↗", "→", "↘", "↓", "↙", "←", "↖")
 
@@ -40,6 +46,7 @@ val SCREEN_KEY_SHAPES =
     listOf(
         SCREEN_KEY_PILL, SCREEN_KEY_ROUND, SCREEN_KEY_CIRCLE, SCREEN_KEY_RECT,
         SCREEN_KEY_TRIGGER, SCREEN_KEY_DPAD, SCREEN_KEY_STICK,
+        SCREEN_KEY_OVAL, SCREEN_KEY_DIAMOND, SCREEN_KEY_HEX, SCREEN_KEY_NONE,
     )
 
 data class ScreenKey(

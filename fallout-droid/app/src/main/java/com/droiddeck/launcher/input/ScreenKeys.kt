@@ -389,6 +389,10 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
             entry.shape == SCREEN_KEY_CIRCLE -> entry.halfH
             entry.shape == SCREEN_KEY_TRIGGER -> entry.halfH * 1.7f
             entry.shape == SCREEN_KEY_DPAD || entry.shape == SCREEN_KEY_STICK -> entry.halfH * 1.15f
+            entry.shape == SCREEN_KEY_DIAMOND || entry.shape == SCREEN_KEY_HEX -> {
+                val chars = label(entry).length
+                entry.halfH * (0.62f * chars + 1.35f).coerceIn(1.45f, 5.0f)
+            }
             entry.image.isNotEmpty() -> entry.halfH * 1.15f
             hasIcon(entry) -> entry.halfH * 1.15f
             else -> {
@@ -432,13 +436,42 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
         path.close()
     }
 
-    private fun body(canvas: Canvas, entry: Entry, radius: Float, paint: Paint, inset: Float = 0f) {
-        if (entry.shape != SCREEN_KEY_TRIGGER) {
-            canvas.drawRoundRect(rect, radius, radius, paint)
-            return
+    /** Правильный многоугольник, вписанный в прямоугольник кнопки (ромб, шестиугольник). */
+    private fun polyPath(entry: Entry, path: android.graphics.Path, inset: Float, sides: Int, startDegrees: Float) {
+        val rx = entry.halfW - inset
+        val ry = entry.halfH - inset
+        path.reset()
+        for (i in 0 until sides) {
+            val a = Math.toRadians((startDegrees + i * 360f / sides).toDouble())
+            val x = entry.cx + rx * kotlin.math.cos(a).toFloat()
+            val y = entry.cy + ry * kotlin.math.sin(a).toFloat()
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        triggerPath(entry, bodyPath, inset)
-        canvas.drawPath(bodyPath, paint)
+        path.close()
+    }
+
+    private fun body(canvas: Canvas, entry: Entry, radius: Float, paint: Paint, inset: Float = 0f) {
+        when (entry.shape) {
+            SCREEN_KEY_NONE -> return
+            SCREEN_KEY_OVAL -> {
+                bodyPathRect.set(rect)
+                bodyPathRect.inset(inset, inset)
+                canvas.drawOval(bodyPathRect, paint)
+            }
+            SCREEN_KEY_DIAMOND -> {
+                polyPath(entry, bodyPath, inset, 4, -90f)
+                canvas.drawPath(bodyPath, paint)
+            }
+            SCREEN_KEY_HEX -> {
+                polyPath(entry, bodyPath, inset, 6, 0f)
+                canvas.drawPath(bodyPath, paint)
+            }
+            SCREEN_KEY_TRIGGER -> {
+                triggerPath(entry, bodyPath, inset)
+                canvas.drawPath(bodyPath, paint)
+            }
+            else -> canvas.drawRoundRect(rect, radius, radius, paint)
+        }
     }
 
     private fun drawDpad(canvas: Canvas, entry: Entry) {
@@ -603,6 +636,7 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
     }
 
     private fun radiusOf(entry: Entry): Float = when (entry.shape) {
+        SCREEN_KEY_DIAMOND, SCREEN_KEY_HEX, SCREEN_KEY_NONE -> 0f
         SCREEN_KEY_ROUND -> entry.halfH * 0.30f
         SCREEN_KEY_RECT -> entry.halfH * 0.12f
         SCREEN_KEY_TRIGGER -> entry.halfH * 0.45f

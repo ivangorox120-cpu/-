@@ -355,13 +355,23 @@ public final class MainActivity extends Activity {
         FalloutEngine.applyPcControls(this, overlay);
         FalloutEngine.setGameDebugLogs(this, prefs.getBoolean(Prefs.GAME_LOGS, true));
         File pfx = FalloutEngine.prefixDir(this, scope);
+        File backups = new com.wastelanddroid.runtime.RuntimeManager(this).backups;
+        if (pfx.isDirectory() && !com.wastelanddroid.game.ProtonPrefix.looksValid(pfx)) {
+            // префикс повреждён (в том числе прежней версией приложения) — пересоздаём его
+            com.wastelanddroid.game.ProtonPrefix.recreate(d, pfx, backups);
+            prefs.edit().putBoolean("first_run_" + d.id, true).apply();
+            runOnUiThread(() -> Toast.makeText(this, "Префикс Wine был повреждён — создаю заново", Toast.LENGTH_LONG).show());
+            return;
+        }
         if (!FalloutEngine.prefixReady(this, scope)) {
             prefs.edit().putBoolean("first_run_" + d.id, true).apply();
             return;
         }
         String guest = FalloutEngine.guestPath(this, gameDir);
         try {
-            if (guest != null) com.wastelanddroid.game.ProtonPrefix.writeRegistry(pfx, d, guest);
+            if (guest != null && prefs.getBoolean(Prefs.FIX_REGISTRY, true)) {
+                com.wastelanddroid.game.ProtonPrefix.writeRegistry(pfx, d, guest);
+            }
         } catch (Exception e) {
             com.wastelanddroid.util.CrashLog.write(this, "registry", e);
         }
@@ -376,7 +386,7 @@ public final class MainActivity extends Activity {
             com.wastelanddroid.util.CrashLog.write(this, "ini", e);
         }
         try {
-            com.wastelanddroid.game.SaveBackup.backup(d, pfx, new com.wastelanddroid.runtime.RuntimeManager(this).backups);
+            com.wastelanddroid.game.SaveBackup.backup(d, pfx, backups);
         } catch (Exception ignored) { }
     }
 
@@ -393,6 +403,27 @@ public final class MainActivity extends Activity {
                     startActivity(Intent.createChooser(send, "Отправить отчёт"));
                 })
                 .setNegativeButton("Закрыть", null)
+                .show();
+    }
+
+    /** Полная пересборка префикса Proton: помогает, когда Wine перестал запускаться. */
+    private void resetPrefix() {
+        new AlertDialog.Builder(this)
+                .setTitle("Пересоздать префикс Wine?")
+                .setMessage("Настройки Wine для игр будут созданы заново при следующем запуске. "
+                        + "Сохранения сначала копируются в резервную папку.")
+                .setPositiveButton("Пересоздать", (d0, w) -> {
+                    com.wastelanddroid.runtime.RuntimeManager rt = new com.wastelanddroid.runtime.RuntimeManager(this);
+                    for (GameDef g : GameDef.values()) {
+                        String sc = prefs.getString("scope_" + g.id, null);
+                        if (sc == null) continue;
+                        com.wastelanddroid.game.ProtonPrefix.recreate(g, FalloutEngine.prefixDir(this, sc), rt.backups);
+                        prefs.edit().putBoolean("first_run_" + g.id, true).apply();
+                    }
+                    Toast.makeText(this, "Готово — нажмите \"Играть\"", Toast.LENGTH_LONG).show();
+                    refresh();
+                })
+                .setNegativeButton("Отмена", null)
                 .show();
     }
 
@@ -440,6 +471,8 @@ public final class MainActivity extends Activity {
         });
         stab.addView(audio);
         stab.addView(Ui.hint(this, "Выключите, если звука нет: тогда работает обычный PulseAudio."));
+        stab.addView(check("Ключ реестра игры (от \"игра не установлена\")", Prefs.FIX_REGISTRY, true));
+        stab.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Пересоздать префикс Wine", v -> resetPrefix()));
         col.addView(stab, Ui.matchWrap(this, 12));
 
         LinearLayout look = Ui.card(this, "Оформление");
@@ -520,7 +553,8 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!launching) for (GameDef g : GameDef.values()) {
+        boolean sessionBusy = com.droiddeck.launcher.session.SessionState.INSTANCE.getRunning();
+        if (!launching && !sessionBusy) for (GameDef g : GameDef.values()) {
             String sc = prefs.getString("scope_" + g.id, null);
             if (prefs.getBoolean("first_run_" + g.id, false) && sc != null && FalloutEngine.prefixReady(this, sc)) {
                 prefs.edit().putBoolean("first_run_" + g.id, false).apply();

@@ -121,6 +121,21 @@ public final class ControlsEditorActivity extends Activity {
         tap.setOnCheckedChangeListener((v, on) -> ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.TAP_FIRES, on).apply());
         look.addView(tap);
         panelBody.addView(look);
+        LinearLayout colors = Ui.row(this);
+        colors.addView(Ui.hint(this, "Цвет кнопок:"));
+        int[] palette = {0xFFFFB840, 0xFF8AFF80, 0xFFFFFFFF};
+        String[] paletteNames = {"Оранжевый", "Зелёный", "Белый"};
+        for (int i = 0; i < palette.length; i++) {
+            int color = palette[i];
+            Button sw = Ui.styledButton(this, paletteNames[i], v -> {
+                ControllerPrefs.INSTANCE.setTint(this, color);
+                keys.refreshAppearance();
+            }, color, Color.argb(255, 10, 16, 10), 0);
+            sw.setTextSize(11);
+            colors.addView(sw);
+        }
+        panelBody.addView(colors);
+
         LinearLayout actions = Ui.row(this);
         actions.addView(Ui.ghostButton(this, R.drawable.ic_plus, "Добавить кнопку", v -> addKey()), Ui.weight());
         actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить", v -> {
@@ -184,6 +199,24 @@ public final class ControlsEditorActivity extends Activity {
                 v -> keys.setOpacity(codes, v / 100f)));
 
         if (!stick) {
+            mini.addView(Ui.hint(this, "Форма:"));
+            LinearLayout shapes = Ui.row(this);
+            int[][] forms = {
+                    {ScreenKeyKt.SCREEN_KEY_CIRCLE, 0}, {ScreenKeyKt.SCREEN_KEY_RECT, 0},
+                    {ScreenKeyKt.SCREEN_KEY_OVAL, 0}, {ScreenKeyKt.SCREEN_KEY_DIAMOND, 0},
+                    {ScreenKeyKt.SCREEN_KEY_HEX, 0}, {ScreenKeyKt.SCREEN_KEY_NONE, 0},
+            };
+            String[] names = {"Круг", "Квадрат", "Овал", "Ромб", "Шестиуг.", "Без формы"};
+            for (int i = 0; i < forms.length; i++) {
+                int shape = forms[i][0];
+                boolean on = state.getShape() == shape;
+                Button bt = on ? Ui.button(this, names[i], null) : Ui.ghostButton(this, names[i], null);
+                bt.setTextSize(11);
+                bt.setOnClickListener(v -> { keys.setShape(codes, shape); showMini(codes); });
+                shapes.addView(bt);
+            }
+            mini.addView(shapes);
+
             CheckBox toggle = Ui.check(this, "Фиксация (нажал — держится)", state.getToggle());
             toggle.setOnCheckedChangeListener((v, on) -> keys.setToggle(codes, on));
             mini.addView(toggle);
