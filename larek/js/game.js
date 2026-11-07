@@ -168,7 +168,7 @@ const stockTotal = () => GOOD_IDS.reduce((a, id) => a + (S.stock[id] ? S.stock[i
 const qOf = id => S.stock[id] ? S.stock[id].q : 0;
 const displayed = id => S.slots.includes(id);
 const usdToRub = usd => Math.round(usd * S.rate);
-const sellPrice = id => Math.max(1, Math.round(S.prices[id] * (1 + S.markup)));
+const sellPrice = id => HIDDEN[id] ? Math.round(hiddenPrice(id) * 1.9) : Math.max(1, Math.round(S.prices[id] * (1 + S.markup))); // «из-под полы» — по цене подпольной продажи
 const buyPrice = (id, src = S.src) => {
   let p = (src === 'station' ? S.vprices[id] : S.prices[id]);
   p *= 1 - .04 * S.sk.trade - (S.outfit === 'sport' ? .05 : 0) - (S.cheap > 0 ? .15 : 0);
@@ -362,6 +362,7 @@ function slotHtml(id, i, clickable = true) {
   const sc = slotCount();
   if (i >= sc) return '';
   if (!id) return `<button class="slot empty" data-slot="${i}">＋<small>пусто</small></button>`;
+  if (HIDDEN[id]) return `<button class="slot" data-slot="${i}">🤫<small>${HIDDEN[id].short} · ${fmt(sellPrice(id))}₽</small><b>${(S.slotCounts && S.slotCounts[i]) || 1}</b></button>`;
   const q = qOf(id), hot = waveItem() === id;
   return `<button class="slot ${q ? '' : 'out'} ${hot ? 'hot' : ''}" data-slot="${i}">${GOODS[id].icon}<small>${GOODS[id].short} · ${fmt(sellPrice(id))}₽</small><b>${q}</b></button>`;
 }

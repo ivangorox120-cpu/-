@@ -3653,7 +3653,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         const gid = h.data && h.data.goodId;
         const gName = goodTitleOf(gid);
         const scSlot = lookShowcaseSlot();
-        if (scSlot != null && ctx.GOODS && ctx.GOODS[gid]) {
+        if (scSlot != null && ctx.GOODS && (ctx.GOODS[gid] || gid === 'samogon' || gid === 'kontra')) { // товар из-под полы тоже можно выставить — но тогда жди участкового
           S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
           const oldId = S.slots[scSlot];
           const curCnt = oldId === gid ? (S.slotCounts[scSlot] || 1) : 0;
