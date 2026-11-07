@@ -350,7 +350,9 @@ public final class MainActivity extends Activity {
      */
     private void prepareGamePrefix(GameDef d, File gameDir, String scope) {
         prefs.edit().putString("scope_" + d.id, scope).apply();
-        FalloutEngine.setTouchControlsMode(this, prefs.getString(Prefs.OVERLAY_MODE, "auto"));
+        String overlay = prefs.getString(Prefs.OVERLAY_MODE, "auto");
+        com.wastelanddroid.controls.PcLayout.installIfEmpty(this);
+        FalloutEngine.applyPcControls(this, overlay);
         FalloutEngine.setGameDebugLogs(this, prefs.getBoolean(Prefs.GAME_LOGS, true));
         File pfx = FalloutEngine.prefixDir(this, scope);
         if (!FalloutEngine.prefixReady(this, scope)) {

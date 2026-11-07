@@ -12,76 +12,80 @@ import android.widget.CheckBox;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.droiddeck.launcher.R;
 import com.droiddeck.launcher.input.ControllerPrefs;
-import com.droiddeck.launcher.input.OnScreenControls;
+import com.droiddeck.launcher.input.ScreenKey;
+import com.droiddeck.launcher.input.ScreenKeyKt;
+import com.droiddeck.launcher.input.ScreenKeys;
 import com.wastelanddroid.util.Anim;
 import com.wastelanddroid.util.Ui;
 import com.wastelanddroid.util.WastelandBackdrop;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
- * Редактор экранного геймпада, который видит игра (FO3/NV понимают геймпад Xbox 360 целиком,
- * включая меню и V.A.T.S.).
- *  - перетаскивание групп кнопок (с привязкой к сетке);
- *  - нажатие на кнопку открывает рядом с ней мини-редактор: что эта кнопка делает;
- *  - общая панель (размер, прозрачность, цвет, сброс) перетаскивается за ручку и сворачивается.
+ * Редактор экранного управления под ПК-раскладку Fallout: клавиатура и мышь.
+ * Кнопки перетаскиваются пальцем; нажатие на кнопку открывает мини-редактор рядом с ней,
+ * так что сама кнопка остаётся видна. Верхняя панель перетаскивается за ручку и сворачивается.
  */
 public final class ControlsEditorActivity extends Activity {
-    /** Что делает кнопка геймпада в Fallout 3 / New Vegas (стандартная схема игры). */
-    private static final String[][] TARGETS = {
-            {"a", "A — Действие / взять"}, {"b", "B — Пип-бой / назад"}, {"x", "X — Перезарядка"}, {"y", "Y — Прыжок"},
-            {"lb", "LB — Схватить"}, {"rb", "RB — V.A.T.S."}, {"lt", "LT — Прицел"}, {"rt", "RT — Огонь"},
-            {"select", "Back — Ожидание"}, {"start", "Start — Меню"},
-            {"up", "Вверх"}, {"down", "Вниз"}, {"left", "Влево"}, {"right", "Вправо"},
-    };
-
-    private OnScreenControls controls;
-    private LinearLayout panel, panelBody, mini;
+    private ScreenKeys keys;
     private FrameLayout root;
+    private LinearLayout panel, panelBody, mini;
+    private List<Integer> selected;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.immersive(this);
+        PcLayout.installIfEmpty(this);
+
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         WastelandBackdrop bg = new WastelandBackdrop(this);
-        bg.setAlpha(0.45f);
+        bg.setAlpha(0.5f);
         root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
 
-        controls = new OnScreenControls(this, null, true, null);
-        controls.setOnSelect((id, group, x, y) -> { runOnUiThread(() -> showMini(id, x, y)); return kotlin.Unit.INSTANCE; });
-        root.addView(controls, new FrameLayout.LayoutParams(-1, -1));
+        TextView look = Ui.label(this, "Обзор: свайп по пустому месту экрана");
+        look.setTextColor(Ui.FG_DIM);
+        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
+        root.addView(look, llp);
+
+        keys = new ScreenKeys(this, (code, down) -> kotlin.Unit.INSTANCE);
+        keys.setOnSelect(codes -> { showMini(codes); return kotlin.Unit.INSTANCE; });
+        root.addView(keys, new FrameLayout.LayoutParams(-1, -1));
+        keys.load(ControllerPrefs.INSTANCE.encodeScreenKeys(ControllerPrefs.INSTANCE.screenKeys(this)));
+        keys.startEditing();
 
         buildPanel();
         setContentView(root);
-        controls.reload();
     }
 
-    // ───────────── общая панель (перетаскиваемая) ─────────────
+    // ───────────── верхняя панель ─────────────
 
     @SuppressLint("ClickableViewAccessibility")
     private void buildPanel() {
         panel = Ui.column(this);
-        panel.setBackground(Ui.rounded(Color.argb(235, 16, 22, 18), Ui.LINE, 16, this));
+        panel.setBackground(Ui.rounded(Color.argb(238, 14, 20, 16), Ui.LINE, 16, this));
         int p = Ui.dp(this, 10);
         panel.setPadding(p, Ui.dp(this, 4), p, p);
 
-        // Ручка: за неё панель перетаскивается; кнопка справа сворачивает/разворачивает
         LinearLayout handle = Ui.row(this);
-        TextView grip = Ui.label(this, "=  НАСТРОЙКА КНОПОК  =");
+        TextView grip = Ui.label(this, "===  УПРАВЛЕНИЕ  ===");
         grip.setTypeface(Ui.mono(true));
         grip.setTextColor(Ui.AMBER);
         grip.setGravity(Gravity.CENTER);
         handle.addView(grip, Ui.weight());
-        Button fold = Ui.ghostButton(this, R.drawable.ic_arrow_down, "", null);
+        Button fold = Ui.ghostButton(this, R.drawable.ic_arrow_up, "", null);
         fold.setOnClickListener(v -> {
             boolean open = panelBody.getVisibility() == View.VISIBLE;
             panelBody.setVisibility(open ? View.GONE : View.VISIBLE);
-            Ui.withIcon(fold, open ? R.drawable.ic_arrow_up : R.drawable.ic_arrow_down, Ui.FG);
+            Ui.withIcon(fold, open ? R.drawable.ic_arrow_down : R.drawable.ic_arrow_up, Ui.FG);
         });
         handle.addView(fold);
         panel.addView(handle);
@@ -102,94 +106,125 @@ public final class ControlsEditorActivity extends Activity {
         });
 
         panelBody = Ui.column(this);
-        ControllerPrefs.Settings s = ControllerPrefs.INSTANCE.read(this);
-        panelBody.addView(Ui.hint(this, "Перетаскивайте кнопки пальцем. Нажмите на кнопку — откроется её настройка."));
-        LinearLayout sliders = Ui.row(this);
-        sliders.addView(Ui.slider(this, "Размер, %", 50, 200, s.getSize(), v -> { ControllerPrefs.INSTANCE.setSize(this, v); controls.reload(); }), Ui.weight());
-        sliders.addView(Ui.slider(this, "Прозрачность, %", 10, 100, s.getOpacity(), v -> { ControllerPrefs.INSTANCE.setOpacity(this, v); controls.reload(); }), Ui.weight());
-        panelBody.addView(sliders);
-
-        LinearLayout tints = Ui.row(this);
-        tints.addView(Ui.hint(this, "Цвет:"));
-        int[][] palette = {{0xFF8AFF80, 0}, {0xFFFFB840, 0}, {0xFFFFFFFF, 0}, {0xFF6EC8FF, 0}};
-        for (int[] c : palette) {
-            View sw = new View(this);
-            sw.setBackground(Ui.rounded(c[0], Ui.LINE, 14, this));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 30), Ui.dp(this, 30));
-            lp.setMargins(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
-            sw.setOnClickListener(v -> { ControllerPrefs.INSTANCE.setTint(this, c[0]); controls.reload(); });
-            Anim.pressable(sw);
-            tints.addView(sw, lp);
-        }
-        CheckBox snap = Ui.check(this, "Привязка к сетке", s.getSnap());
-        snap.setOnCheckedChangeListener((v, on) -> { ControllerPrefs.INSTANCE.setSnap(this, on); controls.reload(); });
-        tints.addView(snap);
-        panelBody.addView(tints);
-
+        panelBody.addView(Ui.hint(this, "Перетаскивайте кнопки. Нажмите на кнопку — рядом откроется её настройка."));
         LinearLayout actions = Ui.row(this);
-        actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить расположение", v -> {
-            controls.resetLayout();
-            Toast.makeText(this, "Расположение по умолчанию", Toast.LENGTH_SHORT).show();
-        }), Ui.weight());
-        actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить назначения", v -> {
-            ControllerPrefs.INSTANCE.resetMapping(this);
-            controls.reload();
+        actions.addView(Ui.ghostButton(this, R.drawable.ic_plus, "Добавить кнопку", v -> addKey()), Ui.weight());
+        actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить", v -> {
+            ControllerPrefs.INSTANCE.setScreenKeys(this, PcLayout.defaults());
+            keys.load(ControllerPrefs.INSTANCE.encodeScreenKeys(PcLayout.defaults()));
+            keys.startEditing();
+            closeMini();
+            Toast.makeText(this, "Стандартная раскладка Fallout", Toast.LENGTH_SHORT).show();
         }), Ui.weight());
         actions.addView(Ui.button(this, R.drawable.ic_check, "Готово", v -> finish()));
         panelBody.addView(actions);
         panel.addView(panelBody);
 
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 560), -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        lp.topMargin = Ui.dp(this, 8);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 460), -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lp.topMargin = Ui.dp(this, 6);
         root.addView(panel, lp);
-        Anim.enterFromTop(panel, 100);
+        Anim.enterFromTop(panel, 80);
+    }
+
+    private void addKey() {
+        int code = 18; // E — потом меняется в мини-редакторе
+        for (Object[] c : PcLayout.CHOICES) {
+            int candidate = (Integer) c[0];
+            if (keys.stateOf(Collections.singletonList(candidate)) == null) { code = candidate; break; }
+        }
+        keys.add(Collections.singletonList(code));
+        showMini(Collections.singletonList(code));
     }
 
     // ───────────── мини-редактор кнопки ─────────────
 
-    private void showMini(String id, float x, float y) {
+    private void closeMini() {
         if (mini != null) { root.removeView(mini); mini = null; }
-        if (id == null) return;
+        selected = null;
+    }
+
+    private void showMini(List<Integer> codes) {
+        closeMini();
+        if (codes == null) return;
+        ScreenKey state = keys.stateOf(codes);
+        if (state == null) return;
+        selected = codes;
+        boolean stick = state.getShape() == ScreenKeyKt.SCREEN_KEY_STICK || state.getShape() == ScreenKeyKt.SCREEN_KEY_DPAD;
+
         mini = Ui.column(this);
-        mini.setBackground(Ui.rounded(Color.argb(245, 16, 22, 18), Ui.AMBER, 14, this));
+        mini.setBackground(Ui.rounded(Color.argb(246, 14, 20, 16), Ui.AMBER, 14, this));
         int p = Ui.dp(this, 10);
         mini.setPadding(p, p, p, p);
+
         LinearLayout head = Ui.row(this);
-        TextView t = Ui.label(this, "Кнопка " + id.toUpperCase() + " делает:");
-        t.setTypeface(Ui.mono(true));
-        head.addView(t, Ui.weight());
-        Button close = Ui.ghostButton(this, R.drawable.ic_cross, "", v -> { root.removeView(mini); mini = null; });
-        head.addView(close);
+        TextView title = Ui.label(this, stick ? "Стик движения (WASD)" : "Кнопка: " + state.shownLabel(this));
+        title.setTypeface(Ui.mono(true));
+        title.setTextColor(Ui.AMBER);
+        head.addView(title, Ui.weight());
+        head.addView(Ui.ghostButton(this, R.drawable.ic_cross, "", v -> closeMini()));
         mini.addView(head);
 
-        String current = controls.targetOf(id);
-        GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(2);
-        for (String[] target : TARGETS) {
-            boolean on = target[0].equals(current);
-            Button bt = on ? Ui.button(this, target[1], null) : Ui.ghostButton(this, target[1], null);
-            bt.setTextSize(12);
-            bt.setOnClickListener(v -> {
-                ControllerPrefs.INSTANCE.setTarget(this, id, target[0]);
-                controls.reload();
-                showMini(id, x, y); // перерисовать с новой отметкой
-            });
-            grid.addView(bt);
-        }
-        mini.addView(grid);
+        mini.addView(Ui.slider(this, "Размер", ScreenKeys.MIN_SIZE, ScreenKeys.MAX_SIZE, state.getSize(),
+                v -> keys.resize(codes, v)));
+        mini.addView(Ui.slider(this, "Прозрачность, %", 15, 100, Math.round(state.getOpacity() * 100),
+                v -> keys.setOpacity(codes, v / 100f)));
 
-        int w = Ui.dp(this, 380);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, -2);
-        root.addView(mini, lp);
-        // ставим рядом с кнопкой, на свободную сторону экрана, чтобы не закрывать её
+        if (!stick) {
+            CheckBox toggle = Ui.check(this, "Фиксация (нажал — держится)", state.getToggle());
+            toggle.setOnCheckedChangeListener((v, on) -> keys.setToggle(codes, on));
+            mini.addView(toggle);
+
+            TextView what = Ui.hint(this, "Что делает кнопка:");
+            mini.addView(what);
+            GridLayout grid = new GridLayout(this);
+            grid.setColumnCount(2);
+            int current = codes.isEmpty() ? 0 : codes.get(0);
+            for (Object[] choice : PcLayout.CHOICES) {
+                int code = (Integer) choice[0];
+                String label = (String) choice[1];
+                boolean on = code == current;
+                Button bt = on ? Ui.button(this, label, null) : Ui.ghostButton(this, label, null);
+                bt.setTextSize(11);
+                bt.setOnClickListener(v -> {
+                    if (keys.stateOf(Collections.singletonList(code)) != null && code != current) {
+                        Toast.makeText(this, "Такая кнопка уже есть", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    ScreenKey changed = keys.setCodes(codes, Collections.singletonList(code));
+                    keys.setText(Collections.singletonList(code), shortLabel(label));
+                    showMini(changed != null ? changed.getCodes() : Collections.singletonList(code));
+                });
+                grid.addView(bt);
+            }
+            ScrollView sv = new ScrollView(this);
+            sv.addView(grid);
+            mini.addView(sv, new LinearLayout.LayoutParams(-1, Ui.dp(this, 170)));
+
+            mini.addView(Ui.styledButton(this, "Удалить кнопку", v -> {
+                keys.remove(codes);
+                closeMini();
+            }, Color.argb(60, 255, 100, 90), Ui.RED, Ui.RED));
+        }
+
+        root.addView(mini, new FrameLayout.LayoutParams(Ui.dp(this, 340), -2));
+        float kx = state.getX() * root.getWidth();
+        float ky = state.getY() * root.getHeight();
         mini.post(() -> {
-            float gap = Ui.dp(this, 70);
-            float mx = x < root.getWidth() / 2f ? x + gap : x - gap - mini.getWidth();
-            float my = y - mini.getHeight() / 2f;
+            float gap = Ui.dp(this, 60);
+            float mx = kx < root.getWidth() / 2f ? kx + gap : kx - gap - mini.getWidth();
+            float my = ky - mini.getHeight() / 2f;
             mini.setX(clamp(mx, Ui.dp(this, 8), root.getWidth() - mini.getWidth() - Ui.dp(this, 8)));
             mini.setY(clamp(my, Ui.dp(this, 8), root.getHeight() - mini.getHeight() - Ui.dp(this, 8)));
             Anim.enter(mini, 0);
         });
+    }
+
+    /** «E — действие» → «E»: на кнопке нужен короткий текст. */
+    private static String shortLabel(String full) {
+        int dash = full.indexOf('—');
+        String head = dash > 0 ? full.substring(0, dash).trim() : full;
+        if (head.toLowerCase().contains("мышь")) return dash > 0 ? full.substring(dash + 1).trim() : head;
+        return head;
     }
 
     private static float clamp(float v, float lo, float hi) { return Math.max(lo, Math.min(Math.max(lo, hi), v)); }
@@ -197,7 +232,7 @@ public final class ControlsEditorActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        controls.saveLayout();
+        ControllerPrefs.INSTANCE.setScreenKeys(this, ControllerPrefs.INSTANCE.decodeScreenKeys(keys.export()));
     }
 
     @Override

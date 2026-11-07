@@ -662,7 +662,12 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             root.addView(controls)
         }
         screenKeysShown = com.droiddeck.launcher.input.ControllerPrefs.screenKeysShown(this)
-        screenKeys = ScreenKeys(this) { code, down -> if (CompositorHost.isStarted) sendGuestKey(code, down) }.also { keys ->
+        // Fallout Droid: экранная кнопка может быть кнопкой мыши (огонь/прицел в ПК-раскладке)
+        screenKeys = ScreenKeys(this) { code, down ->
+            if (CompositorHost.isStarted) {
+                if (code in 0x110..0x117) sendSceneButton(code, down) else sendGuestKey(code, down)
+            }
+        }.also { keys ->
             keys.onTouchMiss = miss@{ event ->
                 if (!gestureTouchStreamGate.accepts(GestureTouchStreamGate.Source.SCREEN_KEYS, event)) return@miss
                 event.offsetLocation(keys.left - surfaceView.left.toFloat(), keys.top - surfaceView.top.toFloat())

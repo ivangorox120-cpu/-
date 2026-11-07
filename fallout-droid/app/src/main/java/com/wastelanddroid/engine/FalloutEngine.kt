@@ -114,6 +114,19 @@ object FalloutEngine {
         runCatching { GameEnvironmentStore.publish(context) }
     }
 
+    /**
+     * Готовит ввод под ПК-версию игры: экранные клавиши (WASD, мышь), обзор свайпом (режим тачпада),
+     * скрытый геймпадный оверлей движка. Физический геймпад при этом продолжает работать.
+     */
+    @JvmStatic fun applyPcControls(context: Context, overlayMode: String) {
+        runCatching {
+            val prefs = com.droiddeck.launcher.session.SessionPrefs
+            prefs.setTouchMode(context, prefs.TOUCH_PAD)          // свайп = обзор мышью
+            prefs.setOscMode(context, prefs.OSC_NEVER)            // геймпадный оверлей движка не нужен
+            com.droiddeck.launcher.input.ControllerPrefs.setScreenKeysShown(context, overlayMode != "off")
+        }
+    }
+
     /** Режим экранного геймпада в игре: auto (скрыт при физическом геймпаде), on, off. */
     @JvmStatic fun setTouchControlsMode(context: Context, mode: String) {
         val v = when (mode) {

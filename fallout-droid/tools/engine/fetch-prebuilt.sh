@@ -23,7 +23,9 @@ for f in "$root"/app/src/main/jniLibs/arm64-v8a/*.so; do rm -f "$cache/jniLibs/a
 unzip -q -o "$apk" 'assets/*' -d "$cache/x"
 # только то, чего нет в исходниках: собранные компоненты рантайма
 ( cd "$cache/x/assets" && find . -type f ) | while read -r f; do
-  [[ -e "$root/app/src/main/assets/$f" ]] && continue
+  # pulseaudio.tzst: в исходниках лежит заготовка, рабочий бандл с AAudio-модулем собирает CI,
+  # поэтому берём его из релиза движка (без него не поднимается звук и сессия ждёт его 15 с).
+  case "$f" in ./pulseaudio.tzst) ;; *) [[ -e "$root/app/src/main/assets/$f" ]] && continue ;; esac
   case "$f" in ./licenses/xdelta3/*|./dexopt/*) continue ;; esac  # добавляется задачей stageGogNotices
   mkdir -p "$cache/assets/$(dirname "$f")"
   mv "$cache/x/assets/$f" "$cache/assets/$f"
