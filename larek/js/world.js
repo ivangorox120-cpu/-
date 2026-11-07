@@ -615,7 +615,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   seasonHooks.push(w => { winGlassMat.map = w ? winTexes.frost : winTexes.dirt; winGlassMat.needsUpdate = true; });
   // прилавок, витрина
-  box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(.9, .93, .06, MAT.wood, -1.0, .47, KD - .44, K); box(.9, .93, .06, MAT.wood, 1.0, .47, KD - .44, K); // передняя панель прилавка с нишей посередине
+  box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(.9, .96, .06, MAT.wood, -1.0, .48, KD - .44, K); box(.9, .96, .06, MAT.wood, 1.0, .48, KD - .44, K); // до самой столешницы — без щели, через которую видно улицу // передняя панель прилавка с нишей посередине
   // ниша под прилавком: сюда прячут товар «из-под полы» (самогон, контрабанда)
   { const nM = std({ color: 0x2e2117, roughness: .9 }), nB = std({ color: 0x5a4330, roughness: .85 });
     box(1.1, .155, .06, MAT.wood, 0, .878, KD - .44, K); box(1.1, .08, .06, MAT.wood, 0, .04, KD - .44, K); // перемычка сверху и плинтус снизу
@@ -847,7 +847,9 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const doorMesh = box(.8, 2.04, .05, [doorEdgeM, doorEdgeM, doorEdgeM, doorEdgeM, doorInM, doorOutM], -.4, 1.02, 0, doorPivot);
   // деревянный наличник вокруг проёма снаружи
   { const frM = std({ color: 0x8a8174, roughness: .92 }); const fz = -KD - T_ / 2 - .015;
-    box(.07, 2.12, .03, frM, .365, 1.06, fz, K); box(.07, 2.12, .03, frM, 1.235, 1.06, fz, K); box(.94, .07, .03, frM, .8, 2.085, fz, K); }
+    box(.07, 2.12, .03, frM, .365, 1.06, fz, K); box(.07, 2.12, .03, frM, 1.235, 1.06, fz, K); box(.94, .07, .03, frM, .8, 2.085, fz, K);
+    // откосы проёма (обшивка торцов стены), чтобы в щели у двери не просвечивала улица и снег
+    const jM = std({ color: 0x6f675c, roughness: .9 }); box(.025, 2.1, T_ + .05, jM, .4 - .0125, 1.05, -KD, K); box(.025, 2.1, T_ + .05, jM, 1.2 + .0125, 1.05, -KD, K); box(.85, .03, T_ + .05, jM, .8, 2.065, -KD, K); }
   // советские плакаты пользователя: «Мир и дружба!» на правой стене под ружьём, «Закуска градус крадёт!» на внутренней стороне двери
   { const posterMat = file => { const m = std({ color: 0xffffff, roughness: .78 }); TL.load('assets/tex/' + file, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; m.map = t; m.needsUpdate = true; }, undefined, () => {}); return m; };
     const pMir = new THREE.Mesh(new THREE.PlaneGeometry(.66, .46), posterMat('poster_mir.jpg')); pMir.position.set(KW - .033, 1.12, -.52); pMir.rotation.y = -Math.PI / 2; pMir.receiveShadow = true; K.add(pMir);
@@ -938,7 +940,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       const body = new THREE.Mesh(latheOf(prof, r, h), glassM); body.castShadow = true; body.renderOrder = 2; g.add(body);
       if (liqCol !== null) { // жидкость: чуть меньше стекла, до уровня налива; сверху — мениск
         const liq = new THREE.Mesh(latheOf(prof, r, h, r * .07, h * fill), new THREE.MeshStandardMaterial({ color: liqCol, roughness: .2, metalness: 0, transparent: true, opacity: .82 }));
-        liq.position.y = .003; liq.renderOrder = 1; g.add(liq);
+        liq.position.y = .003; liq.renderOrder = 1; liq.userData.isLiquid = true; g.add(liq);
       }
       const dno = cyl(r * .86, r * .86, .004, new THREE.MeshStandardMaterial({ color: bodyCol, roughness: .3, transparent: true, opacity: .8 }), 0, .002, 0, 18, g); // толстое дно
       if (cork) {
@@ -1323,7 +1325,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     }
 
     // Картонный лоток-поддон с бутылками / банками / хлебом внутри (как на референсе пива 5620.jpg)
-    const W = .26, H = .072, D = .18, t = .006;
+    const W = .29, H = .072, D = .194, t = .006; // лоток под бутылки в натуральную величину (как отдельная бутылка)
     const trayTx = regTex(ctex(512, 140, (c, w, h) => {
       c.fillStyle = '#c8aa78'; c.fillRect(0, 0, w, h);
       c.strokeStyle = '#6e522c'; c.lineWidth = 5; c.strokeRect(4, 4, w - 8, h - 8);
@@ -1354,17 +1356,17 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       }
     } else {
       const positions = [
-        [-.070, -.034], [0, -.034], [.070, -.034],
-        [-.036,  .034], [.036,  .034]
+        [-.088, -.044], [0, -.044], [.088, -.044],
+        [-.044,  .044], [.044,  .044]
       ];
-      if (['vodka', 'beer', 'samogon', 'soda'].includes(id)) maxItemH = .224;
+      if (['vodka', 'beer', 'samogon', 'soda'].includes(id)) maxItemH = .29;
       else if (id === 'tushonka') maxItemH = .084;
       else if (id === 'kilka') maxItemH = .068;
       for (let k = 0; k < Math.min(cnt, positions.length); k++) {
         const im = getItemMesh(id);
         const [px, pz] = positions[k];
         im.position.set(px, t, pz);
-        im.scale.setScalar(.76);
+        im.scale.setScalar(1); // в упаковке тот же размер, что и у отдельного товара
         g.add(im);
       }
     }

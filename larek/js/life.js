@@ -510,9 +510,9 @@ export function createLife(env) {
     const isBundle = (gid === "paper" || gid === "mag" || gid === "mag2");
     const isShowbox = ["gum", "choc", "batt", "tape", "toy"].includes(gid);
     const isBottleTray = ["vodka", "beer", "samogon", "soda"].includes(gid);
-    const cy = isCarton ? .027 : isBundle ? (cnt * (gid === "paper" ? .009 : .007) + .003) : isShowbox ? .042 : isBottleTray ? .112 : .042;
-    const hx = isCarton ? .12 : isBundle ? (gid === "paper" ? .11 : .075) : isShowbox ? .095 : .13;
-    const hz = isCarton ? .049 : isBundle ? (gid === "paper" ? .08 : .095) : isShowbox ? .073 : .09;
+    const cy = isCarton ? .027 : isBundle ? (cnt * (gid === "paper" ? .009 : .007) + .003) : isShowbox ? .042 : isBottleTray ? .148 : .042;
+    const hx = isCarton ? .12 : isBundle ? (gid === "paper" ? .11 : .075) : isShowbox ? .095 : .145;
+    const hz = isCarton ? .049 : isBundle ? (gid === "paper" ? .08 : .095) : isShowbox ? .073 : .097;
     const g = new THREE.Group();
     const piv = new THREE.Group();
     piv.position.set(0, cy, 0);
@@ -1475,7 +1475,14 @@ export function createLife(env) {
     g.userData.piv = piv;
     g.userData.spin = spin;
 
-    // Честная стеклянная бутылка стандартного размера (23-28 см) с горлышком и этикеткой
+    // пустая бутылка — та же модель, что у товара (стекло, этикетка, горлышко), только без жидкости и без колпачка
+    const proto = env.getItemMesh ? env.getItemMesh(drinkId) : null;
+    if (proto) {
+      const rm = []; proto.traverse(o => { if (o.userData && (o.userData.isLiquid || o.userData.isCap)) rm.push(o); else if (o.isMesh) o.castShadow = true; });
+      rm.forEach(o => o.parent && o.parent.remove(o));
+      proto.position.set(0, -cfg.h / 2, 0); spin.add(proto);
+      return g;
+    }
     const bm = new THREE.MeshStandardMaterial({ color: cfg.glass, roughness: cfg.rgh, metalness: .08, transparent: true, opacity: cfg.op, depthWrite: true });
     // Корпус бутылки
     const bodyM = new THREE.Mesh(new THREE.CylinderGeometry(cfg.r, cfg.r, cfg.h * .62, 14), bm);
