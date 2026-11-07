@@ -94,8 +94,9 @@ export function createWeapon({ audio, onShot }) {
   rigHandL.scale.set(-.64, .64, .64);
   hinge.add(rigHandL);
   const setLeftHandForeend = () => {
-    rigHandL.position.set(-.008, -.028, -.185);
-    orientHand(rigHandL, new THREE.Vector3(-.20, -.72, .66), new THREE.Vector3(-.22, -.64, -.73), true);
+    // левая рука сбоку цевья (как в классических шутерах): ладонь слева, пальцы обхватывают стволы сверху, предплечье уходит влево-вниз за кадр
+    rigHandL.position.set(-.034, -.016, -.2);
+    orientHand(rigHandL, new THREE.Vector3(-.62, -.42, .66), new THREE.Vector3(-.85, .45, -.1), true);
   };
   setLeftHandForeend();
 
@@ -129,6 +130,29 @@ export function createWeapon({ audio, onShot }) {
   };
   rigHandR.pose(POSE_R_IDLE, null);
   rigHandL.pose(POSE_L_FOREEND, null);
+  // рукава от локтя до плеча за камерой: руки уходят за край экрана, а не висят обрубками
+  const armSleeveM = new THREE.MeshStandardMaterial({ color: 0x25303a, roughness: .9, metalness: .02 });
+  const armGeo = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true); armGeo.translate(0, .5, 0);
+  const mkArm = () => { const m = new THREE.Mesh(armGeo, armSleeveM); m.frustumCulled = false; return m; };
+  const arms = [
+    { hand: rigHandR, mesh: mkArm(), elbow: new THREE.Vector3(0, -.001, .25), shoulder: new THREE.Vector3(.26, -.44, .14), r0: .034, r1: .052 },
+    { hand: rigHandL, mesh: mkArm(), elbow: new THREE.Vector3(0, -.001, .25), shoulder: new THREE.Vector3(-.34, -.46, .08), r0: .034, r1: .052 },
+  ];
+  const _ae = new THREE.Vector3(), _ad = new THREE.Vector3(), _ay = new THREE.Vector3(0, 1, 0);
+  function armsTick() {
+    const parent = rig.parent; if (!parent) return;
+    for (const a of arms) {
+      if (a.mesh.parent !== parent) parent.add(a.mesh);
+      a.mesh.visible = rig.visible && a.hand.visible;
+      if (!a.mesh.visible) continue;
+      rig.updateMatrixWorld(true);
+      a.hand.localToWorld(_ae.copy(a.elbow)); parent.worldToLocal(_ae);
+      _ad.copy(a.shoulder).sub(_ae); const len = _ad.length();
+      a.mesh.position.copy(_ae); a.mesh.quaternion.setFromUnitVectors(_ay, _ad.normalize());
+      a.mesh.scale.set(a.r0, len, a.r0); // рукав чуть шире к плечу задаётся конусом ниже
+    }
+  }
+  armGeo.attributes.position.array.forEach((v, i, arr) => { if (i % 3 === 0) { const y = arr[i + 1], k = 1 + y * .55; arr[i] *= k; arr[i + 2] *= k; } }); armGeo.attributes.position.needsUpdate = true; armGeo.computeVertexNormals(); // расширяется к плечу
 
   const reloadShell = mkShell();
   reloadShell.position.set(-.018, -.012, -.095);
@@ -232,7 +256,7 @@ export function createWeapon({ audio, onShot }) {
     swayT: 0, lookLagX: 0, lookLagY: 0,
     barrelHeat: 0, wispTimer: 0,
   };
-  const HIP = new THREE.Vector3(.12, -.118, -.215); // от бедра: ниже и правее, стволы смотрят в центр экрана (как в шутерах)
+  const HIP = new THREE.Vector3(.055, -.085, -.205); // двустволка перед собой по центру-снизу, обе руки в кадре, предплечья уходят за край экрана // от бедра: ниже и правее, стволы смотрят в центр экрана (как в шутерах)
   const ADS = new THREE.Vector3(0, -.038, -.235);
   const DOWN = new THREE.Vector3(.18, -.42, -.22);
   const tmp = new THREE.Vector3(), wp = new THREE.Vector3(), bDir = new THREE.Vector3();
@@ -426,11 +450,12 @@ export function createWeapon({ audio, onShot }) {
     rig.position.copy(tmp);
 
     const pitchRec = rec * (.32 - W.aimK * .10);
-    const yawBase = (1 - W.aimK) * .055 + (sprint ? .42 : 0) + W.lookLagX * 1.4;
-    const pitchBase = (1 - drawn) * -.85 + (W.state === 'reloading' ? .26 + breakA * .10 : 0) + (sprint ? -.22 : 0) + (1 - W.aimK) * -.035 + W.lookLagY * 1.2;
+    const yawBase = (1 - W.aimK) * .02 + (sprint ? .42 : 0) + W.lookLagX * 1.4;
+    const pitchBase = (1 - drawn) * -.85 + (W.state === 'reloading' ? .26 + breakA * .10 : 0) + (sprint ? -.22 : 0) + (1 - W.aimK) * .05 + W.lookLagY * 1.2;
     const rollBase = (W.state === 'reloading' ? .34 : -.04 * (1 - W.aimK)) + (sprint ? .18 : 0) - rec * .07;
     rig.rotation.set(pitchBase + pitchRec, yawBase, rollBase);
     rig.visible = W.state !== 'holstered';
+    armsTick();
 
     if (flash.visible && W.t > .055) flash.visible = false;
     flashLight.intensity = Math.max(0, flashLight.intensity - dt * 160);
