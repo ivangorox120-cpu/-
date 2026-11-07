@@ -30,7 +30,7 @@ export function createWorld(ctx) {
   const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
   const Q = Object.assign({}, QUALITY[ctx.settings().quality || (isMobile ? 'medium' : 'high')], ctx.settings().custom || {});
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap; // мягкие края теней
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(72, 1, .05, 400); camera.rotation.order = 'YXZ'; scene.add(camera);
@@ -457,26 +457,13 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const ceilMat = std({ color: 0xd8d2c6, roughness: .95 });
   TL.load('assets/tex/ceiling_crack.jpg', t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; ceilMat.map = t; ceilMat.color.set(0xffffff); ceilMat.needsUpdate = true; }, undefined, () => {});
   box(KW * 2 - .02, .02, KD * 2 - .02, ceilMat, 0, KH - .01, 0, K, false);
-  // Реалистичный деревянный потолочный плинтус (галтель) с фаской, поперечными балками и мягкой контактной тенью (AO) на стыке с обоями
-  const moldingMat = std({ color: 0x5c3e26, roughness: .72, metalness: .05 });
-  const moldingSubMat = std({ color: 0x462e1b, roughness: .78, metalness: .05 });
-  // Двухступенчатый деревянный карниз по периметру
-  box(KW * 2 - .05, .036, .038, moldingMat, 0, KH - .018, KD - .026, K, false);
-  box(KW * 2 - .05, .018, .052, moldingSubMat, 0, KH - .042, KD - .019, K, false);
-  box(KW * 2 - .05, .036, .038, moldingMat, 0, KH - .018, -KD + .026, K, false);
-  box(KW * 2 - .05, .018, .052, moldingSubMat, 0, KH - .042, -KD + .019, K, false);
-  box(.038, .036, KD * 2 - .05, moldingMat, -KW + .026, KH - .018, 0, K, false);
-  box(.052, .018, KD * 2 - .05, moldingSubMat, -KW + .019, KH - .042, 0, K, false);
-  box(.038, .036, KD * 2 - .05, moldingMat, KW - .026, KH - .018, 0, K, false);
-  box(.052, .018, KD * 2 - .05, moldingSubMat, KW - .019, KH - .042, 0, K, false);
-  // Аккуратная потолочная розетка под шнур лампочки на штукатурном потолке
-  cyl(.042, .052, .018, moldingSubMat, 0, KH - .016, -.10, 16, K);
+  // потолочный карниз убран: стена переходит в потолок ровным углом с мягким затенением
   // Мягкая градиентная тень (Ambient Occlusion) вдоль верхнего края обоев под потолком и в углах стен
   {
     const aoWallTex = regTex(ctex(64, 256, (g, w, h) => {
       const gr = g.createLinearGradient(0, 0, 0, h);
-      gr.addColorStop(0, 'rgba(18, 12, 6, 0.62)');
-      gr.addColorStop(0.28, 'rgba(24, 16, 8, 0.30)');
+      gr.addColorStop(0, 'rgba(18, 12, 6, 0.42)');
+      gr.addColorStop(0.28, 'rgba(24, 16, 8, 0.20)');
       gr.addColorStop(0.65, 'rgba(30, 20, 10, 0.08)');
       gr.addColorStop(1, 'rgba(30, 20, 10, 0)');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
@@ -490,6 +477,10 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     addWallAO(KW * 2 - .06, .26, 0, KH - .16, KD - .032, Math.PI);
     addWallAO(KD * 2 - .06, .26, -KW + .032, KH - .16, 0, Math.PI / 2);
     addWallAO(KD * 2 - .06, .26, KW - .032, KH - .16, 0, -Math.PI / 2);
+    // то же затенение со стороны потолка: угол стена/потолок мягкий, без ступеньки
+    const addCeilAO = (w, d, x, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), aoWallMat); m.rotation.order = "YXZ"; m.rotation.set(Math.PI / 2, ry, 0); m.position.set(x, KH - .022, z); m.userData.keep = true; K.add(m); };
+    addCeilAO(KW * 2 - .04, .3, 0, -KD + .17, Math.PI); addCeilAO(KW * 2 - .04, .3, 0, KD - .17, 0);
+    addCeilAO(KD * 2 - .04, .3, -KW + .17, 0, -Math.PI / 2); addCeilAO(KD * 2 - .04, .3, KW - .17, 0, Math.PI / 2);
   }
   box(KW * 2 - .04, .03, KD * 2 - .04, MAT.floor, 0, .02, 0, K, false);
   // коллизии стен с дверным проёмом x 0.4..1.2
@@ -624,7 +615,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   seasonHooks.push(w => { winGlassMat.map = w ? winTexes.frost : winTexes.dirt; winGlassMat.needsUpdate = true; });
   // прилавок, витрина
-  box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(2.9, .93, .06, MAT.wood, 0, .47, KD - .44, K); box(1.0, .04, .25, MAT.counter, 0, 1.0, KD + .14, K);
+  box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(.9, .93, .06, MAT.wood, -1.0, .47, KD - .44, K); box(.9, .93, .06, MAT.wood, 1.0, .47, KD - .44, K); // передняя панель прилавка с нишей посередине
+  // ниша под прилавком: сюда прячут товар «из-под полы» (самогон, контрабанда)
+  { const nM = std({ color: 0x2e2117, roughness: .9 }), nB = std({ color: 0x5a4330, roughness: .85 });
+    box(1.1, .155, .06, MAT.wood, 0, .878, KD - .44, K); box(1.1, .08, .06, MAT.wood, 0, .04, KD - .44, K); // перемычка сверху и плинтус снизу
+    box(1.1, .85, .02, nM, 0, .5, KD - .06, K, false); box(.02, .85, .38, nM, -.55, .5, KD - .25, K, false); box(.02, .85, .38, nM, .55, .5, KD - .25, K, false); // задняя стенка и бока
+    box(1.1, .02, .38, nB, 0, .41, KD - .25, K); box(1.1, .02, .38, nB, 0, .09, KD - .25, K); } // полка и дно ниши box(1.0, .04, .25, MAT.counter, 0, 1.0, KD + .14, K);
   { const shelfGlass = new THREE.MeshPhysicalMaterial({ color: 0xcfe6df, roughness: .08, metalness: 0, transparent: true, opacity: .42, depthWrite: false, clearcoat: 1, clearcoatRoughness: .05 }), edge = std({ color: 0x5f9a86, roughness: .15, transparent: true, opacity: .85 }), chrome = std({ color: 0xd0d2d0, roughness: .2, metalness: 1 });
     for (const y of [1.36, 1.76]) for (const sx of [-1, 1]) { const x = sx * .9; // стекло 8 мм с зелёной кромкой и хромированными держателями
       const gsh = box(.86, .008, .24, shelfGlass, x, y, KD - .155, K, false); gsh.renderOrder = 3; // стекло за рамой витрины, без пересечения со стойками
@@ -1372,6 +1368,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     { y: SH_SIDE[0], z0: -.76,  z1: .35,  x: -KW + .17, axis: 'z' },
     { y: SH_SIDE[1], z0: -.40,  z1: .35,  x: -KW + .17, axis: 'z' },
     { y: SH_SIDE[2], z0: -.76,  z1: .35,  x: -KW + .17, axis: 'z' },
+    { y: .407, x0: -.48, x1: .48, z: KD - .25, axis: 'x', under: true }, // 7: ниша под прилавком — только для товара из-под полы
   ];
 
   // Невидимые зоны полок (задних SH_BACK и боковых SH_SIDE справа от окна ларька) для установки предмета в любую точку полки
@@ -1444,12 +1441,13 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   function findFreeShelfSpot(placements, id, preferPos = null, preferRowIdx = null) {
     const spec = shelfSpecOf(id);
+    const isHid = id === 'samogon' || id === 'kontra', ROWS = isHid ? [SHELF_ROWS[7]] : SHELF_ROWS.filter(r => !r.under); // «из-под полы» — только в нишу под прилавком
     const w = spec.w;
     if (preferPos) {
-      let bestR = (preferRowIdx != null && SHELF_ROWS[preferRowIdx]) ? SHELF_ROWS[preferRowIdx] : null;
+      let bestR = (preferRowIdx != null && ROWS.includes(SHELF_ROWS[preferRowIdx])) ? SHELF_ROWS[preferRowIdx] : null;
       if (!bestR) {
         let bestD = 999;
-        for (const r of SHELF_ROWS) {
+        for (const r of ROWS) {
           const cx = r.axis === 'x' ? clamp(preferPos.x, r.x0 + w / 2, r.x1 - w / 2) : r.x;
           const cz = r.axis === 'x' ? r.z : clamp(preferPos.z, r.z0 + w / 2, r.z1 - w / 2);
           const cy = r.y + .013;
@@ -1518,7 +1516,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       }
     }
 
-    for (const r of SHELF_ROWS) {
+    for (const r of ROWS) {
       const start = r.axis === 'x' ? r.x0 + w / 2 : r.z0 + w / 2;
       const end = r.axis === 'x' ? r.x1 - w / 2 : r.z1 - w / 2;
       const baseY = r.y + .013;
@@ -1933,14 +1931,6 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       plate(gt, .6, .3, 0, 1.38, .252, g); box(.34, .36, .1, std({ color: 0x2a2c2e, roughness: .4, metalness: .5 }), 0, .9, .22, g); // ниша с мойкой
       const cup = new THREE.Mesh(new THREE.CylinderGeometry(.035, .03, .1, 10), glassS); cup.position.set(.05, .78, .24); g.add(cup);
       at(g, -9.8, 1.05, 0); addCol(-10.15, -9.45, .8, 1.3); }
-    // бочка «КВАС» на колёсах (зимой закрыта, стоит под снегом)
-    { const g = new THREE.Group(), yel = std({ color: 0xd9a42a, roughness: .55, metalness: .25 });
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 1.9, 18), yel); barrel.rotation.z = Math.PI / 2; barrel.position.y = 1.05; g.add(barrel);
-      for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .14, 14), std({ color: 0x222222, roughness: .8 })); w.rotation.x = Math.PI / 2; w.position.set(0, .3, s * .5); g.add(w); }
-      box(.08, .08, 1.1, steel, 1.25, .45, 0, g); box(.5, .06, .06, steel, 1.0, .45, 0, g); // дышло
-      const kv = textTex(256, 96, 'КВАС', '#d9a42a', '#7a2a12', '900 64px Arial'); plate(kv, .9, .34, 0, 1.1, .556, g); plate(kv, .9, .34, 0, 1.1, -.556, g, Math.PI);
-      const sn = box(1.6, .06, .5, MAT.snow, 0, 1.6, 0, g, false); sn.userData.winter = true;
-      at(g, -5.5, 18.0, 0); addCol(-6.6, -4.3, 17.4, 18.6); }
     // афишные тумбы с облезлыми плакатами
     const afTex = regTex(ctex(512, 256, (c, w, h) => { c.fillStyle = '#d8d0bc'; c.fillRect(0, 0, w, h);
       const ps = [['#b23a2a', '#f0e6cc', 'ЦИРК'], ['#2a4a7a', '#f0e6cc', 'КИНО'], ['#e0c050', '#3a2a1a', 'ВЫБОРЫ'], ['#3a6a3a', '#f0e6cc', 'ТАНЦЫ'], ['#8a2a5a', '#f0e6cc', 'ЛОТО']];
@@ -3478,7 +3468,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     sun.castShadow = sh; if (sh) { sun.shadow.mapSize.set(Math.min(Q.shadows, 1024), Math.min(Q.shadows, 1024)); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     kioskSpot.castShadow = sh;
     if (sh) {
-      const spSz = Math.min(512, Math.max(256, Math.round(Q.shadows / 2)));
+      const spSz = Math.min(1024, Math.max(512, Q.shadows)); // свет лампы в ларьке — главные тени в игре, им нужно разрешение
       kioskSpot.shadow.mapSize.set(spSz, spSz);
       if (kioskSpot.shadow.map) { kioskSpot.shadow.map.dispose(); kioskSpot.shadow.map = null; }
     }
@@ -3700,6 +3690,11 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
           };
         }
         const shHit = lookStorageShelfHit();
+        if (shHit && ((gid === 'samogon' || gid === 'kontra') !== (shHit.rowIdx === 7))) {
+          const hid = gid === 'samogon' || gid === 'kontra';
+          return { label: hid ? 'Такое — только под прилавок' : 'Под прилавок — только «из-под полы»', icon: 'place',
+            fn: () => ctx.toast && ctx.toast(hid ? 'Самогон и контрабанду на виду не держат — убери в нишу под прилавком.' : 'Ниша под прилавком — для товара «из-под полы».') };
+        }
         if (shHit) {
           return {
             label: `Поставить на полку: ${gName}`, icon: 'place',

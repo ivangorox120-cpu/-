@@ -480,6 +480,44 @@ function startTrade() {
   if (W) { sheetOpen = false; W.goCounter(false); }
   else onSitCounter();
 }
+// ---------- товар «из-под полы» на прилавке: участковый ----------
+const isHidId = id => id === 'samogon' || id === 'kontra';
+function contraWorldItems() {
+  if (!W || !W.life) return [];
+  return W.life.items.filter(it => { const g = it.data && it.data.goodId; const p = it.obj && it.obj.position;
+    return (it.kind === 'good' || it.kind === 'pack') && isHidId(g) && it.state === 'rest' && p && p.y > .95 && p.z > .7 && Math.abs(p.x) < 1.5; }); // прилавок и витрина у окна
+}
+function contraOnDisplay() {
+  let n = 0; (S.slots || []).forEach((id, i) => { if (isHidId(id)) n += (S.slotCounts && S.slotCounts[i]) || 1; });
+  return n + contraWorldItems().length;
+}
+function contraNames() {
+  const ids = new Set((S.slots || []).filter(isHidId)); for (const it of contraWorldItems()) ids.add(it.data.goodId);
+  return [...ids].map(id => id === 'samogon' ? 'Самогон' : 'Сигареты без акциза').join(' и ');
+}
+function confiscateDisplayed() {
+  let n = 0;
+  (S.slots || []).forEach((id, i) => { if (!isHidId(id)) return; const c = (S.slotCounts && S.slotCounts[i]) || 1; n += c; S.hidden[id] = Math.max(0, (S.hidden[id] || 0) - c); S.slots[i] = null; if (S.slotCounts) S.slotCounts[i] = 0; });
+  for (const it of contraWorldItems()) { n += it.kind === 'pack' ? ((it.data && it.data.count) || 1) : 1; W.life.removeItem(it); }
+  if (W) { W.life.persist && W.life.persist(); W.updateShelves(); }
+  save(); return n;
+}
+function goToJail() {
+  // КПЗ: весь товар «из-под полы» изымают, штраф, сутки потеряны
+  let n = confiscateDisplayed();
+  for (const id of Object.keys(S.hidden || {})) { n += S.hidden[id] || 0; S.hidden[id] = 0; }
+  if (S.shelfPlacements) S.shelfPlacements = S.shelfPlacements.filter(p => !isHidId(p.id));
+  if (W && W.life) for (const it of W.life.items.slice()) { const g = it.data && it.data.goodId; if ((it.kind === 'good' || it.kind === 'pack') && isHidId(g)) { n++; W.life.removeItem(it); } }
+  const fine = Math.round(S.money * .3);
+  S.money -= fine; rep('law', -15); rep('folk', -4);
+  if (T) { T = null; if (W) W.unlock(); }
+  S.phase = 'evening';
+  if (W) { W.P.x = 0; W.P.z = -.25; W.P.yaw = Math.PI; W.P.pitch = -.08; W.P.seated = false; W.P.locked = false; W.updateShelves(); }
+  S.day++; // сутки в КПЗ
+  queueCard({ title:'🚔 Ночь в КПЗ', html:`<p>Петрович составил протокол. Двое суток на нарах в отделении, пока «разбирались».</p>
+    <p>Изъято товара «из-под полы»: <b>${n} шт.</b> Штраф: <b>${fmt(fine)} ₽</b>.</p><p class="muted">Закон −15, Народ −4. Ларёк всё это время стоял закрытым.</p>` });
+  advanceDay(); save(); render && render();
+}
 function specialVisitor(k) {
   if (k === 'racket') {
     const disc = (S.outfit === 'sport' ? .7 : 1) * (S.rep.street >= 40 ? .5 : 1);
@@ -510,6 +548,33 @@ function specialVisitor(k) {
         } },
       ] };
   }
+  if (k === 'contra') {
+    const name = 'Участковый Петрович';
+    if (!contraOnDisplay()) return { special:k, k:'police', name, mood:'neutral', pat:999, patMax:999, anim:0,
+      said:'Сигнал был, что у тебя тут из-под полы торгуют... Ладно, вижу — чисто. Но смотри у меня.',
+      opts: [{ label:'Всего доброго, товарищ лейтенант', cls:'green', fn() { rep('law', 1); } }] };
+    const what = contraNames();
+    const bribe = Math.round(Math.max(usdToRub(15), S.money * .12) * (S.outfit === 'business' ? .7 : 1) * (S.outfit === 'raspberry' ? 1.4 : 1));
+    return { special:k, k:'police', name, mood:'angry', pat:999, patMax:999, anim:0,
+      said:`Так-так, гражданин... ${what} — прямо на прилавке? Это, между прочим, статья. Спекуляция и торговля без акциза. Будем оформлять?`,
+      opts: [
+        { label:`Сунуть ${fmt(bribe)} ₽ «за беспокойство»`, cls:'yellow', fn() {
+          if (S.money < bribe) { toast('Денег не хватило — Петрович обиделся. Пройдёмте…', 'bad'); setTimeout(goToJail, 0); return; }
+          S.money -= bribe; rep('law', -3); sfx.ching();
+          toast('Петрович убрал деньги в планшет: «Я ничего не видел. Но чтоб к вечеру этого на прилавке не было!» Закон −3', 'bad');
+          T.contraDone = false; T.contraT = 0; T.contraAt = R(60, 110); // не убрал — придёт снова
+        } },
+        { label:'Договориться: «Это вам — на экспертизу»', fn() {
+          const n = confiscateDisplayed(); rep('law', 1);
+          toast(`Петрович забрал ${n} шт. «вещдоков» себе: «Протокол составлять не будем». Закон +1`);
+        } },
+        { label:'«Это не моё, подбросили!»', cls:'red', fn() {
+          if (S.rep.law >= 25 && Math.random() < .55) { const n = confiscateDisplayed(); rep('law', -2); toast(`Петрович поверил на слово, но ${n} шт. изъял. Закон −2`, 'bad'); }
+          else { toast('«Подбросили, говоришь? В отделении разберёмся.»', 'bad'); setTimeout(goToJail, 0); }
+        } },
+        { label:'Пройти в отделение', fn() { setTimeout(goToJail, 0); } },
+      ] };
+  }
   if (k === 'neighbor') {
     const id = pick(GOOD_IDS.filter(x => qOf(x) >= 2)) || null;
     if (!id) return null;
@@ -537,6 +602,11 @@ function tradeTick(dt) {
   for (const sp of T.specials) if (!sp.done && T.t >= sp.at && !T.cur) {
     sp.done = true; const v = specialVisitor(sp.k);
     if (v) { if (W) { T.walking.push(v); W.spawnCustomer(v); } else { T.cur = v; sfx.door(); renderTrade(); return; } }
+  }
+  // товар «из-под полы» выставлен на прилавок/витрину — через некоторое время заглянет участковый
+  if (!T.contraDone) {
+    if (contraOnDisplay() > 0) { T.contraT = (T.contraT || 0) + dt; if (!T.contraAt) T.contraAt = R(25, 55); if (T.contraT >= T.contraAt) { T.contraDone = true; T.specials.push({ at: T.t, k:'contra' }); } }
+    else T.contraT = Math.max(0, (T.contraT || 0) - dt * .5);
   }
   // спавн
   T.nextSpawn -= dt;

@@ -400,6 +400,8 @@ export function createWeapon({ audio, onShot }) {
     const triggerPull = W.state === 'firing' && W.t < .18;
     rigHandR.pose(triggerPull ? POSE_R_FIRE : POSE_R_IDLE, dt, 22, .004, W.swayT);
     rigHandL.pose(reloadShell.visible ? POSE_L_SHELL : POSE_L_FOREEND, dt, 18, .004, W.swayT);
+    // патроны в патроннике видны только при переломленных стволах: у закрытого ружья они внутри стволов, а не торчат из модели
+    chamberShells.forEach((sh, i) => { sh.visible = W.state === 'reloading' && i < W.ammo + (W.inserted || 0); });
 
     if (W.recoil > 0 || W.recoilVel !== 0) {
       W.recoil += W.recoilVel * dt;

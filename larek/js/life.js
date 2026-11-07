@@ -26,10 +26,12 @@ export function createLife(env) {
     { name: 'shelf',   y: 1.313, x1: -KW + .02, x2: -KW + .33, z1: -.42,      z2: .38,       axis: 'z', rowIdx: 5 },
     { name: 'shelf',   y: 1.763, x1: -KW + .02, x2: -KW + .33, z1: -.78,      z2: .38,       axis: 'z', rowIdx: 6 },
     // 4 стеклянные полки витрины над прилавком у окна (левая и правая стороны, нижний и верхний ярусы)
-    { name: 'shelf',   y: 1.368, x1: -1.33,     x2: -.47,      z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 7 },
-    { name: 'shelf',   y: 1.768, x1: -1.33,     x2: -.47,      z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 8 },
-    { name: 'shelf',   y: 1.368, x1: .47,      x2: 1.33,       z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 9 },
-    { name: 'shelf',   y: 1.768, x1: .47,      x2: 1.33,       z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 10 },
+    // ниша под прилавком (товар «из-под полы»)
+    { name: 'shelf',   y: .42,   x1: -.52,      x2: .52,       z1: KD - .42,  z2: KD - .08,  axis: 'x', rowIdx: 7 },
+    { name: 'shelf',   y: 1.368, x1: -1.33,     x2: -.47,      z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 17 },
+    { name: 'shelf',   y: 1.768, x1: -1.33,     x2: -.47,      z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 18 },
+    { name: 'shelf',   y: 1.368, x1: .47,      x2: 1.33,       z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 19 },
+    { name: 'shelf',   y: 1.768, x1: .47,      x2: 1.33,       z1: KD - .32,  z2: KD - .02,  axis: 'x', rowIdx: 20 },
   ];
   const _surfBox = new THREE.Box3(), _surfHit = new THREE.Vector3();
   const inK = (x, z) => Math.abs(x) < KW && Math.abs(z) < KD;
