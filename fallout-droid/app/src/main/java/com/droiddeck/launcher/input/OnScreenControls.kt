@@ -102,6 +102,12 @@ class OnScreenControls(
     private var snap = settings.snap
     private var safe = Rect()
     private var selected: String? = null
+
+    /** Fallout Droid: редактор узнаёт, какую кнопку выбрали (id, группа, центр в пикселях); null — сняли выбор. */
+    var onSelect: ((id: String?, group: String?, x: Float, y: Float) -> Unit)? = null
+
+    /** Fallout Droid: id кнопок и их текущее назначение — для мини-редактора. */
+    fun targetOf(id: String): String = controls.firstOrNull { it.id == id }?.target ?: id
     private var snapX: Float? = null
     private var snapY: Float? = null
     private var grabX = 0f
@@ -640,7 +646,7 @@ class OnScreenControls(
                 clearSnapGuides()
                 val control = controlAt(event.x, event.y)
                 selected = control?.group
-                val group = selected ?: run { invalidate(); return false }
+                val group = selected ?: run { onSelect?.invoke(null, null, 0f, 0f); invalidate(); return false }
                 val (x, y) = centre(group)
                 grabX = x - event.x
                 grabY = y - event.y
@@ -664,7 +670,15 @@ class OnScreenControls(
                 snapY = visibleY
                 invalidate()
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> clearSnapGuides()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                clearSnapGuides()
+                val group = selected
+                if (group != null && event.actionMasked == MotionEvent.ACTION_UP) {
+                    val control = controlAt(event.x, event.y) ?: members(group).firstOrNull()
+                    val (x, y) = centre(group)
+                    onSelect?.invoke(control?.id, group, x, y)
+                }
+            }
         }
         return true
     }

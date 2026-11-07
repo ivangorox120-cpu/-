@@ -25,6 +25,8 @@ public final class Prefs {
     public static final String AUTOSTART_BLOCKED = "autostart_blocked";
     public static final String LAUNCH_PENDING = "launch_pending";
     public static final String CRASH_NOTICE = "crash_notice";
+    /** Подробные логи Proton/Wine для диагностики (включены, пока порт в разработке). */
+    public static final String GAME_LOGS = "game_logs";
 
     private Prefs() {}
 

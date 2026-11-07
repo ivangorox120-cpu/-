@@ -293,6 +293,7 @@ public final class MainActivity extends Activity {
                 new com.wastelanddroid.mods.ModManager(this, d, new File(dir)).saveOrder(
                         new com.wastelanddroid.mods.ModManager(this, d, new File(dir)).loadPlugins());
                 r = FalloutEngine.prepare(this, target);
+                if (r instanceof FalloutEngine.Prepared.Ok) prepareGamePrefix(d, new File(dir), ((FalloutEngine.Prepared.Ok) r).getScope());
             } catch (Throwable e) {
                 com.wastelanddroid.util.CrashLog.write(this, "prepare", e);
                 r = new FalloutEngine.Prepared.Error(e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -342,6 +343,41 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    /**
+     * Подготовка префикса Proton перед запуском: ключ реестра установщика, ini, копия сохранений.
+     * Если префикса ещё нет (первый запуск), Proton создаст его сам, а мы допишем всё и
+     * перезапустим игру при возвращении в меню.
+     */
+    private void prepareGamePrefix(GameDef d, File gameDir, String scope) {
+        prefs.edit().putString("scope_" + d.id, scope).apply();
+        FalloutEngine.setTouchControlsMode(this, prefs.getString(Prefs.OVERLAY_MODE, "auto"));
+        FalloutEngine.setGameDebugLogs(this, prefs.getBoolean(Prefs.GAME_LOGS, true));
+        File pfx = FalloutEngine.prefixDir(this, scope);
+        if (!FalloutEngine.prefixReady(this, scope)) {
+            prefs.edit().putBoolean("first_run_" + d.id, true).apply();
+            return;
+        }
+        String guest = FalloutEngine.guestPath(this, gameDir);
+        try {
+            if (guest != null) com.wastelanddroid.game.ProtonPrefix.writeRegistry(pfx, d, guest);
+        } catch (Exception e) {
+            com.wastelanddroid.util.CrashLog.write(this, "registry", e);
+        }
+        try {
+            String qs = prefs.getString(Prefs.QUALITY, "auto");
+            DeviceProfile.Quality q = "auto".equals(qs) ? DeviceProfile.autoQuality(this) : DeviceProfile.Quality.valueOf(qs.toUpperCase());
+            DeviceProfile profile = DeviceProfile.create(this, q, prefs.getInt(Prefs.RES_SCALE, 100));
+            com.wastelanddroid.game.IniTweaks.apply(d, gameDir, pfx, profile,
+                    com.wastelanddroid.game.GraphicsSettings.load(this, q),
+                    prefs.getBoolean(Prefs.SKIP_INTRO, true), prefs.getBoolean(Prefs.AUTOSAVE, true));
+        } catch (Exception e) {
+            com.wastelanddroid.util.CrashLog.write(this, "ini", e);
+        }
+        try {
+            com.wastelanddroid.game.SaveBackup.backup(d, pfx, new com.wastelanddroid.runtime.RuntimeManager(this).backups);
+        } catch (Exception ignored) { }
+    }
+
     /** Отчёт о вылете с возможностью отправить его разработчику. */
     private void showCrash(String text) {
         new AlertDialog.Builder(this)
@@ -381,9 +417,9 @@ public final class MainActivity extends Activity {
         ctl.addView(spinner(new String[]{"Авто — скрывать при геймпаде", "Всегда показывать", "Полностью выключены"},
                 new String[]{"auto", "on", "off"}, Prefs.OVERLAY_MODE, "auto"), new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
         LinearLayout ctlBtns = Ui.row(this);
-        ctlBtns.addView(Ui.ghostButton(this, R.drawable.ic_touch, "Кнопки", v -> open(new Intent(this, ControlsEditorActivity.class))), Ui.weight());
-        ctlBtns.addView(Ui.ghostButton(this, R.drawable.ic_gamepad, "Геймпад", v -> GamepadEditor.show(this)), Ui.weight());
+        ctlBtns.addView(Ui.ghostButton(this, R.drawable.ic_touch, "Настроить экранные кнопки", v -> open(new Intent(this, ControlsEditorActivity.class))), Ui.weight());
         ctl.addView(ctlBtns, Ui.matchWrap(this, 4));
+        ctl.addView(Ui.withIcon(Ui.hint(this, "Физический геймпад (Bluetooth/USB) игра видит как Xbox 360 и управляется им сама."), R.drawable.ic_gamepad, Ui.FG_DIM));
         col.addView(ctl, Ui.matchWrap(this, 12));
 
         LinearLayout stab = Ui.card(this, "Стабильность");
@@ -394,6 +430,7 @@ public final class MainActivity extends Activity {
         stab.addView(check("Пропуск вступительных роликов", Prefs.SKIP_INTRO, true));
         stab.addView(check("Сторож зависаний", Prefs.WATCHDOG, true));
         stab.addView(check("Только 'большие' ядра CPU", Prefs.PIN_BIG_CORES, true));
+        stab.addView(check("Подробные логи игры (для отчётов)", Prefs.GAME_LOGS, true));
         col.addView(stab, Ui.matchWrap(this, 12));
 
         LinearLayout look = Ui.card(this, "Оформление");
@@ -474,6 +511,15 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (!launching) for (GameDef g : GameDef.values()) {
+            String sc = prefs.getString("scope_" + g.id, null);
+            if (prefs.getBoolean("first_run_" + g.id, false) && sc != null && FalloutEngine.prefixReady(this, sc)) {
+                prefs.edit().putBoolean("first_run_" + g.id, false).apply();
+                Toast.makeText(this, "Wine подготовлен — настраиваю " + g.title + " и запускаю снова", Toast.LENGTH_LONG).show();
+                getWindow().getDecorView().postDelayed(() -> startGame(g), 800);
+                break;
+            }
+        }
         if (!launching && prefs.getBoolean(Prefs.LAUNCH_PENDING, false)) {
             // вернулись из игры без вылета — автозапуск снова разрешён
             prefs.edit().putBoolean(Prefs.LAUNCH_PENDING, false).putBoolean(Prefs.AUTOSTART_BLOCKED, false).apply();

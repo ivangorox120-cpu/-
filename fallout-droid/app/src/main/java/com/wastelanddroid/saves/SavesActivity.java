@@ -18,6 +18,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.wastelanddroid.game.GameDef;
+import com.wastelanddroid.engine.FalloutEngine;
 import com.wastelanddroid.runtime.RuntimeManager;
 import com.wastelanddroid.util.Anim;
 import com.wastelanddroid.util.ScanlineView;
@@ -46,7 +47,10 @@ public final class SavesActivity extends Activity {
         Ui.immersive(this);
         game = GameDef.byId(getIntent().getStringExtra(EXTRA_GAME));
         rt = new RuntimeManager(this);
-        store = new SaveStore(game, rt.prefix);
+        String scope = com.wastelanddroid.util.Prefs.get(this).getString("scope_" + game.id, null);
+        // сохранения игры живут в префиксе Proton; он появляется после первого запуска
+        java.io.File pfx = scope != null ? FalloutEngine.prefixDir(this, scope) : rt.prefix;
+        store = new SaveStore(game, pfx);
 
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(Ui.screenBackground());

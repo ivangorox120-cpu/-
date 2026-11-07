@@ -24,7 +24,7 @@ public final class IniTweaks {
     public static void apply(GameDef g, File gameDir, File winePrefix, DeviceProfile p, GraphicsSettings gfx,
                              boolean skipIntro, boolean autosave)
             throws IOException {
-        File dir = myGamesDir(g, winePrefix);
+        File dir = ProtonPrefix.myGamesDir(g, winePrefix);
         dir.mkdirs();
         File ini = new File(dir, "Fallout.ini");
         File prefs = new File(dir, "FalloutPrefs.ini");

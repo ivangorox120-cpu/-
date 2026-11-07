@@ -99,6 +99,31 @@ object FalloutEngine {
     /** Человекочитаемое имя Proton без названия движка. */
     @JvmStatic fun protonLabel(name: String): String = name.replace("DroidDeck-Proton", "Proton FD", ignoreCase = true)
 
+    /** Префикс Proton (pfx) «добавленной» игры по её scope; появляется после первого запуска. */
+    @JvmStatic fun prefixDir(context: Context, scope: String): File =
+        File(LinuxRuntime.rootDir(context), "root/.local/share/Steam/steamapps/compatdata/$scope/pfx")
+
+    @JvmStatic fun prefixReady(context: Context, scope: String): Boolean = File(prefixDir(context, scope), "system.reg").isFile
+
+    /** Путь папки игры внутри Linux-среды (например /root/Storage/...), как его видит Wine через диск Z:. */
+    @JvmStatic fun guestPath(context: Context, host: File): String? = runCatching { AddedGames.guestPath(context, host) }.getOrNull()
+
+    /** Подробные логи Proton/Wine/DXVK в папке сессии (для диагностики). */
+    @JvmStatic fun setGameDebugLogs(context: Context, on: Boolean) {
+        runCatching { com.droiddeck.launcher.session.SessionPrefs.setGameDebugLogsEnabled(context, on) }
+        runCatching { GameEnvironmentStore.publish(context) }
+    }
+
+    /** Режим экранного геймпада в игре: auto (скрыт при физическом геймпаде), on, off. */
+    @JvmStatic fun setTouchControlsMode(context: Context, mode: String) {
+        val v = when (mode) {
+            "on" -> com.droiddeck.launcher.session.SessionPrefs.OSC_ALWAYS
+            "off" -> com.droiddeck.launcher.session.SessionPrefs.OSC_NEVER
+            else -> com.droiddeck.launcher.session.SessionPrefs.OSC_AUTO
+        }
+        runCatching { com.droiddeck.launcher.session.SessionPrefs.setOscMode(context, v) }
+    }
+
     /** Есть ли в Linux-среде хоть один Proton, которым скрипт запуска сможет запустить игру. */
     @JvmStatic fun anyProton(context: Context): Boolean = runCatching { ComponentsManager.protons(context).isNotEmpty() }.getOrDefault(false)
 
