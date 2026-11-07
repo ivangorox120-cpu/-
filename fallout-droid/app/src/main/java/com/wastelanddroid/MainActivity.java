@@ -473,9 +473,9 @@ public final class MainActivity extends Activity {
         stab.addView(Ui.hint(this, "Выключите, если звука нет: тогда работает обычный PulseAudio."));
         stab.addView(check("Ключ реестра игры (от \"игра не установлена\")", Prefs.FIX_REGISTRY, true));
         stab.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Пересоздать префикс Wine", v -> resetPrefix()));
-        stab.addView(Ui.ghostButton(this, R.drawable.ic_settings, "Экраны движка (драйверы, компоненты)",
-                v -> FalloutEngine.openEngineScreens(this)));
-        stab.addView(Ui.hint(this, "Там всё, что умеет движок: графические драйверы, FEX, компоненты Windows, рабочий стол."));
+        stab.addView(Ui.ghostButton(this, R.drawable.ic_settings, "Настройка контейнера",
+                v -> open(new Intent(this, com.wastelanddroid.engine.ContainerActivity.class))));
+        stab.addView(Ui.hint(this, "Графический драйвер, режим эмуляции x86, звук."));
         col.addView(stab, Ui.matchWrap(this, 12));
 
         LinearLayout look = Ui.card(this, "Оформление");

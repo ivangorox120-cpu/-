@@ -127,13 +127,6 @@ object FalloutEngine {
         }
     }
 
-    /** Собственные экраны движка: компоненты, драйверы, FEX, Proton, рабочий стол. */
-    @JvmStatic
-    fun openEngineScreens(activity: Activity) {
-        activity.startActivity(Intent(activity, com.droiddeck.launcher.FrontEndActivity::class.java)
-            .putExtra(com.droiddeck.launcher.FrontEndActivity.ENGINE_UI, true))
-    }
-
     /** Прямой звук (AAudio) или обычный PulseAudio внутри Linux-среды. */
     @JvmStatic fun setDirectAudio(context: Context, on: Boolean) {
         runCatching { com.droiddeck.launcher.session.SessionPrefs.setDirectAudio(context, on) }

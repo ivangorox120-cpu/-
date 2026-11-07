@@ -343,6 +343,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var drawerOpen: Boolean
         get() = drawerOpenState
         set(value) {
+            // Fallout Droid: собственная боковая панель движка не показывается
+            if (value) { showFalloutMenu(); return }
             if (value == drawerOpenState) return
             drawerLayerOpen = false
             if (value) drawerDocked = dockDrawer() && openDockedMenu()
@@ -1094,7 +1096,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     onAndroidKeyboard = { pcKeyboardOpen = false; keyboard?.toggle() },
                     onClose = { pcKeyboardOpen = false },
                 )
-                if (!drawerDocked) SessionMenu(docked = false)
+                // Fallout Droid: панель движка не выводится
                 LaunchedEffect(achievementsOpen) {
                     if (achievementsOpen) {
                         releasePads()
@@ -1142,6 +1144,37 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         }
         }
+    }
+
+    /** Fallout Droid: компактное меню игры вместо боковой панели движка. */
+    private fun showFalloutMenu() {
+        if (isFinishing || isDestroyed) return
+        val keysOn = screenKeys?.visibility == View.VISIBLE
+        val items = arrayOf<CharSequence>(
+            if (keysOn) "Скрыть экранные кнопки" else "Показать экранные кнопки",
+            "Клавиатура",
+            "Завершить игру",
+        )
+        android.app.AlertDialog.Builder(this, R.style.FdDialog)
+            .setTitle("Игра")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        val show = !keysOn
+                        screenKeys?.visibility = if (show) View.VISIBLE else View.GONE
+                        com.droiddeck.launcher.input.ControllerPrefs.setScreenKeysShown(this, show)
+                    }
+                    1 -> togglePcKeyboard()
+                    else -> android.app.AlertDialog.Builder(this, R.style.FdDialog)
+                        .setTitle("Завершить игру?")
+                        .setMessage("Несохранённый прогресс будет потерян.")
+                        .setPositiveButton("Завершить") { _, _ -> SessionService.stop(this); finish() }
+                        .setNegativeButton("Отмена", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Закрыть", null)
+            .show()
     }
 
     @androidx.compose.runtime.Composable

@@ -324,6 +324,9 @@
         <activity android:name="com.wastelanddroid.mods.ModManagerActivity" android:exported="false"
             android:screenOrientation="sensorLandscape" android:theme="@style/FdTheme"
             android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation" />
+        <activity android:name="com.wastelanddroid.engine.ContainerActivity" android:exported="false"
+            android:screenOrientation="sensorLandscape" android:theme="@style/FdTheme"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation" />
         <activity android:name="com.wastelanddroid.engine.EngineSetupActivity" android:exported="false"
             android:screenOrientation="sensorLandscape" android:theme="@style/FdTheme"
             android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation" />
