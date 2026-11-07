@@ -983,16 +983,8 @@ class FrontEndActivity : ComponentActivity() {
         finish()
     }
 
-    private var redirectedToFalloutDroid = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Fallout Droid: интерфейс движка не показывается — всегда открывается наше меню.
-        redirectedToFalloutDroid = true
-        startActivity(Intent(this, com.wastelanddroid.MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        finish()
-        return
         if (savedInstanceState == null) readIntegrationIntent(intent)
         readGameIntent(intent)
         gameSyncFolder = GameFileSync.folder(this)
@@ -1025,6 +1017,13 @@ class FrontEndActivity : ComponentActivity() {
         storesView = SessionPrefs.storesView(this)
         applyLauncherFullscreen()
         updates.start()
+        // Fallout Droid: движок настроен; его собственный интерфейс показываем только по явной просьбе
+        if (!intent.getBooleanExtra(ENGINE_UI, false)) {
+            startActivity(Intent(this, com.wastelanddroid.MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+            return
+        }
         setContent {
             DroidDeckTheme(theme, appScale = appScale) {
             com.droiddeck.launcher.ui.FocusGlideHost(androidx.compose.ui.Modifier.fillMaxSize().exposeTestTags()) {
@@ -1756,7 +1755,6 @@ class FrontEndActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") state.getParcelable(key)
 
     override fun onDestroy() {
-        if (redirectedToFalloutDroid) { super.onDestroy(); return }
         cancelCompatLaunch()
         updates.unregister()
         super.onDestroy()
@@ -2757,6 +2755,9 @@ class FrontEndActivity : ComponentActivity() {
     }
 
     companion object {
+        /** Fallout Droid: показать собственные экраны движка (компоненты, драйверы, рабочий стол). */
+        const val ENGINE_UI = "fallout_droid_engine_ui"
+
         private const val TAG = "MainActivity"
         private const val MEDIA_SETTLE_MS = 1500L
         private const val COMPONENT_RESTORE_MS = 60_000L
