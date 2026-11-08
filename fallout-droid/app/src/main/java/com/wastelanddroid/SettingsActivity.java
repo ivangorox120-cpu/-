@@ -509,6 +509,8 @@ public final class SettingsActivity extends Activity {
         LinearLayout g = group(null);
         toggle(g, "Подробные логи игры", "Proton, Wine и DXVK пишут подробности — нужно для отчётов об ошибках",
                 Prefs.GAME_LOGS, true, on -> FalloutEngine.setGameDebugLogs(this, on == 1));
+        toggle(g, "Отладка ввода", "Строка поверх игры: доходят ли касания и что уходит игре",
+                com.wastelanddroid.engine.FalloutInput.DEBUG, false, null);
         action(g, R.drawable.ic_upload, "Отправить логи последнего запуска", "Архив с логами — в Telegram или куда удобно",
                 v -> shareLastLogs(this));
         action(g, R.drawable.ic_warning, "Отчёт о вылетах приложения", null, v -> {

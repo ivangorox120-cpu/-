@@ -16,6 +16,7 @@ public final class FalloutInput {
     public static final String RELATIVE_MOUSE = "relative_mouse";
     public static final String SHOW_CURSOR = "show_cursor";
     public static final String INVERT_Y = "invert_y";
+    public static final String DEBUG = "input_debug";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -54,4 +55,7 @@ public final class FalloutInput {
 
     /** Инверсия обзора по вертикали. */
     public static boolean invertY(Context c) { return p(c).getBoolean(INVERT_Y, false); }
+
+    /** Строка отладки ввода поверх игры. */
+    public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
 }

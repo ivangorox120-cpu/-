@@ -254,6 +254,25 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var clientHidesCursor = false
     private var pointerLocked = false
     private var lookDownX = 0f
+    private var dbgAbs = 0
+    private var dbgRel = 0
+    private var dbgBtn = 0
+    private var dbgTouch = 0
+    private var dbgAt = 0L
+    private var inputDebug by mutableStateOf("")
+
+    /** Строка состояния ввода поверх игры: видно, доходят ли касания и что уходит игре. */
+    private fun inputDebugTick() {
+        if (!com.wastelanddroid.engine.FalloutInput.debug(this)) {
+            if (inputDebug.isNotEmpty()) inputDebug = ""
+            return
+        }
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - dbgAt < 250) return
+        dbgAt = now
+        inputDebug = "touch $dbgTouch · route $touchRoute · lock $pointerLocked · hide $clientHidesCursor\n" +
+            "abs $dbgAbs · rel $dbgRel · btn $dbgBtn · raw $evdevMouseActive"
+    }
     private var lookDownY = 0f
     private val pointerLockListener = WaylandCompositor.PointerLockListener { locked, _, _ ->
         uiHandler.post {
@@ -281,7 +300,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         override fun run() {
             if (syncClientCursor() && clientHidesCursor) {
                 // Fallout Droid: своя стрелка остаётся, пока мышь ведёт палец (см. showCursor)
-                if (pointerLocked || !usingTouchpad() || relativeMouseMode() ||
+                if (pointerLocked || !usingTouchpad() ||
                     !com.wastelanddroid.engine.FalloutInput.showCursor(this@SessionActivity)) {
                     cursorVisible = false
                     return
@@ -906,6 +925,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 CursorOverlay({ cursorPos }, cursorVisible, resources.displayMetrics.density,
                     cursorImage, cursorHotX, cursorHotY, cursorImageScale)
                 if (memoryHud.text.isNotEmpty()) HudText(memoryHud.text, hudColor, hudOpacity)
+                if (inputDebug.isNotEmpty()) HudText(inputDebug, hudColor, hudOpacity)
                 val phonePanel = glassesOutputActive && !loading.visible && !drawerOpen && !pcKeyboardOpen
                 if (phonePanel) GlassesPhonePanel(glasses, steamVrStatus == SteamVr.Status.RUNNING, headTracking)
                 if (trackingRecovery != null && !drawerOpen && !pcKeyboardOpen && !loading.visible) {
@@ -3018,9 +3038,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Fallout Droid: в относительном режиме игре уходят только сдвиги (sendSceneDelta).
         // Абсолютная позиция здесь всё ломала: игра держит свой курсор сама и возвращала его
         // обратно, поэтому на экране он не двигался.
-        if (!relativeMouseMode()) {
-            WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
-        }
+        WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
+        dbgAbs++
+        inputDebugTick()
         showCursor(cx, cy)
     }
 
@@ -3042,7 +3062,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!touchDrivesPointer()) uiHandler.postDelayed(cursorResync, 60)
         // Fallout Droid: в меню игра прячет системный курсор и рисует свой; пока мышь ведёт палец,
         // показываем собственную стрелку, иначе непонятно, куда нажимаешь.
-        val ownCursor = !pointerLocked && usingTouchpad() && !relativeMouseMode() &&
+        val ownCursor = !pointerLocked && usingTouchpad() &&
             com.wastelanddroid.engine.FalloutInput.showCursor(this)
         if (clientHidesCursor && !ownCursor) { cursorVisible = false; return }
         if (clientHidesCursor) cursorImage = null
@@ -3416,12 +3436,16 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private fun sendSceneDelta(dx: Float, dy: Float) {
+        dbgRel++
+        inputDebugTick()
         val writer = if (evdevMouseActive) mouseWriter else null
         if (writer != null) writer.writeMouseDelta(dx, dy)
         else WaylandCompositor.sendPointerDelta(dx, dy)
     }
 
     private fun sendSceneButton(code: Int, down: Boolean) {
+        if (down) dbgBtn++
+        inputDebugTick()
         val writer = if (evdevMouseActive) mouseWriter else null
         if (writer != null) writer.writeMouseButton(code.toShort(), down)
         else WaylandCompositor.nativeSendSceneInput(3, code, if (down) 1 else 0)
@@ -3486,6 +3510,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             steamSession = SessionState.mode == SessionService.MODE_STEAM,
             steamDesktopUi = SessionState.steamUi == "desktop",
         )
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) { dbgTouch++; dbgAt = 0L }
         val route = com.droiddeck.launcher.input.TouchRouter.decide(snapshot)
         if (route != touchRoute) {
             Log.i(TAG, "touch route $touchRoute -> $route (mode=$routedTouchMode steamUi=${SessionState.steamUi} scrollLayer=$scrollTouchGesture)")
