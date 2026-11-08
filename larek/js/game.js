@@ -1143,6 +1143,8 @@ function setHtml() {
     <div class="card setgrid">
       <label>Кинематографичный ретро-фильтр ${sel('retro', [[0, 'выключен'], [1, 'включён']], st.retro ? 1 : 0)}</label>
       <label>Летающие газеты и мусор ${sel('litter', [[1, 'включены'], [0, 'выключены']], st.litter === 0 ? 0 : 1)}</label>
+      <label>Облегчённый режим (слабые GPU: Mali, Tensor) ${sel('lite', [[2, 'авто'], [1, 'включён'], [0, 'выключен']], st.lite ?? 2)}</label>
+      <div class="muted" style="font-size:12px">Меньше источников света, жёсткие тени, ниже разрешение. ${W && W.gpu ? 'Видеочип: ' + esc(W.gpu().name || '?') + (W.gpu().lite ? ' — режим включён' : '') + '. ' : ''}Применяется после перезапуска.</div>
     </div>
     <h3>Камера</h3>
     <div class="card setgrid">
@@ -1228,6 +1230,7 @@ document.addEventListener('input', e => {
   if (['bob', 'master', 'radio', 'ambience'].includes(k)) { SET[k] = v; if (k !== 'bob') audio.setVolume(k, v); if (sp) sp.textContent = Math.round(v * 100) + '%'; }
   else if (k === 'retro') { SET.retro = v; W && W.setRetro(v); }
   else if (k === 'litter') { SET.litter = v; }
+  else if (k === 'lite') { SET.lite = v; toast('Облегчённый режим применится после перезапуска игры'); }
   else if (k === 'sens') { if (controls) controls.lookSens = v; if (sp) sp.textContent = v.toFixed(2); }
   else { SET.custom = Object.assign({}, QUALITY[SET.quality], SET.custom || {}, { [k]: v }); if (sp) sp.textContent = k === 'draw' ? v + ' м' : v; W && W.applyQuality(SET.custom); }
   saveSet();

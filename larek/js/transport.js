@@ -250,6 +250,7 @@ export function createTransport(env) {
   const hubM = std({ color: 0xc8c2b2, metalness: .65, roughness: .38 });
   const nutM = std({ color: 0x2b2824, metalness: .7, roughness: .4 });
   const wheels = [];
+  const modelWheels = [], modelDoors = []; let modelSteer = null; const exhaustLocal = new THREE.Vector3(-L / 2 + .15, .38, -.75); // части новой модели (заполняются в setModel)
   for (const x of WHEEL_X) {
     for (const s of [-1, 1]) {
       const w = new THREE.Mesh(new THREE.CylinderGeometry(.46, .46, .30, 16), rubberM);
@@ -385,8 +386,8 @@ export function createTransport(env) {
     hair: '#7d7870', hairStyle: 'short', facial: 'mustache',
     gloves: null, scarf: '#6a2a2a', bag: null, coat: false, stripes: null, apron: null,
   });
-  const driver = new Human(kolyaLook, null);
-  const dR = driver.R;
+  let driver = new Human(kolyaLook, null);
+  let dR = driver.R;
   driver.obj.position.set(L / 2 - .68, 1.05 - dR.legLen, -DS * .62);
   driver.obj.rotation.y = Math.PI / 2; // смотрит вперёд по ходу автобуса (+X)
   bus.add(driver.obj);
@@ -398,7 +399,7 @@ export function createTransport(env) {
     driverT += dt;
     if (driverTalkT > 0) driverTalkT = Math.max(0, driverTalkT - dt);
     const steer = clamp(turnRate * 3.5 + Math.sin(driverT * 1.4) * (B_.v > .5 ? .18 : .02), -.65, .65);
-    steerPivot.rotation.y = steer;
+    steerPivot.rotation.y = steer; if (modelSteer) modelSteer.setRotationFromAxisAngle(modelSteer.userData.axis, steer * 2.2); // руль модели
     // Сидячая поза Дяди Коли: бёдра горизонтально на подушке кресла, голени к педалям, руки держат обод руля
     dR.body.position.set(0, 0, 0);
     dR.body.rotation.set(0, 0, 0);
@@ -630,6 +631,8 @@ export function createTransport(env) {
     bus.updateMatrixWorld(true);
 
     wheels.forEach(w => w.rotation.y -= B_.v * dt / .46);
+    for (const w of modelWheels) w.rotation.z -= B_.v * dt / w.userData.r; // колёса новой модели
+    { const th = B_.doorK * 1.45; for (const d of modelDoors) d.rotation.y = d.userData.sgn * th; } // створки дверей внутрь салона
     const night = env.night();
     hl.emissiveIntensity = night ? 3 : 0;
     lamp.intensity = night || onBoard ? 5.5 : B_.doorK > .1 ? 2 : 0;
@@ -697,6 +700,67 @@ export function createTransport(env) {
   }
 
   const doorWorld = () => { bus.updateMatrixWorld(true); return bus.localToWorld(doorLocal.clone()); };
+  // ---------- модель ПАЗ-652 из присланного файла: заменяет процедурный кузов (логика посадки, сиденья, проёмы — прежние) ----------
+  function splitMeshByTris(mesh, pick) { // вырезать из меша треугольники, для которых pick(cx, cy, cz) истинно -> новая геометрия
+    const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry, P_ = g.attributes.position, keep = [], take = [];
+    for (let i = 0; i < P_.count; i += 3) { const cx = (P_.getX(i) + P_.getX(i + 1) + P_.getX(i + 2)) / 3, cy = (P_.getY(i) + P_.getY(i + 1) + P_.getY(i + 2)) / 3, cz = (P_.getZ(i) + P_.getZ(i + 1) + P_.getZ(i + 2)) / 3; (pick(cx, cy, cz) ? take : keep).push(i); }
+    const build = list => { const o = new THREE.BufferGeometry(); for (const [n, a] of Object.entries(g.attributes)) { const s = a.itemSize, arr = new Float32Array(list.length * 3 * s); const G = ['getX', 'getY', 'getZ', 'getW']; list.forEach((i, j) => { for (let v = 0; v < 3; v++) for (let c = 0; c < s; c++) arr[(j * 3 + v) * s + c] = a[G[c]](i + v); }); o.setAttribute(n, new THREE.BufferAttribute(arr, s)); } o.computeBoundingBox(); return o; };
+    return [build(take), build(keep)];
+  }
+  function setModel(gltf, driverParts) {
+    // процедурный кузов прячем; сиденья остаются невидимыми мишенями для посадки
+    bus.traverse(o => { if (o.isMesh && !o.userData.driverKolya) o.visible = false; });
+    const root = gltf.scene.clone(true); root.updateMatrixWorld(true); const g = new THREE.Group(); bus.add(g);
+    const meshes = []; root.traverse(o => { if (o.isMesh) meshes.push(o); });
+    const DOORS = [{ c: 1.3, hw: .47 }, { c: -2.53, hw: .47 }]; // проёмы по правому борту (+Z)
+    DOOR_X[0] = DOORS[0].c; DOOR_X[1] = DOORS[1].c; doorLocal.x = DOORS[0].c;
+    for (const m of meshes) {
+      const mat = m.material, mn = mat.name || '';
+      if (/Glass/i.test(mn)) { mat.transparent = true; mat.opacity = .32; mat.alphaTest = 0; mat.depthWrite = false; mat.color.multiplyScalar(.7); m.renderOrder = 2; }
+      if (/Seats/.test(mn)) { mat.normalMap = null; mat.needsUpdate = true; } // карта нормалей сидений давала чёрные спинки
+      m.castShadow = !/Glass|Seats|Inside|Floor/i.test(mn); m.receiveShadow = true; m.userData.bus = true;
+      let geo = m.geometry.clone(); geo.applyMatrix4(m.matrixWorld);
+      const tmpM = new THREE.Mesh(geo, mat);
+      if (/Tire|Wheel$|PAZ_Wheel/.test(mn) && !/SWheel/.test(mn)) { // колёса: 4 кластера по бортам и осям
+        for (const front of [true, false]) for (const sd of [1, -1]) {
+          const [part] = splitMeshByTris(tmpM, (x, y, z) => (x > .4) === front && Math.sign(z) === sd); if (!part.attributes.position.count) continue;
+          const bb = part.boundingBox, c = bb.getCenter(new THREE.Vector3()); part.translate(-c.x, -c.y, -c.z);
+          let piv = modelWheels.find(w => w.userData.key === (front ? 'f' : 'r') + sd);
+          if (!piv) { piv = new THREE.Group(); piv.position.copy(c); piv.userData = { key: (front ? 'f' : 'r') + sd, r: Math.max(.3, (bb.max.y - bb.min.y) / 2) }; g.add(piv); modelWheels.push(piv); }
+          const wm = new THREE.Mesh(part, mat); wm.castShadow = true; wm.userData.bus = true; piv.add(wm);
+        }
+        continue;
+      }
+      if (/SWheel/.test(mn)) { geo.computeBoundingBox(); const c = geo.boundingBox.getCenter(new THREE.Vector3()); geo.translate(-c.x, -c.y, -c.z);
+        modelSteer = new THREE.Mesh(geo, mat); modelSteer.position.copy(c); modelSteer.userData.axis = new THREE.Vector3(-.62, .78, 0).normalize(); g.add(modelSteer); continue; }
+      // створки дверей: из кузова и стёкол вырезаем прямоугольник проёма, делим пополам — по створке на петлю
+      if (/BodyDetals|BodyOut|MainGlass/.test(mn)) {
+        let rest = tmpM;
+        for (const d of DOORS) {
+          const [door, keep] = splitMeshByTris(rest, (x, y, z) => z > 1.0 && Math.abs(x - d.c) < d.hw && y > .3 && y < 2.45);
+          rest = new THREE.Mesh(keep, mat);
+          for (const sgn of [1, -1]) { const [leaf] = splitMeshByTris(new THREE.Mesh(door, mat), x => (x < d.c) === (sgn === 1)); if (!leaf.attributes.position.count) continue;
+            const pivX = d.c - sgn * d.hw, pz = leaf.boundingBox.max.z; leaf.translate(-pivX, 0, -pz);
+            const piv = new THREE.Group(); piv.position.set(pivX, 0, pz); piv.userData.sgn = sgn; g.add(piv); modelDoors.push(piv);
+            const lm = new THREE.Mesh(leaf, mat); lm.renderOrder = m.renderOrder; lm.userData.bus = true; lm.castShadow = m.castShadow; piv.add(lm); }
+        }
+        geo = rest.geometry;
+      }
+      const om = new THREE.Mesh(geo, mat); om.castShadow = m.castShadow; om.receiveShadow = true; om.renderOrder = m.renderOrder; om.userData.bus = true; g.add(om);
+      if (/DriverSeat/.test(mn)) { geo.computeBoundingBox(); g.userData.driverSeat = geo.boundingBox.clone(); }
+    }
+    // водитель из присланной модели — на месте водителя модели
+    if (driverParts) {
+      bus.remove(driver.obj); driverMeshes.length = 0;
+      const look = makeLook('worker'); look.height = 1.79; look.male = true;
+      driver = new Human(look, driverParts); dR = driver.R;
+      const sb = g.userData.driverSeat; const sx = sb ? (sb.min.x + sb.max.x) / 2 + .1 : L / 2 - .9, sz = sb ? (sb.min.z + sb.max.z) / 2 : -.62, sy = sb ? sb.min.y + (sb.max.y - sb.min.y) * .36 : 1.05;
+      driver.obj.position.set(sx, sy - dR.legLen, sz); driver.obj.rotation.y = Math.PI / 2; bus.add(driver.obj);
+      driver.obj.traverse(o => { if (o.isMesh) { o.userData.driverKolya = true; o.userData.bus = true; driverMeshes.push(o); } });
+    }
+  }
+  const exhaustWorld = new THREE.Vector3();
+  function exhaust() { busToWorld(exhaustLocal.x, exhaustLocal.y, exhaustLocal.z, exhaustWorld); return { pos: exhaustWorld, v: B_.v, heading: B_.heading }; }
   function canBoard() { return false; } // вход в автобус теперь осуществляется пешком через открывающиеся двери
   function board() {}
   function canAlight() { return !!seatedSeat; }
@@ -725,9 +789,9 @@ export function createTransport(env) {
   return {
     tick, board, alight, canBoard, canAlight,
     lookedSeat, sitOnSeat, standFromSeat,
-    lookingAtDriver, talkToDriver, driver,
+    lookingAtDriver, talkToDriver, get driver() { return driver; }, setModel, exhaust,
     playerBlocked, floorHeightAt, syncPlayerBoarding,
-    get doorK() { return B_.doorK; },
+    get doorK() { return B_.doorK; }, bus,
     get riding() { return !!seatedSeat; },
     get onBoard() { return onBoard; },
     get seated() { return !!seatedSeat; },

@@ -24,7 +24,7 @@ export function createAudio() {
     sfxBus = ctx.createGain(); sfxBus.connect(master);
     ambBus = ctx.createGain(); ambBus.gain.value = st.ambience; ambBus.connect(master);
     // шаги
-    for (const [k, url] of [['walk', 'assets/audio/walk.mp3'], ['snow', 'assets/audio/walk_snow.mp3'], ...['shot', 'gun_open', 'gun_shell', 'gun_shell2', 'gun_close', 'shell_drop', 'gun_move', 'stuk', 'dostavka', 'horn'].map(n => [n, 'assets/audio/' + n + '.mp3'])])
+    for (const [k, url] of [['walk', 'assets/audio/walk.mp3'], ['snow', 'assets/audio/walk_snow.mp3'], ...['shot', 'gun_open', 'gun_shell', 'gun_shell2', 'gun_close', 'shell_drop', 'gun_move', 'stuk', 'dostavka', 'horn', 'car_engine', 'bus_engine'].map(n => [n, 'assets/audio/' + n + '.mp3'])])
       fetch(url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(b => { buffers[k] = b; }).catch(e => console.warn('audio', url, e));
     // радио — потоковый <audio>, подключённый в граф (панорама + фильтр)
     radioEl = new Audio('assets/audio/radio.mp3'); radioEl.loop = true; radioEl.preload = 'auto'; radioEl.crossOrigin = 'anonymous';
@@ -88,8 +88,11 @@ export function createAudio() {
     }
     for (const [id, c] of cars) if (c.panner) {
       const p = c.pos; if (c.panner.positionX) { c.panner.positionX.value = p.x; c.panner.positionY.value = .6; c.panner.positionZ.value = p.z; } else c.panner.setPosition(p.x, .6, p.z);
-      c.osc.frequency.setTargetAtTime(32 + c.speed * 4.5, t, .1); c.osc2.frequency.setTargetAtTime(64 + c.speed * 9, t, .1);
-      c.gain.gain.setTargetAtTime((.05 + c.speed * .012) * (env.inside ? .35 + .5 * env.doorOpen : 1), t, .1);
+      if (c.osc && buffers[c.key]) { try { c.osc.stop(); c.osc2.stop(); } catch (e) {} cars.delete(id); addCar(id); continue; } // запись догрузилась — переключаемся на неё
+      const busK = c.key === 'bus_engine';
+      if (c.src) c.src.playbackRate.setTargetAtTime((busK ? .85 : .8) + Math.min(c.speed, 12) * (busK ? .045 : .05), t, .15); // холостой ход → разгон
+      else { c.osc.frequency.setTargetAtTime(32 + c.speed * 4.5, t, .1); c.osc2.frequency.setTargetAtTime(64 + c.speed * 9, t, .1); }
+      c.gain.gain.setTargetAtTime((c.src ? (busK ? .32 : .2) + c.speed * (busK ? .02 : .016) : .05 + c.speed * .012) * (env.inside ? .35 + .5 * env.doorOpen : 1), t, .1);
     }
   }
 
@@ -228,12 +231,18 @@ export function createAudio() {
   // ---- моторы машин ----
   function addCar(id) {
     if (!ctx || cars.has(id)) return;
-    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; const osc2 = ctx.createOscillator(); osc2.type = 'triangle';
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380;
+    // двигатель — зацикленная запись пользователя (автобус — свой звук); тон и громкость от скорости; пока запись не загружена — синтез
+    const key = String(id) === 'bus' ? 'bus_engine' : 'car_engine';
     const gain = ctx.createGain(); gain.gain.value = 0;
     const panner = ctx.createPanner(); Object.assign(panner, { panningModel: 'equalpower', distanceModel: 'inverse', refDistance: 4, rolloffFactor: 1.4, maxDistance: 120 });
-    osc.connect(f); osc2.connect(f); f.connect(gain); gain.connect(panner); panner.connect(ambBus); osc.start(); osc2.start();
-    cars.set(id, { osc, osc2, gain, panner, pos: { x: 0, z: 0 }, speed: 0 });
+    gain.connect(panner); panner.connect(ambBus);
+    const c = { gain, panner, pos: { x: 0, z: 0 }, speed: 0, key, src: null, osc: null };
+    if (buffers[key]) { const s = ctx.createBufferSource(); s.buffer = buffers[key]; s.loop = true; s.playbackRate.value = .8; s.connect(gain); s.start(0, Math.random() * buffers[key].duration); c.src = s; }
+    else {
+      const osc = ctx.createOscillator(); osc.type = 'sawtooth'; const osc2 = ctx.createOscillator(); osc2.type = 'triangle';
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380; osc.connect(f); osc2.connect(f); f.connect(gain); osc.start(); osc2.start(); c.osc = osc; c.osc2 = osc2;
+    }
+    cars.set(id, c);
   }
   function carState(id, x, z, speed) { const c = cars.get(id); if (c) { c.pos.x = x; c.pos.z = z; c.speed = speed; } else if (ctx) addCar(id); }
 

@@ -30,7 +30,12 @@ export function createWorld(ctx) {
   const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
   const Q = Object.assign({}, QUALITY[ctx.settings().quality || (isMobile ? 'medium' : 'high')], ctx.settings().custom || {});
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap; // мягкие края теней
+  // слабые/малосовместимые GPU (Mali в Tensor/Exynos/MediaTek, PowerVR, Xclipse): облегчённый режим — меньше источников света,
+  // жёсткие тени вместо мягких, без кубических отражений в лужах, ниже разрешение рендера. Adreno (Snapdragon) — как было.
+  const GPU = (() => { try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return String(e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch (e) { return ''; } })();
+  const liteSet = ctx.settings().lite ?? 2; // 2 — авто, 1 — всегда, 0 — никогда
+  const LITE = liteSet === 1 || (liteSet === 2 && /Mali|Immortalis|PowerVR|Xclipse|Vivante|Tensor/i.test(GPU));
+  renderer.shadowMap.type = LITE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap; // мягкие края теней (на слабых GPU — обычный PCF)
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(72, 1, .05, 400); camera.rotation.order = 'YXZ'; scene.add(camera);
@@ -110,7 +115,7 @@ export function createWorld(ctx) {
   let DPR = 1;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    DPR = Math.min(window.devicePixelRatio || 1, Q.dpr);
+    DPR = Math.min(window.devicePixelRatio || 1, LITE ? Math.min(Q.dpr, .8) : Q.dpr); // на слабых GPU рендер в пониженном разрешении
     renderer.setPixelRatio(DPR); renderer.setSize(w, h, false);
     rt.setSize(Math.round(w * DPR), Math.round(h * DPR)); post.uniforms.res.value.set(w * DPR, h * DPR);
     camera.aspect = w / h; baseFov = w > h ? 66 : 76; camera.updateProjectionMatrix();
@@ -302,11 +307,11 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // Приглушённая мягкая подсветка потолка от тусклой лампы накаливания
   const ceilingBounce = new THREE.PointLight(0xffb878, 0.62, 3.1, 2.0);
-  ceilingBounce.position.set(0, 2.12, -.1); scene.add(ceilingBounce);
+  ceilingBounce.position.set(0, 2.12, -.1); if (!LITE) scene.add(ceilingBounce); // на слабых GPU — без «отражённого» света
   ceilingBounce.castShadow = false;
 
   const fillLight = new THREE.PointLight(0xffb880, 0.32, 2.8, 2.1);
-  fillLight.position.set(0, 1.0, .2); scene.add(fillLight);
+  fillLight.position.set(0, 1.0, .2); if (!LITE) scene.add(fillLight);
   const streetLights = [];
   const flashlight = new THREE.SpotLight(0xfff4e0, 0, 28, .45, .5, 1.5); flashlight.position.set(.15, -.1, 0); camera.add(flashlight); camera.add(flashlight.target); flashlight.target.position.set(0, 0, -5);
 
@@ -2006,7 +2011,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (let k = 0; k <= 12; k++) { const t = k / 12; pts.push(new THREE.Vector3(lerp(a.x, b.x, t), a.y + dy - Math.sin(t * Math.PI) * .9, a.z)); }
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
   }
-  for (const x of [-332, -6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 20, 1.6); pl.position.set(x, 4.9, 7.2); scene.add(pl); streetLights.push(pl); }
+  for (const x of [-332, -6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 20, 1.6); pl.position.set(x, 4.9, 7.2); if (!LITE) scene.add(pl); streetLights.push(pl); } // на слабых GPU фонари — только светящиеся плафоны и пятна на земле
 
   // ---------- ПРИДОРОЖНЫЕ УКАЗАТЕЛИ И СТЕЛА КРАСНОЗАВОДСКОГО ЗАВОДА ----------
   const roadSignGroup = new THREE.Group(); roadSignGroup.userData.dyn = true; scene.add(roadSignGroup);
@@ -2167,7 +2172,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   // Внутреннее освещение проходной (тёплый яркий свет лампы)
   const fLobbyLight = new THREE.PointLight(0xffdfa0, 4.5, 14, 1.6);
-  fLobbyLight.position.set(-334.0, 3.6, -3.8); scene.add(fLobbyLight);
+  fLobbyLight.position.set(-334.0, 3.6, -3.8); if (!LITE) scene.add(fLobbyLight);
   fBox(.8, .08, .3, MAT.lampHead, -334.0, 4.15, -3.8, false);
 
   // Козырёк над главным входом в проходную
@@ -2322,7 +2327,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const loader = new GLTFLoader();
   const ASSETS = {};
   let loadedN = 0; const SDS_NPC = ["cmeszl", "cmeszl2", "cmeszz", "cmeszz2", "cmeszz3", "cpros1l", "cpros1z", "cpros2l", "cpros2z", "cirand", "cvezedv"]; // прохожие: *z — зимняя одежда, *l — летняя, без суффикса — на любой сезон
-  const toLoad = [...SDS_NPC.map(n => 'npc_' + n), 'npc_police', 'bmw733i', 'apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
+  const toLoad = [...SDS_NPC.map(n => 'npc_' + n), 'npc_police', 'npc_driver', 'paz652', 'forest_trees', 'bmw733i', 'apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   // детализация фасадов панелек: фактура бетона в мировых координатах (без растяжения по UV), потёки от швов и подоконников, сырость и грязь у цоколя
   const facadeTex = (() => { const t = TL.load('assets/tex/pbr/concrete_col.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return regTex(t); })();
@@ -2362,6 +2367,55 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function colFromBox(o, shrink = 0) { const b = new THREE.Box3().setFromObject(o); return addCol(b.min.x + shrink, b.max.x - shrink, b.min.z + shrink, b.max.z - shrink); }
   let staticWorker = null, peopleModels = [], policeModel = null; const peopleByOutfit = {};
   const outfitNow = () => { const m = season < 0 ? 0 : season; return (m >= 10 || m <= 2) ? 'winter' : (m >= 5 && m <= 7) ? 'summer' : 'mid'; };
+  // ---------- лес вдоль дороги на завод (сосны из присланной сцены; без камней, травы и брёвен) ----------
+  // деревья рисуются инстансами: на каждую часть дерева один вызов отрисовки. Зимой ветки и хвоя сверху заснежены.
+  const forestSnowU = { value: 0 }, forestCells = [];
+  function snowyTree(m) {
+    m.onBeforeCompile = sh => { sh.uniforms.uSnowK = forestSnowU;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUpN;').replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\nvUpN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal).y;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnowK; varying float vUpN;').replace('#include <map_fragment>', '#include <map_fragment>\n{ float sn = uSnowK * smoothstep(-.15, .55, vUpN); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.92, .94, .97), sn * .85); }'); };
+    m.customProgramCacheKey = () => 'snowyTree';
+  }
+  function placeForest(A) {
+    const kinds = {}; A.scene.updateMatrixWorld(true);
+    A.scene.traverse(o => { if (!o.isMesh) return; const [k, part] = o.name.split('_'); (kinds[k] = kinds[k] || {})[part] = o; });
+    const types = Object.keys(kinds); if (!types.length) return;
+    const spots = []; const rng = (a, b) => a + Math.random() * (b - a);
+    const N = LITE ? 70 : 140, blocked = (x, z, r) => colliders.some(b => x > b.x1 - r && x < b.x2 + r && z > b.z1 - r && z < b.z2 + r);
+    for (let i = 0, guard = 0; spots.length < N && guard < N * 30; guard++) {
+      const x = rng(-296, -112), north = Math.random() < .5, z = north ? rng(22, 62) : rng(-62, -12);
+      if (blocked(x, z, 3) || spots.some(s => Math.hypot(s.x - x, s.z - z) < 4.2)) continue;
+      const t = types[Math.floor(Math.random() * types.length)];
+      spots.push({ x, z, t, s: t[0] === 's' ? rng(3.6, 5) : rng(6.5, 9), r: rng(0, 6.28) });
+    }
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    for (const t of types) for (const part of ['bark', 'leaves']) { const src = kinds[t][part]; if (!src) continue; const mat = src.material;
+      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace; if (part === 'leaves') { mat.alphaTest = .45; mat.transparent = false; mat.side = THREE.DoubleSide; } snowyTree(mat); }
+    // участки по 40 м: каждый — свои инстансы; дальние участки не рисуются вовсе (раньше весь лес рисовался даже от ларька)
+    const cells = {}; for (const s of spots) (cells[Math.floor(s.x / 40)] = cells[Math.floor(s.x / 40)] || []).push(s);
+    for (const [ci, cs] of Object.entries(cells)) {
+      const grp = new THREE.Group(); grp.userData.cx = (+ci + .5) * 40; scene.add(grp); forestCells.push(grp);
+      for (const t of types) { const list = cs.filter(s => s.t === t); if (!list.length) continue;
+        for (const part of ['bark', 'leaves']) { const src = kinds[t][part]; if (!src) continue;
+          const im = new THREE.InstancedMesh(src.geometry, src.material, list.length); im.castShadow = false; im.receiveShadow = !LITE;
+          list.forEach((s, i) => im.setMatrixAt(i, M.compose(new THREE.Vector3(s.x, 0, s.z), Q.setFromAxisAngle(Y, s.r), S.setScalar(s.s))));
+          im.computeBoundingSphere(); grp.add(im); } }
+    }
+    for (const s of spots) addCol(s.x - .35, s.x + .35, s.z - .35, s.z + .35); // стволы
+    seasonHooks.push(w => { forestSnowU.value = w ? 1 : 0; });
+    forestSnowU.value = winter ? 1 : 0;
+  }
+  // прогрев шейдеров: всё, что изнутри ларька не попадало в кадр, компилировалось разом при выходе (фриз 2–3 с на Mali/Tensor).
+  // После загрузки один раз рисуем весь город с отключённым отсечением, в том числе проход теней, в крошечную цель.
+  function warmUpShaders() {
+    const prev = []; scene.traverse(o => { if (o.isMesh || o.isPoints || o.isLine) { prev.push([o, o.frustumCulled]); o.frustumCulled = false; } });
+    const rtW = new THREE.WebGLRenderTarget(64, 32); const cam = camera.clone(); cam.position.set(0, 30, 60); cam.lookAt(0, 0, 0); cam.far = 2000; cam.updateProjectionMatrix();
+    const saved = { cs: kioskSpot.castShadow };
+    try { renderer.compile(scene, cam); renderer.setRenderTarget(rtW); renderer.shadowMap.needsUpdate = true; renderer.render(scene, cam); renderer.render(scene, camera); if (weapon && weapon.scene) renderer.compile(weapon.scene, weapon.cam); }
+    catch (e) { console.warn('warmup', e); }
+    renderer.setRenderTarget(null); rtW.dispose(); for (const [o, f] of prev) o.frustumCulled = f; kioskSpot.castShadow = saved.cs;
+  }
+  loading.then(() => setTimeout(warmUpShaders, 50));
   loading.then(() => {
     // машины: заменить процедурные на модели
     if (ASSETS.vaz2101 || ASSETS.vaz2107) for (const g of carGroups) { const keep = { ...g.userData }; for (const ch of g.children.slice()) g.remove(ch); g.userData = { color: keep.color, parked: keep.parked, dyn: true }; realCar(g); }
@@ -2476,6 +2530,8 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       }
     }
     if (ASSETS.people && !peopleModels.length) { try { for (const o of ['winter', 'mid', 'summer']) peopleByOutfit[o] = preparePeople(ASSETS.people.scene, o); peopleModels = peopleByOutfit.winter; } catch (e) { console.warn('Модели людей', e); } }
+    if (ASSETS.forest_trees) { try { placeForest(ASSETS.forest_trees); } catch (e) { console.warn('Лес', e); } }
+    if (ASSETS.paz652) { try { let dp = null; if (ASSETS.npc_driver) { const m = meshesOf(ASSETS.npc_driver)[0]; if (m.material.map) m.material.map.colorSpace = THREE.SRGBColorSpace; dp = prepareSdsPerson(m, 'driver').parts; } transport.setModel(ASSETS.paz652, dp); } catch (e) { console.warn('Модель автобуса', e); } }
     if (ASSETS.npc_police) { try { const m = meshesOf(ASSETS.npc_police)[0]; if (m.material.map) m.material.map.colorSpace = THREE.SRGBColorSpace; policeModel = prepareSdsPerson(m, 'police').parts; } catch (e) { console.warn('Модель милиционера', e); } }
     if (!policeModel && ASSETS.police) { // запасной вариант (файл police.glb удалён — форма теперь на модели прохожего)
       try { const m = meshesOf(ASSETS.police)[0]; if (m) { m.updateMatrixWorld(true); const mp = m.material.map; if (mp) mp.colorSpace = THREE.SRGBColorSpace; policeModel = preparePolice(m.geometry.clone().applyMatrix4(m.matrixWorld), mp); } } catch (e) { console.warn('Модель милиционера', e); } }
@@ -2909,7 +2965,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const S = ctx.getS();
     const peds = people.filter(p => p.role === 'ped').length;
     const night = nightK > .6;
-    const want = Math.min(Q.npc - 4, night ? 4 : 12);
+    const want = Math.min(Q.npc - 4, night ? 4 : 12, LITE ? 6 : 99); // на слабых GPU прохожих меньше
     if (peds < want && Math.random() < dt * .7) {
       const kind = night ? pick(['worker', 'youth', 'gopnik', 'police']) : pick(['babka', 'dedushka', 'worker', 'school', 'youth', 'neighbor', 'police']);
       const sp = pickSpawn({ x: R(-40, 40), z: R(-15, 10) });
@@ -3526,17 +3582,17 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     Object.assign(Q, q);
     const sh = Q.shadows > 0;
     renderer.shadowMap.enabled = sh;
-    sun.castShadow = sh; if (sh) { sun.shadow.mapSize.set(Math.min(Q.shadows, 1024), Math.min(Q.shadows, 1024)); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+    sun.castShadow = sh && !LITE; if (sh) { const ss = Math.min(Q.shadows, 1024); sun.shadow.mapSize.set(ss, ss); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } // на слабых GPU солнечных теней нет (проход теней рисовал ~1000 объектов второй раз)
     kioskSpot.castShadow = sh;
     if (sh) {
-      const spSz = Math.min(1024, Math.max(512, Q.shadows)); // свет лампы в ларьке — главные тени в игре, им нужно разрешение
+      const spSz = LITE ? 512 : Math.min(1024, Math.max(512, Q.shadows)); // свет лампы в ларьке — главные тени в игре, им нужно разрешение
       kioskSpot.shadow.mapSize.set(spSz, spSz);
       if (kioskSpot.shadow.map) { kioskSpot.shadow.map.dispose(); kioskSpot.shadow.map = null; }
     }
     bulbLight.castShadow = false; fillLight.visible = Q.light >= 1;
     camera.far = Q.draw + 60; camera.updateProjectionMatrix(); sky.scale.setScalar(Math.min(1, (Q.draw + 40) / 380));
     allTex.forEach(t => { t.anisotropy = Q.aniso; if (t.image) t.needsUpdate = true; });
-    buildSnow(Q.snow); buildRain(Math.round(Q.snow * .8)); buildPuddles(Q.light >= 1);
+    buildSnow(Q.snow); buildRain(Math.round(Q.snow * .8)); buildPuddles(Q.light >= 1 && !LITE); // кубические отражения в лужах — не на слабых GPU
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
     resize();
   }
@@ -4153,7 +4209,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     { const ed = Math.min(P.x - BOUND.x1, BOUND.x2 - P.x, P.z - BOUND.z1); stormK = clamp(1 - ed / 14, 0, 1); }
     // Сначала обновляем движение машин и автобуса в текущем кадре, чтобы камера игрока в автобусе двигалась абсолютно плавно без дрожания
     const _t0 = performance.now();
-    carsTick(dt);
+    carsTick(dt); exhaustTick(dt);
     transport.tick(dt, [...(transport.onBoard ? [] : [{ x: P.x, z: P.z }]), ...cars.map(c => ({ x: c.m.position.x, z: c.m.position.z })), ...people.filter(p => !p.inBus).map(p => ({ x: p.h.obj.position.x, z: p.h.obj.position.z }))]);
     { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca;
       busCol.x1 = busCol.x2 = 999; // столкновения игрока со стенками и дверями автобуса обрабатываются точно в transport.playerBlocked
@@ -4296,7 +4352,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     kioskSpot.intensity = (1.75 + nightK * 0.65) * bulbFlicker;
     bulbLight.intensity = (0.58 + nightK * 0.25) * bulbFlicker;
     ceilingBounce.intensity = (0.62 + nightK * 0.18) * bulbFlicker;
-    kioskSpot.castShadow = renderer.shadowMap.enabled && (inside || (typeof bDist !== 'undefined' && bDist < 7.5));
+    kioskSpot.castShadow = renderer.shadowMap.enabled; // постоянно: переключение меняло набор шейдеров и вызывало перекомпиляцию всех материалов
     bulbLight.castShadow = false;
     // звук
     ctx.audio && ctx.audio.update({ camera, radioPos, inside, doorOpen, wind: Math.min(1.5, (winter ? weather.wind : weather.wind * .4) + weather.gust * .5 + stormK), night: nightK > .6, rain: weather.rain });
@@ -4371,6 +4427,31 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const _t3 = performance.now(); TIM.cars = _t1 - _t0; TIM.people = _t2 - _t1; TIM.rest = _t3 - _t2;
   }
   const TIM = {};
+  // ---------- выхлоп: лёгкий дымок из труб машин и автобуса (одна система частиц — один вызов отрисовки) ----------
+  const SMOKE_N = LITE ? 48 : 96;
+  const smokeGeo = new THREE.BufferGeometry(); const smP = new Float32Array(SMOKE_N * 3), smA = new Float32Array(SMOKE_N * 2);
+  smokeGeo.setAttribute('position', new THREE.BufferAttribute(smP, 3)); smokeGeo.setAttribute('ls', new THREE.BufferAttribute(smA, 2));
+  const smokeMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { col: { value: new THREE.Color(0xb8b8b4) }, light: { value: 1 }, scale: { value: 300 } },
+    vertexShader: 'attribute vec2 ls; varying float vA; uniform float scale; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); vA = ls.y; gl_PointSize = ls.x * scale / -mv.z; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform vec3 col; uniform float light; varying float vA; void main(){ vec2 d = gl_PointCoord - .5; float r = dot(d, d) * 4.; if (r > 1.) discard; gl_FragColor = vec4(col * light, vA * (1. - r) * (1. - r)); }' });
+  const smoke = new THREE.Points(smokeGeo, smokeMat); smoke.frustumCulled = false; smoke.renderOrder = 3; scene.add(smoke);
+  const smk = Array.from({ length: SMOKE_N }, () => ({ life: 0, max: 1, x: 0, y: -99, z: 0, vx: 0, vy: 0, vz: 0, s: .2 })); let smkI = 0;
+  function puff(x, y, z, vx, vz, strength = 1) { const p = smk[smkI]; smkI = (smkI + 1) % SMOKE_N; Object.assign(p, { life: 0, max: R(1.4, 2.2), x, y, z, vx: vx * .3 + R(-.15, .15), vy: R(.25, .45), vz: vz * .3 + R(-.15, .15), s: R(.18, .28), k: strength }); }
+  const exT = new Map();
+  function exhaustTick(dt) {
+    { const far = LITE ? 75 : 115; for (const g of forestCells) g.visible = Math.abs(g.userData.cx - P.x) < far; } // лес — только ближние участки
+    const emit = (id, x, y, z, v, hd, rate) => { // пыхтит сильнее на холостом/при разгоне, но всё равно едва заметно
+      let t = (exT.get(id) || 0) - dt; if (Math.hypot(x - P.x, z - P.z) > 45) { exT.set(id, t); return; }
+      if (t <= 0) { puff(x, y, z, -Math.cos(hd) * Math.min(v, 6) * .3, Math.sin(hd) * Math.min(v, 6) * .3, winter ? 1.3 : .8); t = 1 / rate * (LITE ? 1.6 : 1); } exT.set(id, t); };
+    for (const c of cars) { const hd = c.m.rotation.y, ex = c.m.position.x - Math.cos(hd) * 2.05 - Math.sin(hd) * -.45, ez = c.m.position.z + Math.sin(hd) * 2.05 + Math.cos(hd) * -.45; emit(c.id, ex, .28, ez, c.v, hd, c.v < 1 ? 2.2 : 3.2); }
+    if (transport.exhaust) { const e = transport.exhaust(); emit('bus', e.pos.x, e.pos.y, e.pos.z, e.v, e.heading, e.v < 1 ? 3 : 4.5); }
+    for (let i = 0; i < SMOKE_N; i++) { const p = smk[i]; if (p.y < -50) { smP[i * 3 + 1] = -99; smA[i * 2 + 1] = 0; continue; }
+      p.life += dt; const k = p.life / p.max; if (k >= 1) { p.y = -99; smA[i * 2 + 1] = 0; smP[i * 3 + 1] = -99; continue; }
+      p.x += (p.vx + windVec.x * .25) * dt; p.y += p.vy * dt; p.z += (p.vz + windVec.y * .25) * dt; p.vx *= .97; p.vz *= .97;
+      smP[i * 3] = p.x; smP[i * 3 + 1] = p.y; smP[i * 3 + 2] = p.z; smA[i * 2] = p.s * (1 + k * 3.2); smA[i * 2 + 1] = .16 * p.k * Math.min(1, k * 6) * (1 - k); }
+    smokeGeo.attributes.position.needsUpdate = true; smokeGeo.attributes.ls.needsUpdate = true;
+    smokeMat.uniforms.light.value = .35 + (1 - nightK) * .65; smokeMat.uniforms.scale.value = renderer.domElement.height * .9;
+  }
   function carsTick(dt) {
     const need = { low: 2, medium: 3, high: 4, max: 5 }[ctx.settings().quality] || 3;
     while (cars.length < need) { // новая машина — не ближе 15 м к другим
@@ -4484,6 +4565,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
     setRetro(v) { post.uniforms.retro.value = v ? 1 : 0; },
-    debug: { spawnPed: () => { const p = newPerson(pick(["worker", "youth", "neighbor", "babka"]), "ped", "s5"); return p; }, spawnKind: (k, node = "s5") => newPerson(k, "ped", node), TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
+    gpu: () => ({ name: GPU, lite: LITE }),
+    debug: { renderer, spawnPed: () => { const p = newPerson(pick(["worker", "youth", "neighbor", "babka"]), "ped", "s5"); return p; }, spawnKind: (k, node = "s5") => newPerson(k, "ped", node), TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
   };
 }
