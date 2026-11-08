@@ -232,9 +232,9 @@ vec2 hdUV(out vec3 T, out vec3 B, out vec3 N){ vec3 a = abs(vHN);
     floor: hdMat('floor', { scale: 1.4, rough: .96, nrm: .35, rotY: 1, color: 0xc8a888 }),
     ceiling: hdMat('plaster', { scale: 2.2, color: 0xddd6ca, rough: .94, nrm: 1.15 }),
     roofTin: hdMat('metal', { scale: 1.2, metal: .6, color: 0xb0b0ac }),
-    wood: hdMat('panel', { scale: .9, color: 0xb59a80, rough: .9 }),
+    wood: hdMat('panel', { scale: .9, color: 0x9c826a, rough: .96, nrm: .35 }),
     shelf: hdMat('dsp', { scale: .6, rough: .95 }),
-    counter: hdMat('counter', { scale: .8, rough: .6, nrm: .6 }),
+    counter: hdMat('counter', { scale: .8, color: 0x8e7258, rough: .92, nrm: .35 }),
     glass: new THREE.MeshStandardMaterial({ color: 0xaac4cc, transparent: true, opacity: .1, roughness: .05, metalness: .1, depthWrite: false }),
     steel: hdMat('metal', { scale: .5, metal: .85, rough: .8, color: 0xc8c8c4 }),
     dark: hdMat('darkmetal', { scale: .5, metal: .4, rough: 1 }),
@@ -446,7 +446,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const wm = inner => [0, 1, 2, 3, 4, 5].map(i => i === inner ? MAT.wallpaper : MAT_SOYUZ_EXT);
   const kioskWalls = [];
   const kw = (...a) => { const m = box(...a); kioskWalls.push(m); occ(m); return m; };
-  kw(1.9, KH, T_, wm(4), -.55, KH / 2, -KD, K); kw(.3, KH, T_, wm(4), 1.35, KH / 2, -KD, K); kw(.8, KH - 2.05, T_, wm(4), .8, 2.05 + (KH - 2.05) / 2, -KD, K);
+  kw(1.9, KH, T_, wm(4), -.55, KH / 2, -KD, K); kw(.3, KH, T_, wm(4), 1.35, KH / 2, -KD, K); kw(.8, KH - 2.04, T_, wm(4), .8, 2.04 + (KH - 2.04) / 2, -KD, K);
   kw(KW * 2, 1.0, T_, wm(5), 0, .5, KD, K); kw(KW * 2, KH - 2.15, T_, wm(5), 0, 2.15 + (KH - 2.15) / 2, KD, K);
   kw(.15, 1.15, T_, wm(5), -1.425, 1.575, KD, K); kw(.15, 1.15, T_, wm(5), 1.425, 1.575, KD, K);
   kw(T_, KH, KD * 2, wm(0), -KW, KH / 2, 0, K); kw(T_, KH, KD * 2, wm(1), KW, KH / 2, 0, K);
@@ -594,13 +594,25 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     ctx.onCtl && ctx.onCtl();
   }
   seasonHooks.push(w => { winGlassMat.map = w ? winTexes.frost : winTexes.dirt; winGlassMat.needsUpdate = true; });
-  // прилавок, витрина
-  box(2.9, .05, .45, MAT.counter, 0, .98, KD - .22, K); box(.9, .96, .06, MAT.wood, -1.0, .48, KD - .44, K); box(.9, .96, .06, MAT.wood, 1.0, .48, KD - .44, K); // до самой столешницы — без щели, через которую видно улицу // передняя панель прилавка с нишей посередине
-  // ниша под прилавком: сюда прячут товар «из-под полы» (самогон, контрабанда)
-  { const nM = std({ color: 0x2e2117, roughness: .9 }), nB = std({ color: 0x5a4330, roughness: .85 });
-    box(1.1, .155, .06, MAT.wood, 0, .878, KD - .44, K); box(1.1, .08, .06, MAT.wood, 0, .04, KD - .44, K); // перемычка сверху и плинтус снизу
-    box(1.1, .85, .02, nM, 0, .5, KD - .06, K, false); box(.02, .85, .38, nM, -.55, .5, KD - .25, K, false); box(.02, .85, .38, nM, .55, .5, KD - .25, K, false); // задняя стенка и бока
-    box(1.1, .02, .38, nB, 0, .41, KD - .25, K); box(1.1, .02, .38, nB, 0, .09, KD - .25, K); } // полка и дно ниши box(1.0, .04, .25, MAT.counter, 0, 1.0, KD + .14, K);
+  // прилавок, витрина (с плотным перекрытием всех стыков и глухой тёмной подложкой внутри тумбы, чтобы на стыках не было светлых линий)
+  { const nM = std({ color: 0x241911, roughness: .96 }), nB = std({ color: 0x4e3928, roughness: .92 });
+    // Глухая тёмная основа под всей столешницей и за передними тумбами прилавка (исключает любые просветы улицы)
+    box(2.96, .96, .42, nM, 0, .48, KD - .22, K, false);
+    // Столешница прилавка во всю ширину от стены до стены и внешний подоконник у окна выдачи
+    box(2.98, .055, .48, MAT.counter, 0, .98, KD - .22, K);
+    box(1.0, .04, .25, MAT.counter, 0, .995, KD + .14, K);
+    // Передняя панель прилавка с нишей посередине (панели входят друг в друга с нахлёстом без щелей)
+    box(.94, .95, .065, MAT.wood, -1.01, .48, KD - .44, K);
+    box(.94, .95, .065, MAT.wood,  1.01, .48, KD - .44, K);
+    box(1.14, .165, .065, MAT.wood, 0, .88, KD - .44, K);
+    box(1.14, .09, .065, MAT.wood, 0, .045, KD - .44, K);
+    // Ниша под прилавком: задняя стенка, боковины, полка и дно
+    box(1.12, .86, .03, nM, 0, .48, KD - .06, K, false);
+    box(.03, .86, .40, nM, -.55, .48, KD - .25, K, false);
+    box(.03, .86, .40, nM,  .55, .48, KD - .25, K, false);
+    box(1.10, .024, .39, nB, 0, .41, KD - .25, K);
+    box(1.10, .024, .39, nB, 0, .09, KD - .25, K);
+  }
   { const shelfGlass = new THREE.MeshPhysicalMaterial({ color: 0xcfe6df, roughness: .08, metalness: 0, transparent: true, opacity: .42, depthWrite: false, clearcoat: 1, clearcoatRoughness: .05 }), edge = std({ color: 0x5f9a86, roughness: .15, transparent: true, opacity: .85 }), chrome = std({ color: 0xd0d2d0, roughness: .2, metalness: 1 });
     for (const y of [1.36, 1.76]) for (const sx of [-1, 1]) { const x = sx * .9; // стекло 8 мм с зелёной кромкой и хромированными держателями
       const gsh = box(.86, .008, .24, shelfGlass, x, y, KD - .155, K, false); gsh.renderOrder = 3; // стекло за рамой витрины, без пересечения со стойками
@@ -824,16 +836,30 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const doorOutM = std({ map: doorTex, roughness: .82, metalness: .05 });
   const dTi = doorTex.clone(); dTi.wrapS = THREE.RepeatWrapping; dTi.repeat.x = -1; dTi.offset.x = 1; dTi.needsUpdate = true; regTex(dTi);
   const doorInM = std({ map: dTi, roughness: .82, metalness: .05 });
-  const doorMesh = box(.8, 2.04, .05, [doorEdgeM, doorEdgeM, doorEdgeM, doorEdgeM, doorInM, doorOutM], -.4, 1.02, 0, doorPivot);
-  // деревянный наличник вокруг проёма снаружи
-  { const frM = std({ color: 0x8a8174, roughness: .92 }); const fz = -KD - T_ / 2 - .015;
-    box(.07, 2.12, .03, frM, .365, 1.06, fz, K); box(.07, 2.12, .03, frM, 1.235, 1.06, fz, K); box(.94, .07, .03, frM, .8, 2.085, fz, K);
-    // откосы проёма (обшивка торцов стены), чтобы в щели у двери не просвечивала улица и снег
-    const jM = std({ color: 0x6f675c, roughness: .9 }); box(.025, 2.1, T_ + .05, jM, .4 - .0125, 1.05, -KD, K); box(.025, 2.1, T_ + .05, jM, 1.2 + .0125, 1.05, -KD, K); box(.85, .03, T_ + .05, jM, .8, 2.065, -KD, K); }
+  const doorMesh = box(.808, 2.05, .054, [doorEdgeM, doorEdgeM, doorEdgeM, doorEdgeM, doorInM, doorOutM], -.4, 1.025, 0, doorPivot);
+  // цельная деревянная дверная коробка с притвором, порогом и наличниками с обеих сторон (полностью перекрывает любые щели в косяке двери)
+  { const frM = std({ color: 0x6e665c, roughness: .92 });
+    const jambM = std({ color: 0x544d44, roughness: .92 });
+    // Боковые и верхняя стойки дверной коробки во всю толщину стены + притворный брус (четверть) и порог снизу
+    box(.028, 2.06, T_ + .05, jambM, .402, 1.03, -KD, K);
+    box(.028, 2.06, T_ + .05, jambM, 1.198, 1.03, -KD, K);
+    box(.84, .032, T_ + .05, jambM, .8, 2.048, -KD, K);
+    box(.84, .036, T_ + .06, jambM, .8, .018, -KD, K); // порог в дверном проёме (закрывает землю и снег под дверью)
+    // Притворные планки внутри проёма (перекрывают зазор по контуру закрытой двери)
+    box(.024, 2.05, .022, jambM, .412, 1.025, -KD + .022, K);
+    box(.024, 2.05, .022, jambM, 1.188, 1.025, -KD + .022, K);
+    box(.82, .024, .022, jambM, .8, 2.038, -KD + .022, K);
+    // Наружный и внутренний деревянный наличник вокруг проёма
+    for (const fz of [-KD - T_ / 2 - .014, -KD + T_ / 2 + .014]) {
+      box(.085, 2.13, .032, frM, .365, 1.065, fz, K);
+      box(.085, 2.13, .032, frM, 1.235, 1.065, fz, K);
+      box(.96, .085, .032, frM, .8, 2.085, fz, K);
+    }
+  }
   // советские плакаты пользователя: «Мир и дружба!» на правой стене под ружьём, «Закуска градус крадёт!» на внутренней стороне двери
-  { const posterMat = file => { const m = std({ color: 0xffffff, roughness: .78 }); TL.load('assets/tex/' + file, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; m.map = t; m.needsUpdate = true; }, undefined, () => {}); return m; };
-    const pMir = new THREE.Mesh(new THREE.PlaneGeometry(.66, .46), posterMat('poster_mir.jpg')); pMir.position.set(KW - .033, 1.12, -.52); pMir.rotation.y = -Math.PI / 2; pMir.receiveShadow = true; K.add(pMir);
-    const pZak = new THREE.Mesh(new THREE.PlaneGeometry(.36, .512), posterMat('poster_zakuska.jpg')); pZak.position.set(0, .48, .027); pZak.receiveShadow = true; doorMesh.add(pZak); }
+  { const posterMat = file => { const m = std({ color: 0xffffff, roughness: .78, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); TL.load('assets/tex/' + file, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Q.aniso; m.map = t; m.needsUpdate = true; }, undefined, () => {}); return m; };
+    const pMir = new THREE.Mesh(new THREE.PlaneGeometry(.66, .46), posterMat('poster_mir.jpg')); pMir.position.set(KW - .035, 1.12, -.52); pMir.rotation.y = -Math.PI / 2; pMir.receiveShadow = true; K.add(pMir);
+    const pZak = new THREE.Mesh(new THREE.PlaneGeometry(.36, .512), posterMat('poster_zakuska.jpg')); pZak.position.set(0, .48, .0295); pZak.receiveShadow = true; doorMesh.add(pZak); }
   // чёрная нажимная ручка на длинной планке с замочной скважиной — с обеих сторон
   const handleM = std({ color: 0x1c1c1e, metalness: .55, roughness: .45 });
   for (const sd of [1, -1]) { box(.045, .2, .012, handleM, -.735, .97, sd * .031, doorPivot); box(.12, .022, .022, handleM, -.69, 1.03, sd * .05, doorPivot); box(.022, .022, .03, handleM, -.735, 1.03, sd * .04, doorPivot); }
@@ -1236,11 +1262,15 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         lid.castShadow = true; g.add(lid);
         for (let k = 0; k < cnt; k++) {
           const pkMesh = getItemMesh(id);
-          // Пачка лежит ровно плашмя внутри корытца блока: центрирована по Z и X с отступом от стенок
-          if (isK) pkMesh.scale.set(.35, .86, .45);
-          else pkMesh.scale.set(.68, .86, .86);
-          pkMesh.rotation.set(-Math.PI / 2, 0, 0);
-          pkMesh.position.set(-.086 + k * .043, .014, .038);
+          // Пачка лежит внутри блока в натуральную величину (1:1), без уменьшения масштаба
+          if (isK) {
+            pkMesh.scale.set(.38, 1, .50);
+            pkMesh.rotation.set(-Math.PI / 2, 0, 0);
+            pkMesh.position.set(-.088 + k * .044, .024, .042);
+          } else {
+            pkMesh.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
+            pkMesh.position.set(-.088 + k * .044, .016, 0);
+          }
           g.add(pkMesh);
         }
       }
@@ -1288,15 +1318,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         for (let k = 0; k < cnt; k++) {
           const im = getItemMesh(id);
           if (id === 'choc' || id === 'tape' || id === 'gum') {
-            // Длинной стороной вдоль Z (вглубь коробки), узкой вдоль X — 5 штук в аккуратный ряд строго внутри стенок
+            // В натуральную величину (1:1) длинной стороной вдоль Z
             im.rotation.set(0, Math.PI / 2, 0);
-            im.scale.setScalar(id === 'choc' ? .64 : id === 'tape' ? .68 : .68);
-            im.position.set(-.064 + k * .032, .007, 0);
+            im.position.set(-.068 + k * .034, .006, 0);
           } else {
-            // Высокие блистеры (batt, toy) лежат с наклоном назад вдоль Z внутри лотка
-            im.rotation.set(-.92, 0, 0);
-            im.scale.setScalar(id === 'toy' ? .52 : .58);
-            im.position.set(-.060 + k * .030, .012, .026);
+            im.rotation.set(-.65, 0, 0);
+            im.position.set(-.064 + k * .032, .010, .024);
           }
           g.add(im);
         }
@@ -1304,8 +1331,8 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       return g;
     }
 
-    // Картонный лоток-поддон с бутылками / банками / хлебом внутри (как на референсе пива 5620.jpg)
-    const W = .29, H = .072, D = .194, t = .006; // лоток под бутылки в натуральную величину (как отдельная бутылка)
+    // Картонный лоток-поддон с бутылками / банками / хлебом внутри в натуральную величину 1:1 (размер предмета в упаковке и вне упаковки абсолютно одинаковый!)
+    const W = .30, H = .072, D = .21, t = .006;
     const trayTx = regTex(ctex(512, 140, (c, w, h) => {
       c.fillStyle = '#c8aa78'; c.fillRect(0, 0, w, h);
       c.strokeStyle = '#6e522c'; c.lineWidth = 5; c.strokeRect(4, 4, w - 8, h - 8);
@@ -1323,30 +1350,31 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     box(t, H, D - t * 2, kraftM, -W / 2 + t / 2, H / 2, 0, g);
     box(t, H, D - t * 2, kraftM, W / 2 - t / 2, H / 2, 0, g);
 
-    let maxItemH = .082;
+    let maxItemH = .098;
     if (id === 'bread') {
-      // 5 батонов хлеба развёрнуты поперёк лотка (длинной осью вдоль Z) и уложены в ряд без вылезания за стенки!
-      maxItemH = .074;
+      maxItemH = .090;
       for (let k = 0; k < cnt; k++) {
         const im = getItemMesh(id);
         im.rotation.y = Math.PI / 2;
-        im.scale.set(.74, .74, .46);
-        im.position.set(-.088 + k * .044, t, 0);
+        im.position.set(-.096 + k * .048, t, 0);
         g.add(im);
       }
     } else {
       const positions = [
-        [-.088, -.044], [0, -.044], [.088, -.044],
-        [-.044,  .044], [.044,  .044]
+        [-.092, -.046], [0, -.046], [.092, -.046],
+        [-.048,  .046], [.048,  .046]
       ];
-      if (['vodka', 'beer', 'samogon', 'soda'].includes(id)) maxItemH = .29;
-      else if (id === 'tushonka') maxItemH = .084;
-      else if (id === 'kilka') maxItemH = .068;
+      if (id === 'vodka') maxItemH = .282;
+      else if (id === 'samogon') maxItemH = .262;
+      else if (id === 'beer') maxItemH = .242;
+      else if (id === 'soda') maxItemH = .232;
+      else if (id === 'tushonka') maxItemH = .100;
+      else if (id === 'kilka') maxItemH = .042;
       for (let k = 0; k < Math.min(cnt, positions.length); k++) {
         const im = getItemMesh(id);
         const [px, pz] = positions[k];
         im.position.set(px, t, pz);
-        im.scale.setScalar(1); // в упаковке тот же размер, что и у отдельного товара
+        im.scale.setScalar(1.0); // 1:1 с предметом вне упаковки!
         g.add(im);
       }
     }
@@ -1590,14 +1618,23 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     }
     const allIds = [...Object.keys(ctx.GOODS), 'samogon', 'kontra'];
     for (const id of allIds) {
-      const totalQ = (id === 'samogon' || id === 'kontra') ? ((S.hidden && S.hidden[id]) || 0) : (ctx.qOf(id) || 0);
       let onVit = 0;
       for (let i = 0; i < S.slots.length; i++) {
         if (S.slots[i] === id) {
-          if (S.slotCounts[i] > totalQ - onVit) S.slotCounts[i] = Math.max(0, totalQ - onVit);
-          if (S.slotCounts[i] <= 0) S.slots[i] = null;
+          S.slotCounts[i] = Math.max(1, S.slotCounts[i] || 1);
           onVit += S.slotCounts[i];
         }
+      }
+      let totalQ = (id === 'samogon' || id === 'kontra') ? ((S.hidden && S.hidden[id]) || 0) : (ctx.qOf(id) || 0);
+      // Гарантируем, что товар, уже выставленный игроком на витрину, никогда самопроизвольно не обнулится при синхронизации полок
+      if (totalQ < onVit) {
+        if (id === 'samogon' || id === 'kontra') {
+          S.hidden = S.hidden || {};
+          S.hidden[id] = onVit;
+        } else if (ctx.addStock) {
+          ctx.addStock(id, onVit - totalQ, (S.prices && S.prices[id]) || 20);
+        }
+        totalQ = onVit;
       }
       const targetOnShelf = Math.max(0, totalQ - onVit);
       const curList = S.shelfPlacements.filter(p => p.id === id);
@@ -2011,7 +2048,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (let k = 0; k <= 12; k++) { const t = k / 12; pts.push(new THREE.Vector3(lerp(a.x, b.x, t), a.y + dy - Math.sin(t * Math.PI) * .9, a.z)); }
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
   }
-  for (const x of [-332, -6, 14]) { const pl = new THREE.PointLight(0xffb060, 0, 20, 1.6); pl.position.set(x, 4.9, 7.2); if (!LITE) scene.add(pl); streetLights.push(pl); } // на слабых GPU фонари — только светящиеся плафоны и пятна на земле
+  for (const x of [-26, -6, 14, 34]) { const pl = new THREE.PointLight(0xffb060, 0, 22, 1.45); pl.position.set(x, 4.9, 7.2); pl.castShadow = false; if (!LITE) scene.add(pl); streetLights.push(pl); } // 4 динамических источника света перемещаются за игроком к ближайшим столбам
 
   // ---------- ПРИДОРОЖНЫЕ УКАЗАТЕЛИ И СТЕЛА КРАСНОЗАВОДСКОГО ЗАВОДА ----------
   const roadSignGroup = new THREE.Group(); roadSignGroup.userData.dyn = true; scene.add(roadSignGroup);
@@ -2464,6 +2501,83 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
           addCol(b.min.x, b.min.x + .15, b.min.z, b.max.z - .3);
           addCol(b.max.x - .15, b.max.x, b.min.z, b.max.z - .3);
         }
+        // Реальное советское расписание движения автобуса №7 внутри павильона остановки (на задней и боковой стенках)
+        const schedTex = regTex(ctex(640, 480, (g, w, h) => {
+          g.fillStyle = '#e8e2d0'; g.fillRect(0, 0, w, h);
+          g.strokeStyle = '#1d3b66'; g.lineWidth = 10; g.strokeRect(8, 8, w - 16, h - 16);
+          g.fillStyle = '#1d3b66'; g.fillRect(16, 16, w - 32, 68);
+          g.fillStyle = '#f5f1e6'; g.font = '900 24px Arial'; g.textAlign = 'center';
+          g.fillText('ПАТП №1 · РАСПИСАНИЕ ДВИЖЕНИЯ АВТОБУСОВ', w / 2, 46);
+          g.fillStyle = '#f2c94c'; g.font = '800 18px Arial';
+          g.fillText('МАРШРУТ № 7: УЛ. ЗАВОДСКАЯ (ЛАРЁК) — ПРОХОДНАЯ ЗАВОДА', w / 2, 74);
+
+          g.fillStyle = '#a82016'; g.fillRect(22, 94, 118, 82);
+          g.fillStyle = '#fff8ee'; g.font = '900 54px Arial'; g.fillText('№ 7', 81, 152);
+
+          g.fillStyle = '#181818'; g.textAlign = 'left'; g.font = '900 20px Arial';
+          g.fillText('ОСТАНОВКА: «' + st.name.toUpperCase() + '»', 152, 118);
+          g.font = '700 16px Arial'; g.fillStyle = '#263240';
+          g.fillText(isNorth ? 'Направление: Проходная завода → Ул. Заводская (Ларёк)' : 'Направление: Ул. Заводская (Ларёк) → Проходная завода', 152, 144);
+          g.fillText('Режим работы: ежедневно с 06:00 до 23:00 · Интервал: 12–15 мин.', 152, 168);
+
+          // Таблица отправления по часам и минутам
+          g.strokeStyle = '#32363a'; g.lineWidth = 2;
+          g.strokeRect(22, 186, w - 44, 198);
+          g.fillStyle = '#d4ccb6'; g.fillRect(24, 188, w - 48, 30);
+          g.fillStyle = '#151515'; g.font = '800 15px Arial'; g.textAlign = 'center';
+          g.fillText('ЧАСЫ ОТПРАВЛЕНИЯ И МИНУТЫ ПРИБЫТИЯ НА ОСТАНОВКУ', w / 2, 209);
+
+          const cols = 6, cw = (w - 44) / cols;
+          for (let r = 0; r < 3; r++) {
+            const ry = 218 + r * 55;
+            g.strokeRect(22, ry, w - 44, 55);
+            for (let c = 0; c < cols; c++) {
+              const hr = 6 + r * 6 + c;
+              if (hr > 23) continue;
+              const cx0 = 22 + c * cw;
+              g.strokeRect(cx0, ry, cw, 55);
+              g.fillStyle = '#1d3b66'; g.font = '900 18px Arial';
+              g.fillText((hr < 10 ? '0' + hr : '' + hr) + ' ч', cx0 + cw / 2, ry + 21);
+              g.fillStyle = '#1b1b1b'; g.font = '700 13px "Courier New", monospace';
+              const mOff = isNorth ? 6 : 0;
+              const m1 = String((0 + mOff) % 60).padStart(2, '0');
+              const m2 = String((15 + mOff) % 60).padStart(2, '0');
+              const m3 = String((30 + mOff) % 60).padStart(2, '0');
+              const m4 = String((45 + mOff) % 60).padStart(2, '0');
+              g.fillText(hr === 23 ? (m1 + '  --') : (m1 + '  ' + m2), cx0 + cw / 2, ry + 37);
+              if (hr < 23) g.fillText(m3 + '  ' + m4, cx0 + cw / 2, ry + 50);
+            }
+          }
+
+          // Схема остановок и время в пути
+          g.fillStyle = '#dbd3be'; g.fillRect(22, 392, w - 44, 68);
+          g.strokeStyle = '#32363a'; g.strokeRect(22, 392, w - 44, 68);
+          g.fillStyle = '#181818'; g.textAlign = 'left'; g.font = '800 15px Arial';
+          g.fillText('ПУТЬ СЛЕДОВАНИЯ:  00 мин. Ул. Заводская (Ларёк)  →  03 мин. Лесополоса  →  06 мин. Завод (Проходная)', 34, 415);
+          g.font = '700 14px Arial'; g.fillStyle = '#5a1e18';
+          g.fillText('Стоимость проезда: 1 руб. 00 коп. (проездной рабочего — бесплатно). На линии автобус ПАЗ-652 (вод. Ковалёв Н. П.)', 34, 437);
+          g.fillStyle = '#383838'; g.font = '700 12px Arial';
+          g.fillText('Гортранс · Автоколонна № 1418 · Диспетчерская: 2-14-07', 34, 454);
+          speckle(g, w, h, 450, ['#0002', '#fff2', '#5432'], 2);
+        }));
+        const schedFaceM = std({ map: schedTex, emissive: 0xffffff, emissiveMap: schedTex, emissiveIntensity: .18, roughness: .52, metalness: .12 });
+        const schedEdgeM = std({ color: 0x2c343c, roughness: .6, metalness: .55 });
+        // 1) Большой щит с расписанием внутри павильона на задней стенке на уровне глаз (y = 1.62)
+        const backZ = isNorth ? (b.max.z - .11) : (b.min.z + .11);
+        const backX = (b.min.x + b.max.x) / 2 + (isNorth ? -.52 : .52);
+        const sbBack = new THREE.Mesh(new THREE.BoxGeometry(.96, .72, .024), [schedEdgeM, schedEdgeM, schedEdgeM, schedEdgeM, schedFaceM, schedFaceM]);
+        sbBack.position.set(backX, 1.62, backZ);
+        sbBack.rotation.y = isNorth ? Math.PI : 0;
+        sbBack.castShadow = true;
+        scene.add(sbBack);
+        // 2) Дублирующий щит с расписанием на правой внутренней боковой стенке павильона (куда смотрит игрок на скриншоте 5863.png)
+        const sideX = isNorth ? (b.min.x + .09) : (b.max.x - .09);
+        const sideZ = (b.min.z + b.max.z) / 2;
+        const sbSide = new THREE.Mesh(new THREE.BoxGeometry(.84, .63, .022), [schedEdgeM, schedEdgeM, schedEdgeM, schedEdgeM, schedFaceM, schedFaceM]);
+        sbSide.position.set(sideX, 1.60, sideZ);
+        sbSide.rotation.y = isNorth ? Math.PI / 2 : -Math.PI / 2;
+        sbSide.castShadow = true;
+        scene.add(sbSide);
       }
       // Двусторонний дорожный знак остановки
       const sx = isNorth ? (st.x - 2.2) : (st.x + 2.2);
@@ -2907,12 +3021,23 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const visor = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .006, 18, 1, false, -Math.PI * .45, Math.PI * .9), polMat.visor); visor.position.set(0, -.006, .035); visor.rotation.x = .25; visor.scale.set(1, 1, 1.15); cap.add(visor);
     const badge = new THREE.Mesh(new THREE.CircleGeometry(.014, 10), polMat.gold); badge.position.set(0, .03, .109); cap.add(badge);
     cap.traverse(o => { if (o.isMesh) o.castShadow = true; });
-    for (const sg of [1, -1]) { const ep = new THREE.Mesh(new THREE.BoxGeometry(.11, .008, .05), polMat.band); ep.position.set(sg * (P.cfg.shX * s - .03), (P.cfg.shY - P.cfg.hipY) * s + .035, -.005); R.spine.add(ep); }
-    const belt = new THREE.Mesh(new THREE.CylinderGeometry(.165, .165, .045, 20, 1, true), polMat.belt); belt.position.y = .1 * s; belt.scale.z = .72; R.spine.add(belt);
-    const buckle = new THREE.Mesh(new THREE.BoxGeometry(.05, .035, .01), polMat.gold); buckle.position.set(0, .1 * s, .165 * .72 + .005); R.spine.add(buckle);
-    const hol = new THREE.Mesh(new THREE.BoxGeometry(.05, .12, .1), polMat.holster); hol.position.set(-.17, .05 * s, -.02); R.spine.add(hol);
+    const shZ = (P.cfg.shZ != null ? P.cfg.shZ : -.099) * s;
+    for (const sg of [1, -1]) {
+      const ep = new THREE.Mesh(new THREE.BoxGeometry(.095, .010, .046), polMat.band);
+      // Точно на плечевом шве кителя милиционера (z = shZ, с естественным наклоном плеча)
+      ep.position.set(sg * .142 * s, (P.cfg.shY - P.cfg.hipY) * s + .046 * s, shZ);
+      ep.rotation.z = -sg * .18;
+      R.spine.add(ep);
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .012, 8), polMat.gold);
+      btn.position.set(-sg * .034, .002, 0);
+      ep.add(btn);
+    }
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(.175, .175, .045, 20, 1, true), polMat.belt); belt.position.set(0, .1 * s, -.023 * s); belt.scale.z = .76; R.spine.add(belt);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(.05, .035, .012), polMat.gold); buckle.position.set(0, .1 * s, .112 * s); R.spine.add(buckle);
+    const hol = new THREE.Mesh(new THREE.BoxGeometry(.05, .12, .1), polMat.holster); hol.position.set(-.178 * s, .05 * s, -.045 * s); R.spine.add(hol);
   }
   function newPerson(kind, role, nodeId, extra) {
+    if (kind === "school") kind = "youth";
     const look = makeLook(kind);
     // модели «Зимние люди» для всех, кроме милиции (у неё своя форма); сталевар — среди рабочих
     let model = null;
@@ -2927,9 +3052,8 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         const pm = pick(fresh.length ? fresh : (pool.length ? pool : peopleModels)); model = pm.parts; extra = Object.assign({ modelName: pm.name }, extra || {});
       }
     }
-    if (kind === 'school') model = null; // школьники — процедурные (взрослые модели в рост ребёнка выглядели странно)
+    if (kind === 'school') { kind = 'youth'; look.height = 1.76; look.bag = null; } // модель мальчика-школьника убрана по просьбе игрока
     if (model && model.sds) look.height = (model === policeModel || !/^c(mesz|pros)/.test(extra && extra.modelName || '')) ? 1.79 : 1.75; // все одного роста, женщины чуть ниже
-    if (model && kind === 'school') look.height = 1.45;
     const h = new Human(look, model);
     if (model && model === policeModel && model.sds) dressPolice(h, model);
     const n = NODES[nodeId]; h.obj.position.set(n.x + R(-.3, .3), 0, n.z + R(-.3, .3)); scene.add(h.obj);
@@ -2938,7 +3062,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     people.push(p); return p;
   }
   const blobGeo = new THREE.CircleGeometry(.32, 16), blobMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .32, depthWrite: false });
-  function removePerson(p) { scene.remove(p.h.obj); const i = people.indexOf(p); if (i >= 0) people.splice(i, 1); }
+  function removePerson(p) { if (p && (p.role === 'marat' || p.role === 'zavod')) return; scene.remove(p.h.obj); const i = people.indexOf(p); if (i >= 0) people.splice(i, 1); }
   function goTo(p, x, z, then, viaGraph = false) {
     if (p.dead) return;
     // цель внутри препятствия (бак, машина, ограждение) — сдвигаем к ближайшему свободному месту
@@ -2950,7 +3074,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     p.path = pt; p.then = then; p.state = 'walk';
   }
   function segBlocked(x1, z1, x2, z2) { const d = Math.hypot(x2 - x1, z2 - z1), n = Math.ceil(d / .3); for (let i = 1; i <= n; i++) { const t = i / n; if (npcBlocked(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t)) return true; } return false; }
-  function leaveWorld(p) { if (p.dead) return; const target = NODES[pickSpawn(p.h.obj.position)]; goTo(p, target.x, target.z, () => removePerson(p)); p.leaving = true; }
+  function leaveWorld(p) { if (p.dead || p.role === 'marat' || p.role === 'zavod') return; const target = NODES[pickSpawn(p.h.obj.position)]; goTo(p, target.x, target.z, () => removePerson(p)); p.leaving = true; }
   function spawnVendor(i) { const s = vendorSpots[i % vendorSpots.length]; if (!s) return; const p = newPerson(i === 0 ? 'babka' : 'vendor', 'vendor', 'm2'); p.h.obj.position.set(s.x, 0, s.z); p.h.obj.rotation.y = s.rot; p.state = 'stand'; p.anim = 'idle'; }
   const lineFor = {
     babka: ['Ох, сынок, всё дорожает…', 'Пенсию опять задержали.', 'В наше время хлеб по 16 копеек был.', 'Ты бы шапку надел, холодно же.'],
@@ -2966,29 +3090,138 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const peds = people.filter(p => p.role === 'ped').length;
     const night = nightK > .6;
     const want = Math.min(Q.npc - 4, night ? 4 : 12, LITE ? 6 : 99); // на слабых GPU прохожих меньше
-    if (peds < want && Math.random() < dt * .7) {
-      const kind = night ? pick(['worker', 'youth', 'gopnik', 'police']) : pick(['babka', 'dedushka', 'worker', 'school', 'youth', 'neighbor', 'police']);
+    if (peds < want && peopleModels.length && Math.random() < dt * .7) {
+      const kind = night ? pick(['worker', 'youth', 'gopnik', 'police']) : pick(['babka', 'dedushka', 'worker', 'youth', 'neighbor', 'police']);
       const sp = pickSpawn({ x: R(-40, 40), z: R(-15, 10) });
       const p = newPerson(kind, 'ped', sp); wander(p);
       // часть прохожих задерживается: ждёт автобус, курит у ларька, стоит у подъезда, болтает
-      if (Math.random() < .35) { const spot = pick([[6.5, 4.4, 'wait'], [9.2, 4.6, 'wait'], [3.2, 2.9, 'smoke'], [-3.4, 3.2, 'smoke'], [-24, 20.4, 'idle'], [20, 20.6, 'idle'], [-10, 16.6, 'talk'], [12, 16.8, 'idle']]);
-        goTo(p, spot[0] + R(-.6, .6), spot[1] + R(-.3, .3), () => { p.state = 'pause'; p.timer = R(30, 90); p.anim = spot[2]; }); }
+      if (Math.random() < .55) {
+        scheduleSmartPedActivity(p);
+      }
     }
     // гопники
     if (S && !gopnikGroup && S.day >= 2 && Math.random() < dt * (night ? .012 : .004) * (S.rep.street >= 30 ? .4 : 1)) spawnGopniks();
   }
+  // Места на скамейках автобусных остановок (чтобы люди садились ровно на лавку лицом к дороге, а не проходили сквозь неё)
+  const BENCH_SPOTS = [
+    { id: 'kiosk_0', stopKey: 'kiosk', x: 7.25, z: 3.16, rot: 0, occupant: null },
+    { id: 'kiosk_1', stopKey: 'kiosk', x: 8.00, z: 3.16, rot: 0, occupant: null },
+    { id: 'kiosk_2', stopKey: 'kiosk', x: 8.75, z: 3.16, rot: 0, occupant: null },
+    { id: 'kiosk_opp_0', stopKey: 'kiosk_opp', x: 7.30, z: 16.84, rot: Math.PI, occupant: null },
+    { id: 'kiosk_opp_1', stopKey: 'kiosk_opp', x: 8.20, z: 16.84, rot: Math.PI, occupant: null },
+    { id: 'zavod_0', stopKey: 'zavod', x: -92.6, z: 3.16, rot: 0, occupant: null },
+    { id: 'zavod_1', stopKey: 'zavod', x: -91.6, z: 3.16, rot: 0, occupant: null },
+  ];
+  function releaseBench(p) {
+    if (p && p.benchSpot) {
+      if (p.benchSpot.occupant === p) p.benchSpot.occupant = null;
+      p.benchSpot = null;
+    }
+  }
+  function scheduleSmartPedActivity(p) {
+    if (!p || p.dead || p.role !== 'ped') return;
+    releaseBench(p);
+    const roll = Math.random();
+    // 1) Сесть на скамейку остановки и ждать автобус №7
+    if (roll < .26) {
+      const freeBench = BENCH_SPOTS.filter(b => !b.occupant && Math.hypot(b.x - p.h.obj.position.x, b.z - p.h.obj.position.z) < 48);
+      if (freeBench.length) {
+        const b = pick(freeBench);
+        b.occupant = p;
+        p.benchSpot = b;
+        const approachZ = b.rot === 0 ? b.z + .65 : b.z - .65;
+        goTo(p, b.x, approachZ, () => {
+          if (!people.includes(p) || p.dead) { releaseBench(p); return; }
+          p.h.obj.position.set(b.x, 0, b.z);
+          p.h.obj.rotation.y = b.rot;
+          p.state = 'sit_bench';
+          p.anim = 'sit';
+          p.waitingBus = b.stopKey;
+          p.timer = R(35, 95);
+        });
+        return;
+      }
+    }
+    // 2) Подойти к расписанию автобуса №7 на остановке и внимательно прочитать его
+    if (roll < .42) {
+      const sched = Math.random() < .75
+        ? { x: 9.05 + R(-.25, .25), z: 3.72, rot: Math.PI, stopKey: 'kiosk' }
+        : { x: 6.95 + R(-.25, .25), z: 16.28, rot: 0, stopKey: 'kiosk_opp' };
+      goTo(p, sched.x, sched.z, () => {
+        p.state = 'pause';
+        p.faceRot = sched.rot;
+        p.waitingBus = sched.stopKey;
+        p.timer = R(12, 28);
+        p.anim = 'inspect';
+      });
+      return;
+    }
+    // 3) Подойти к витрине ларька и рассмотреть выложенный товар
+    if (roll < .58 && Math.abs(p.h.obj.position.x) < 40) {
+      const vx = R(-.85, .85), vz = 2.42;
+      goTo(p, vx, vz, () => {
+        p.state = 'pause';
+        p.faceRot = Math.PI;
+        p.timer = R(8, 18);
+        p.anim = 'inspect';
+      });
+      return;
+    }
+    // 4) Подойти к уличной урне, выбросить фантик/окурок и погреть руки или покурить
+    if (roll < .74 && typeof TRASH_SMALL !== 'undefined' && TRASH_SMALL.length) {
+      const urn = pick(TRASH_SMALL);
+      const tx = urn.x + R(-.35, .35), tz = urn.z + .52;
+      goTo(p, tx, tz, () => {
+        p.state = 'pause';
+        p.faceRot = Math.atan2(urn.x - tx, urn.z - tz);
+        p.timer = R(6, 14);
+        p.anim = 'pay';
+        setTimeout(() => {
+          if (people.includes(p) && p.state === 'pause') {
+            p.anim = winter && Math.random() < .5 ? 'warm' : (p.kind === 'worker' || p.kind === 'youth' || p.kind === 'gopnik' ? 'smoke' : 'wait');
+          }
+        }, 1400);
+      });
+      return;
+    }
+    // 5) Спокойное ожидание на площадке остановки (вне скамейки!) или прогулка во дворах
+    const spot = pick([
+      [6.4, 4.35, 'wait', 'kiosk'],
+      [9.4, 4.45, 'warm', 'kiosk'],
+      [3.3, 3.05, 'smoke', null],
+      [-3.4, 3.20, 'warm', null],
+      [-24, 20.4, 'idle', null],
+      [20, 20.6, 'idle', null],
+      [-10, 16.6, 'talk', null],
+      [12, 16.8, 'wait', 'kiosk_opp'],
+    ]);
+    goTo(p, spot[0] + R(-.35, .35), spot[1] + R(-.22, .22), () => {
+      p.state = 'pause';
+      p.waitingBus = spot[3];
+      p.timer = R(20, 65);
+      p.anim = winter && spot[2] === 'idle' && Math.random() < .45 ? 'warm' : spot[2];
+    });
+  }
   function wander(p) {
+    if (!p || p.dead) return;
+    releaseBench(p);
+    p.waitingBus = null;
+    p.faceRot = null;
+    if (p.role === 'ped' && Math.random() < .42) {
+      scheduleSmartPedActivity(p);
+      return;
+    }
     const keys = Object.keys(NODES).filter(k => !k.startsWith('sp') && k !== 'w'); const k = pick(keys);
     goTo(p, NODES[k].x + R(-1, 1), NODES[k].z + R(-.6, .6), () => {
-      if (Math.random() < .3) { p.state = 'pause'; p.timer = R(3, 9); p.anim = pick(['idle', 'wait', p.kind === 'gopnik' || p.kind === 'youth' ? 'smoke' : 'idle']); }
-      else if (Math.random() < .25) leaveWorld(p); else wander(p);
+      if (Math.random() < .35) { p.state = 'pause'; p.timer = R(4, 11); p.anim = pick(['idle', 'wait', winter ? 'warm' : 'idle', p.kind === 'gopnik' || p.kind === 'youth' ? 'smoke' : 'idle']); }
+      else if (Math.random() < .22) leaveWorld(p); else wander(p);
     });
   }
 
   // ---------- покупатели ----------
   const WIN = { x: 0, z: 1.95 };
   const QSLOTS = [[1.05, 2.75], [1.9, 3.1], [2.75, 3.35], [3.6, 3.5], [4.45, 3.55], [5.3, 3.6]];
-  const CUST_KIND = { babka: 'babka', school: 'school', worker: 'worker', student: 'youth', chelnok: 'chelnok', newrus: 'newrus', racket: 'racket', police: 'police', neighbor: 'neighbor' };
+  const CUST_KIND = { babka: 'babka', school: 'youth', worker: 'worker', student: 'youth', chelnok: 'chelnok', newrus: 'newrus', racket: 'racket', police: 'police', neighbor: 'neighbor' };
   function spawnCustomer(c) {
     const kind = CUST_KIND[c.k] || 'worker';
     const sp = pickSpawn(WIN);
@@ -3090,10 +3323,37 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     if (p.role === 'ped' && !p.leaving) { const tSafe = NODES[pickSpawn(p.h.obj.position)]; goTo(p, tSafe.x, tSafe.z, null); }
     else if (p.path && p.path.length) { const fin = p.path[p.path.length - 1]; goTo(p, fin.x, fin.z, p.then, true); }
   }
-  function npcBlocked(x, z) {
+  function npcBlocked(x, z, ignoreStopBench = false) {
     { const o = transport.obstacle(), ca = Math.abs(Math.cos(o.heading)), sa = Math.abs(Math.sin(o.heading)), hx = o.hx * ca + o.hz * sa, hz = o.hx * sa + o.hz * ca; if (Math.abs(x - o.x) < hx + .2 && Math.abs(z - o.z) < hz + .2) return true; }
-    if (Math.abs(x) < KW + .3 && z > -KD - .3 && z < KD + .3) return true; // ларёк
-    for (const b of colliders) if (b.tag !== 'door' && x > b.x1 - .22 && x < b.x2 + .22 && z > b.z1 - .22 && z < b.z2 + .22) return true;
+    if (Math.abs(x) < KW + .32 && z > -KD - .32 && z < KD + .32) return true; // ларёк
+    for (const b of colliders) if (b.tag !== 'door' && x > b.x1 - .24 && x < b.x2 + .24 && z > b.z1 - .24 && z < b.z2 + .24) return true;
+    // Павильоны и скамейки всех автобусных остановок — чтобы NPC не ходили сквозь лавки и стенки павильона (5922.png)
+    if (!ignoreStopBench) {
+      for (const st of Object.values(STOPS)) {
+        const dir = st.dir || 1;
+        const bz = st.z + dir * -.35;
+        if (Math.abs(x - st.x) < 1.65 && Math.abs(z - bz) < .46) return true;
+      }
+    }
+    // Уличные урны и мусорные баки
+    if (typeof TRASH_SMALL !== 'undefined') {
+      for (const u of TRASH_SMALL) if (Math.hypot(x - u.x, z - u.z) < .38) return true;
+    }
+    if (typeof TRASH_BIG !== 'undefined') {
+      for (const b of TRASH_BIG) if (Math.hypot(x - b.x, z - b.z) < .82) return true;
+    }
+    // Динамические предметы на земле (коробки, упаковки, бутылки, ружьё) — люди видят их и аккуратно обходят!
+    if (typeof life !== 'undefined' && life && life.items) {
+      for (const it of life.items) {
+        if (it === life.held || it.inBoxId || it._inBus || it.obj.position.y > .65) continue;
+        const r = it.kind === 'box' ? .46 : it.kind === 'pack' || it.kind === 'gun' ? .34 : .26;
+        if (Math.hypot(x - it.obj.position.x, z - it.obj.position.z) < r) return true;
+      }
+    }
+    // Лежащие без сознания / убитые тела на земле — прохожие обходят их стороной
+    for (const q of people) {
+      if (q.dead && q.h && q.h.obj && Math.hypot(x - q.h.obj.position.x, z - q.h.obj.position.z) < .65) return true;
+    }
     for (const c of cars) { const cx = c.m.position.x, cz = c.m.position.z, ca = Math.abs(Math.cos(c.heading)), sa = Math.abs(Math.sin(c.heading)), hx = 2.2 * ca + .9 * sa, hz = 2.2 * sa + .9 * ca; if (Math.abs(x - cx) < hx + .25 && Math.abs(z - cz) < hz + .25) return true; }
     return false;
   }
@@ -3110,8 +3370,16 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   function peopleTick(dt) {
     const camPos = camera.position;
-    if (marat) { const S3 = ctx.getS(), away = !!(S3 && S3.phase === 'night' && hour > 23); marat.hidden = away; marat.h.obj.visible = !away; const d = Math.hypot(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z);
-      if (marat.state !== 'scared') { marat.anim = d < 5 ? (marat.talking ? 'talk' : 'idle') : 'smoke'; if (d < 7) faceTo(marat, Math.atan2(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z), dt); else faceTo(marat, Math.PI * .6, dt); } }
+    if (!marat && placeMaratCar.done) spawnMarat();
+    if (marat) {
+      if (!people.includes(marat)) people.push(marat);
+      if (!marat.h.obj.parent) scene.add(marat.h.obj);
+      marat.leaving = false; marat.flee = false; marat.path.length = 0;
+      marat.h.obj.position.set(MARAT_CAR.x - .3, 0, MARAT_CAR.z + 1.12);
+      const S3 = ctx.getS(), away = !!(S3 && S3.phase === 'night' && hour > 23); marat.hidden = away; marat.h.obj.visible = !away;
+      const d = Math.hypot(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z);
+      if (marat.state !== 'scared') { marat.state = 'stand'; marat.anim = d < 5 ? (marat.talking ? 'talk' : 'idle') : 'smoke'; if (d < 7) faceTo(marat, Math.atan2(P.x - marat.h.obj.position.x, P.z - marat.h.obj.position.z), dt); else faceTo(marat, Math.PI * .6, dt); }
+    }
     if (zavodNpc && !zavodNpc.dead) {
       const dz = Math.hypot(P.x - zavodNpc.h.obj.position.x, P.z - zavodNpc.h.obj.position.z);
       if (zavodNpc.state !== 'scared') {
@@ -3122,10 +3390,56 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     }
     for (const p of people.slice()) {
       if (p.dead) { deadTick(p, dt); continue; }
+      // Динамическая подсветка людей от ближайшего уличного фонаря, окна ларька и дневного света
+      if (p.h && p.h.R && p.h.R.skinMat) {
+        const sm = p.h.R.skinMat, ox = p.h.obj.position.x, oz = p.h.obj.position.z;
+        const nearPoleX = clamp(Math.round((ox - 14) / 20) * 20 + 14, -426, 74);
+        const dLamp = Math.hypot(ox - nearPoleX, oz - 6.6);
+        const dKiosk = Math.hypot(ox, oz - 1.2);
+        const lampK = nightK > .2 ? Math.max(0, 1 - dLamp / 8.5) * nightK : 0;
+        const kioskK = Math.max(0, 1 - dKiosk / 6.0) * (.35 + nightK * .65);
+        const warmK = Math.max(lampK, kioskK * .75);
+        if (warmK > .05) {
+          sm.emissive.setRGB(.22 + warmK * .72, .20 + warmK * .46, .18 + warmK * .20);
+          sm.emissiveIntensity = .26 + warmK * .52;
+        } else {
+          const amb = .24 + (1 - nightK) * .16;
+          sm.emissive.setRGB(.22, .22, .24);
+          sm.emissiveIntensity = amb;
+        }
+      }
       umbrellaTick(p);
       if (p.role === 'cust') custTick(p, dt);
       let dist = 0;
-      if (p.state === 'walk' && p.path.length) {
+      if (p.hitStun > 0) {
+        p.hitStun = Math.max(0, p.hitStun - dt);
+      }
+      if (p.brawling && !p.dead) {
+        // Если игрок достал ружьё во время кулачной драки — противники пугаются и разбегаются
+        if (weapon.drawn && p.kind !== 'police') {
+          p.brawling = false; p.flee = true; p.h.setExpr('scared');
+          if (p.group) gopLeave(p.group, 'flee'); else leaveWorld(p);
+        } else {
+          const ox = p.h.obj.position.x, oz = p.h.obj.position.z;
+          const dP = Math.hypot(P.x - ox, P.z - oz);
+          faceTo(p, Math.atan2(P.x - ox, P.z - oz), dt * 2.2);
+          if (dP > 1.25 && p.hitStun <= 0 && !inKiosk()) {
+            dist = moveToward(p, P.x, P.z, dt, 2.25);
+            p.h.setAnim('walk');
+          } else {
+            p.h.setAnim('threaten');
+          }
+          p.punchCd = (p.punchCd || .6) - dt;
+          if (dP < 1.55 && p.punchCd <= 0 && p.hitStun <= 0) {
+            p.punchCd = R(1.1, 1.65);
+            p.swingT = .28;
+            ctx.audio && ctx.audio.thud(.55);
+            post.uniforms.hurt.value = Math.max(post.uniforms.hurt.value, .45);
+            P.shake = Math.max(P.shake, .28);
+            P.pitch = clamp(P.pitch + .07, -1.35, 1.25);
+          }
+        }
+      } else if (p.state === 'walk' && p.path.length) {
         const tg = p.path[0], spd = p.flee ? 3.8 : p.speed * (p.role === 'cust' && p.path.length > 2 ? 1.1 : 1);
         dist = moveToward(p, tg.x, tg.z, dt, spd);
         const dTg = Math.hypot(tg.x - p.h.obj.position.x, tg.z - p.h.obj.position.z);
@@ -3133,22 +3447,139 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         p.crowd = p.role === 'ped' && dTg < 1.3 && dist < spd * dt * .25 ? (p.crowd || 0) + dt : 0;
         if (dTg < .25 || p.crowd > 1.2) { p.crowd = 0; p.path.shift(); if (!p.path.length) { p.state = 'arrived'; const f = p.then; p.then = null; f && f(); } }
         p.h.setAnim(p.flee ? 'flee' : spd > 2.5 ? 'run' : 'walk');
-      } else if (p.state === 'pause') { p.timer -= dt; p.h.setAnim(p.anim || 'idle'); if (p.timer <= 0) wander(p); }
+      } else if (p.state === 'sit_bench') {
+        p.timer -= dt;
+        p.h.setAnim('sit');
+        if (p.benchSpot) {
+          p.h.obj.position.set(p.benchSpot.x, 0, p.benchSpot.z);
+          faceTo(p, p.benchSpot.rot, dt);
+        }
+        if (p.timer <= 0) { releaseBench(p); wander(p); }
+      } else if (p.state === 'pause') {
+        p.timer -= dt;
+        p.h.setAnim(p.anim || 'idle');
+        if (p.faceRot != null) faceTo(p, p.faceRot, dt);
+        if (p.timer <= 0) wander(p);
+      }
       else if (p.state === 'step') { p.h.setAnim('walk'); dist = .9 * dt; }
       else if (p.state === 'scared') { p.timer -= dt; p.h.setAnim(p.anim); if (p.timer <= 0) { p.h.setExpr('neutral'); if (p.role === 'ped') leaveWorld(p); else p.state = p.prevState || 'idle'; } }
       else if (p.state === 'talking') { p.timer -= dt; p.h.setAnim('talk'); faceTo(p, Math.atan2(P.x - p.h.obj.position.x, P.z - p.h.obj.position.z), dt); if (p.timer <= 0) { p.h.setExpr('neutral'); wander(p); } }
       else p.h.setAnim(p.anim || 'idle');
+
+      // Зрение и восприятие мира NPC: замечают тела, брошенное оружие, коробки на дороге и комментируют их
+      if (p.role === 'ped' && !p.dead && !p.inBus && p.state !== 'talking') {
+        p.perceptCd = (p.perceptCd || R(.5, 1.8)) - dt;
+        if (p.perceptCd <= 0) {
+          p.perceptCd = R(1.4, 2.8);
+          const ox = p.h.obj.position.x, oz = p.h.obj.position.z;
+          const mem = p.memory = p.memory || {};
+          // 1) Замечают убитого или вырубленного человека поблизости
+          for (const q of people) {
+            if (!q.dead || !q.h || !q.h.obj) continue;
+            const dBody = Math.hypot(q.h.obj.position.x - ox, q.h.obj.position.z - oz);
+            if (dBody < 9.5 && !mem.reactedBody) {
+              mem.reactedBody = true;
+              mem.sawBody = true;
+              if (p.kind === 'police') {
+                if (Math.hypot(P.x - ox, P.z - oz) < 12) {
+                  ctx.say && ctx.say(p, 'Гражданин! Тут человек на земле лежит — ваших рук дело?!');
+                }
+              } else {
+                releaseBench(p);
+                p.flee = true; p.h.setExpr('scared'); leaveWorld(p); p.speed = 3.5;
+                if (Math.hypot(P.x - ox, P.z - oz) < 14 && Math.random() < .65) {
+                  ctx.say && ctx.say(p, pick(['Господи, человек на снегу лежит!', 'Караул! Тут человека уложили!', 'Бежим отсюда скорее!']));
+                }
+              }
+              break;
+            }
+          }
+          // 2) Замечают брошенное ружьё или коробки/бутылки на земле и реагируют
+          if (!p.flee && life && life.items && Math.hypot(P.x - ox, P.z - oz) < 14) {
+            for (const it of life.items) {
+              if (it === life.held || it.inBoxId || it._inBus || it.obj.position.y > .55) continue;
+              const dIt = Math.hypot(it.obj.position.x - ox, it.obj.position.z - oz);
+              if (dIt < 2.8 && (!mem.lastItemNote || performance.now() - mem.lastItemNote > 22000)) {
+                mem.lastItemNote = performance.now();
+                if (it.kind === 'gun') {
+                  ctx.say && ctx.say(p, pick(['Ничего себе, двустволка прямо на снегу валяется!', 'Оружие на дороге брошено… Не к добру это!']));
+                } else if (it.kind === 'box' && Math.random() < .45) {
+                  ctx.say && ctx.say(p, pick(['Кто это коробку посреди дороги поставил? Обойду стороной.', 'Опять ящики с товаром на тротуаре бросили…']));
+                } else if (it.kind === 'bottle' && Math.random() < .35) {
+                  ctx.say && ctx.say(p, 'Опять пустых бутылок под ноги набросали…');
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
       // видимость и дальность прорисовки
       const far = Math.hypot(p.h.obj.position.x - camPos.x, p.h.obj.position.z - camPos.z);
-      p.h.obj.visible = far < Q.draw * .6;
-      if (p.h.obj.visible) p.h.update(dt, dist);
+      p.h.obj.visible = !p.hidden && far < Q.draw * .6;
+      if (p.h.obj.visible) {
+        p.h.update(dt, dist);
+        if (p.hitStun > 0 && p.h.R && p.h.R.spine) {
+          p.h.R.spine.rotation.x -= p.hitStun * .75;
+          if (p.h.R.head) p.h.R.head.rotation.x -= p.hitStun * .55;
+        }
+        if (p.swingT > 0) {
+          p.swingT = Math.max(0, p.swingT - dt);
+          if (p.h.R && p.h.R.shR) p.h.R.shR.rotation.x = -1.45 * Math.sin((p.swingT / .28) * Math.PI);
+        }
+      }
     }
   }
 
-  function busExchange(key, door) {
-    for (const p of people) if (p.role === 'ped' && !p.leaving && Math.hypot(p.h.obj.position.x - door.x, p.h.obj.position.z - door.z) < 9) { p.state = 'walk'; p.path = [{ x: door.x, z: door.z }]; p.then = () => { p.inBus = true; removePerson(p); }; }
-    const n = Math.random() < .6 ? RI(1, 2) : 0;
-    for (let i = 0; i < n && people.length < Q.npc; i++) { const kind = pick(['babka', 'worker', 'youth', 'neighbor']); const id = 'tmpBus' + Math.random(); N(id, door.x, door.z); const pp = newPerson(kind, 'ped', id); delete NODES[id]; pp.h.obj.position.set(door.x + i * .5, 0, door.z); setTimeout(() => people.includes(pp) && wander(pp), 600 + i * 700); }
+  function busExchange(key, doorFront, doorRear) {
+    const d0 = doorFront || transport.doorWorld(0);
+    const d1 = doorRear || transport.doorWorld(1);
+    let boardedCnt = 0;
+    for (const p of people) {
+      if (p.role !== 'ped' || p.dead || p.inBus || p.brawling) continue;
+      const dist0 = Math.hypot(p.h.obj.position.x - d0.x, p.h.obj.position.z - d0.z);
+      const dist1 = Math.hypot(p.h.obj.position.x - d1.x, p.h.obj.position.z - d1.z);
+      const minD = Math.min(dist0, dist1);
+      const wantsBus = p.waitingBus === key || minD < 9.5;
+      if (wantsBus && minD < 13 && boardedCnt < 3) {
+        boardedCnt++;
+        releaseBench(p);
+        p.leaving = false;
+        const useRear = dist1 < dist0;
+        const targetDoor = useRear ? d1 : d0;
+        const doorIdx = useRear ? 1 : 0;
+        p.state = 'walk';
+        p.path = [{ x: targetDoor.x, z: targetDoor.z }];
+        p.then = () => {
+          if (!people.includes(p) || p.dead) return;
+          if (transport.state === 'stop' && transport.boardNpcPassenger && transport.boardNpcPassenger(p, doorIdx)) {
+            // Пассажир поднимается по ступенькам в салон ПАЗа и садится на свободное место
+            const idx = people.indexOf(p);
+            if (idx >= 0) people.splice(idx, 1);
+          } else {
+            wander(p);
+          }
+        };
+      }
+    }
+    // Если в автобусе мало сидящих пассажиров — на остановке также может выйти 1 новый приезжий пассажир по ступенькам из салона
+    if (transport.busPassengers && transport.busPassengers.length === 0 && people.length < Q.npc && Math.random() < .65) {
+      const kind = pick(['babka', 'worker', 'youth', 'neighbor']);
+      const id = 'tmpBus' + Math.random();
+      N(id, d0.x, d0.z);
+      const pp = newPerson(kind, 'ped', id);
+      delete NODES[id];
+      const idx = people.indexOf(pp);
+      if (idx >= 0) people.splice(idx, 1);
+      if (transport.boardNpcPassenger && transport.boardNpcPassenger(pp, 0)) {
+        const bp = transport.busPassengers.find(x => x.p === pp);
+        if (bp) {
+          bp.lx = 0; bp.ly = .775; bp.lz = 0;
+          if (bp.seat) { bp.seat.occupant = null; bp.seat = null; }
+          bp.state = 'walk_to_door';
+        }
+      }
+    }
   }
   // ---------- Марат: посредник на остановке у ларька ----------
   let marat = null, zavodNpc = null;
@@ -3162,9 +3593,13 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   function spawnMarat() {
     placeMaratCar();
-    const look = makeLook('worker'); Object.assign(look, { male: true, height: 1.78, build: 1.15, top: '#141414', leather: true, puffy: false, pants: '#1d1d22', boots: '#111', hat: 'kepka', hatC: '#262626', hairStyle: 'short', hair: '#1c1410', facial: 'mustache', chain: true, scarf: null, bag: null, coat: false, stripes: null, apron: null, age: 38, nerve: .7, aggression: .2, swagger: .6, kind: 'worker' });
-    const h = new Human(look, null); h.obj.position.set(MARAT_CAR.x - .3, 0, MARAT_CAR.z + 1.12); h.obj.rotation.y = 0; scene.add(h.obj); // за остановкой, у своей BMW
-    h.R.body.rotation.x = -.11; // опёрся спиной о машину
+    if (marat && marat.h && marat.h.R && marat.h.R.sds) return;
+    if (marat) { scene.remove(marat.h.obj); const idx = people.indexOf(marat); if (idx >= 0) people.splice(idx, 1); marat = null; }
+    const look = makeLook('worker'); Object.assign(look, { male: true, height: 1.79, build: 1.15, top: '#141414', leather: true, puffy: false, pants: '#1d1d22', boots: '#111', hat: 'kepka', hatC: '#262626', hairStyle: 'short', hair: '#1c1410', facial: 'mustache', chain: true, scarf: null, bag: null, coat: false, stripes: null, apron: null, age: 38, nerve: .7, aggression: .2, swagger: .6, kind: 'worker' });
+    const mPool = (peopleByOutfit.winter || peopleModels).filter(m => !m.female);
+    const mPm = mPool.find(m => m.name === 'cirand') || mPool[0] || null;
+    const h = new Human(look, mPm ? mPm.parts : null); h.obj.position.set(MARAT_CAR.x - .3, 0, MARAT_CAR.z + 1.12); h.obj.rotation.y = 0; scene.add(h.obj); // за остановкой, у своей BMW
+    if (!mPm) h.R.body.rotation.x = -.11;
     const sh = new THREE.Mesh(blobGeo, blobMat); sh.rotation.x = -Math.PI / 2; sh.position.y = .02; h.obj.add(sh);
     marat = { h, role: 'marat', state: 'stand', anim: 'smoke', path: [], kind: 'worker', title: 'Марат', talk: () => ctx.maratTalk && ctx.maratTalk(), id: 'marat' };
     people.push(marat);
@@ -3197,7 +3632,15 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   let riderCam = null;
   const transport = createTransport({ scene, std, routePoint, route: ROUTES[1], P, camera, ctx, audio: ctx.audio, onCtl: () => ctx.onCtl(), night: () => nightK > .45,
     setRiderCam: (p, k) => { riderCam = p.clone(); }, onAlight: (x, z, key) => { riderCam = null; P.x = x; P.z = z; P.vx = P.vz = 0; P.h = 1.66; ctx.toast && ctx.toast('Остановка «' + STOPS[key].name + '»'); },
-    onArrive: (key, door) => busExchange(key, door) });
+    onArrive: (key, dFront, dRear) => busExchange(key, dFront, dRear),
+    onNpcAlighted: (p, wx, wz) => {
+      if (!people.includes(p)) people.push(p);
+      p.inBus = false;
+      p.leaving = false;
+      p.waitingBus = null;
+      p.h.obj.position.set(wx, 0, wz);
+      wander(p);
+    } });
   const busCol = addCol(999, 999, 999, 999, 'bus');
   // ---------- ружьё как физический предмет: на стене / в руках / лежит в мире ----------
   let gunGeo = null, gunMat = null;
@@ -3365,6 +3808,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     ctx.onCtl && ctx.onCtl();
   }
   const life = createLife({ scene, camera, P, ctx, KW, KD, std, colliders, addCol, audio: ctx.audio, onCtl: () => ctx.onCtl(), overlayScene: weapon.scene,
+    transport: () => transport,
     visibleFromPlayer: (x, z) => visibleFromPlayer(x, z), doorOpen: () => doorOpen, wind: () => windVec, gunWorldMesh, getItemMesh, getPackMesh,
     onDelivered: (d, cnt) => ctx.onDelivered && ctx.onDelivered(d, cnt), onUnpack: data => ctx.onUnpack && ctx.onUnpack(data),
     onDrink: (k, s, tot) => ctx.onDrink && ctx.onDrink(k, s, tot),
@@ -3374,9 +3818,37 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     for (const p of people) { if (p.hidden || p.dead) continue; const o = p.h.obj.position; tmpV.set(o.x, 1.3 * p.h.L.height / 1.75, o.z).sub(camera.position); const along = tmpV.dot(tmpV2); if (along < .5 || along > maxD) continue; const perp = tmpV.addScaledVector(tmpV2, -along).length(); if (perp < bd) { bd = perp; best = p; } }
     return best;
   }
+  function recordWitnessEvent(type, targetP) {
+    const S = ctx.getS();
+    const gMem = S ? (S.npcMemory = S.npcMemory || { talks: {}, crimes: { gunAimed: 0, brawls: 0, kills: 0, lastDay: -1 } }) : null;
+    if (gMem) {
+      if (type === 'gun') gMem.crimes.gunAimed = (gMem.crimes.gunAimed || 0) + 1;
+      if (type === 'brawl') gMem.crimes.brawls = (gMem.crimes.brawls || 0) + 1;
+      if (type === 'kill') gMem.crimes.kills = (gMem.crimes.kills || 0) + 1;
+      gMem.crimes.lastDay = S.day;
+    }
+    if (targetP) {
+      targetP.memory = targetP.memory || {};
+      if (type === 'gun') targetP.memory.sawGunAim = true;
+      if (type === 'brawl') targetP.memory.wasPunched = true;
+      if (type === 'kill') targetP.memory.sawKill = true;
+    }
+    for (const q of people) {
+      if (q.dead || q.hidden) continue;
+      const d = Math.hypot(q.h.obj.position.x - P.x, q.h.obj.position.z - P.z);
+      if (d < (type === 'kill' ? 28 : 18)) {
+        q.memory = q.memory || {};
+        if (type === 'gun') q.memory.sawGunAim = true;
+        if (type === 'brawl') q.memory.sawBrawl = true;
+        if (type === 'kill') q.memory.sawKill = true;
+      }
+    }
+  }
   function threaten(p) { // ружьё наведено на человека
     if (p.reacted && p.reacted > performance.now()) return;
     p.reacted = performance.now() + 1500;
+    releaseBench(p);
+    recordWitnessEvent('gun', p);
     const L = p.h.L, S = ctx.getS();
     if (p.role === 'gop') {
       const g = p.group, lead = g.leader.h.L, brave = lead.nerve + lead.aggression * .3;
@@ -3386,7 +3858,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       else { gopLeave(g, 'flee'); ctx.say(g.leader, 'Атас!'); ctx.gopResolved && ctx.gopResolved('scared'); }
       return;
     }
-    if (p.role === 'vendor' || p.role === 'marat') { p.state = 'scared'; p.anim = 'handsUp'; p.timer = 4; p.h.setExpr('scared'); if (p.role === 'marat') { const S2 = ctx.getS(); S2 && (S2.flags.maratAngry = S2.day); p.timer = 3; } return; }
+    if (p.role === 'vendor' || p.role === 'marat' || p.role === 'zavod') { p.prevState = 'stand'; p.state = 'scared'; p.anim = 'handsUp'; p.timer = 4; p.h.setExpr('scared'); if (p.role === 'marat') { const S2 = ctx.getS(); S2 && (S2.flags.maratAngry = S2.day); p.timer = 3; } return; }
     // мирные — пугаются
     p.prevState = p.state; p.state = 'scared'; p.anim = L.nerve > .3 ? 'handsUp' : 'scared'; p.timer = 2.5; p.h.setExpr('scared');
     if (!p.scaredOnce) { p.scaredOnce = true; ctx.rep('folk', -1.5); }
@@ -3396,13 +3868,143 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- смерть NPC: ragdoll, через 60 с тело плавно исчезает ----------
   const rdBlocked = (x, z) => (Math.abs(x) < KW && z > -KD && z < KD) || colliders.some(b => b.tag !== 'door' && x > b.x1 && x < b.x2 && z > b.z1 && z < b.z2);
   function killPerson(p, dir, dist) {
-    p.dead = true; p.state = 'dead'; p.path = []; p.then = null; p.flee = false; p.talking = false;
+    releaseBench(p);
+    recordWitnessEvent('kill', p);
+    p.dead = true; p.state = 'dead'; p.path = []; p.then = null; p.flee = false; p.brawling = false; p.talking = false;
     const force = clamp(11 - dist * .35, 3, 10), imp = dir.clone().setY(0).normalize().multiplyScalar(force); imp.y = 1.2;
     p.rag = new Ragdoll(p.h, imp, camera.position.y - .15, rdBlocked); p.deadT = 0; p.h.setExpr('scared');
     ctx.audio.click && ctx.audio.click(90, .6, 0, .25);
     if (p === marat) marat = null;
     if (p.group) { p.group.members = p.group.members.filter(m => m !== p); if (p.group.state !== 'gone') { gopLeave(p.group, 'flee'); ctx.gopResolved && ctx.gopResolved('shot'); } }
     ctx.onKill && ctx.onKill(p.role, p.c, p.kind);
+  }
+  function knockoutPerson(p, dir) {
+    releaseBench(p);
+    recordWitnessEvent('kill', p);
+    p.dead = true; p.knockedOut = true; p.state = 'dead'; p.path = []; p.then = null; p.flee = false; p.brawling = false; p.talking = false;
+    const imp = dir.clone().setY(0).normalize().multiplyScalar(4.8); imp.y = .85;
+    p.rag = new Ragdoll(p.h, imp, camera.position.y - .2, rdBlocked); p.deadT = 0; p.h.setExpr('scared');
+    ctx.audio && ctx.audio.thud(1.1);
+    if (p.group) {
+      p.group.members = p.group.members.filter(m => m !== p);
+      if (!p.group.members.length || p === p.group.leader) {
+        if (p.group.members.length) {
+          ctx.say && ctx.say(p.group.members[0], 'Пацаны, валим, он боксёр!');
+          gopLeave(p.group, 'flee');
+        } else {
+          gopnikGroup = null;
+        }
+      }
+    }
+    ctx.onKnockout && ctx.onKnockout(p.role, p.c, p.kind);
+  }
+  function startGopBrawl(g) {
+    if (!g || !g.members) return;
+    g.state = 'brawl';
+    g.demanded = true;
+    g.members.forEach(m => {
+      m.brawling = true;
+      m.state = 'brawl';
+      m.path = [];
+      m.h.setExpr('angry');
+    });
+  }
+  function findPunchTarget(maxD = 2.15) {
+    const aimed = aimedPerson(maxD);
+    if (aimed) return aimed;
+    camera.getWorldDirection(tmpV2);
+    const fx = tmpV2.x, fz = tmpV2.z, fl = Math.hypot(fx, fz) || 1;
+    let best = null, bd = maxD;
+    for (const p of people) {
+      if (p.dead || p.hidden || !p.h.obj.visible) continue;
+      const dx = p.h.obj.position.x - P.x, dz = p.h.obj.position.z - P.z;
+      const d = Math.hypot(dx, dz);
+      if (d > bd || d < .05) continue;
+      const dot = (dx * fx + dz * fz) / (d * fl);
+      if (dot > .50) { bd = d; best = p; }
+    }
+    return best;
+  }
+  function onPunchImpact(side) {
+    // 1. Удар кулаком по стеклянной бутылке разбивает её
+    const hitItem = life.lookItem && life.lookItem(1.65);
+    if (hitItem && (hitItem.kind === 'bottle' || (hitItem.kind === 'good' && ['vodka', 'beer', 'samogon', 'soda'].includes(hitItem.data && hitItem.data.goodId)))) {
+      life.shatterBottle(hitItem);
+      return;
+    }
+    // 2. Удар кулаком по персонажу в радиусе ближнего боя
+    const hit = findPunchTarget(2.15);
+    if (!hit) return;
+    releaseBench(hit);
+    recordWitnessEvent('brawl', hit);
+    ctx.audio && ctx.audio.thud(.92);
+    P.shake = Math.max(P.shake, .34);
+    const ox = hit.h.obj.position.x, oz = hit.h.obj.position.z;
+    const dx = ox - P.x, dz = oz - P.z, dl = Math.hypot(dx, dz) || 1;
+    const nx = ox + (dx / dl) * .34, nz = oz + (dz / dl) * .34;
+    if (!npcBlocked(nx, nz)) { hit.h.obj.position.x = nx; hit.h.obj.position.z = nz; }
+    hit.hitStun = .52;
+    hit.h.setExpr('angry');
+
+    if (hit.role === 'marat' || hit.role === 'zavod') {
+      ctx.toast && ctx.toast(`${hit.title || 'Сосед'}: «Эй, коммерсант, ты чего кулаками машешь?! Остынь!»`, 'bad');
+      return;
+    }
+
+    const isTough = hit.role === 'gop' || hit.kind === 'police' || (hit.c && hit.c.k === 'racket');
+    hit.maxHp = hit.maxHp || (isTough ? 3 : 2);
+    hit.hp = (hit.hp ?? hit.maxHp) - 1;
+    const dir = new THREE.Vector3(dx / dl, 0, dz / dl);
+
+    if (hit.role === 'gop') {
+      if (hit.group) startGopBrawl(hit.group);
+      if (hit.hp <= 0) {
+        knockoutPerson(hit, dir);
+      } else {
+        ctx.say && ctx.say(hit, pick(['Ах ты ж!.. Пацаны, гаси его!', 'Ты на кого руку поднял?!', 'Ух, удар держит! Наших бьют!']));
+      }
+      return;
+    }
+    if (hit.kind === 'police') {
+      hit.brawling = true; hit.state = 'brawl'; hit.path = [];
+      ctx.rep && ctx.rep('law', -6);
+      if (hit.hp <= 0) {
+        knockoutPerson(hit, dir);
+      } else {
+        ctx.toast && ctx.toast('Ударили сотрудника милиции! Закон −6', 'bad');
+      }
+      return;
+    }
+    if (hit.hp <= 0) {
+      knockoutPerson(hit, dir);
+    } else {
+      ctx.rep && ctx.rep('folk', -2);
+      if (hit.role === 'cust' && hit.c) {
+        if (hit.c.k === 'racket') {
+          hit.brawling = true; hit.state = 'brawl';
+          ctx.toast && ctx.toast('Колян: «Ты чё, с кулаками полез?!»', 'bad');
+        } else {
+          ctx.customerScared && ctx.customerScared(hit.c);
+        }
+      } else if (hit.h.L.aggression > .25 || hit.kind === 'worker' || hit.kind === 'youth' || hit.kind === 'gopnik') {
+        hit.brawling = true; hit.state = 'brawl'; hit.path = [];
+        ctx.say && ctx.say(hit, pick(['Ты чё дерёшься, мужик?! Получай!', 'Совсем страх потерял?!', 'А ну иди сюда!']));
+      } else {
+        hit.flee = true; hit.h.setExpr('scared'); leaveWorld(hit); hit.speed = 3.6;
+        ctx.say && ctx.say(hit, pick(['Караул! Хулиганы зрения лишают!', 'Милиция! Дерётся!']));
+      }
+    }
+  }
+  function punch() {
+    // Когда в руках оружие или предмет — ударить кулаком нельзя!
+    if (weapon.drawn || life.held || life.habit.busy || P.locked) return false;
+    const ok = life.habit.startPunch(side => onPunchImpact(side));
+    if (ok) {
+      ctx.audio && ctx.audio.click(175, .16, 0, .05);
+      P.pitch = clamp(P.pitch + .02, -1.35, 1.25);
+      P.shake = Math.max(P.shake || 0, .14);
+    }
+    return ok;
   }
   function deadTick(p, dt) {
     p.deadT += dt; p.rag.step(dt);
@@ -3411,11 +4013,11 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function onShot() {
     P.pitch = Math.min(1.25, P.pitch + .09); P.shake = .4;
     { const hitItem = life.lookItem && life.lookItem(20); if (hitItem && (hitItem.kind === 'bottle' || (hitItem.kind === 'good' && ['vodka','beer','samogon','soda'].includes(hitItem.data && hitItem.data.goodId)))) life.shatterBottle(hitItem); }
-    { const hit = aimedPerson(26); if (hit) { camera.getWorldDirection(tmpV2); killPerson(hit, tmpV2.clone(), Math.hypot(hit.h.obj.position.x - P.x, hit.h.obj.position.z - P.z)); } }
+    { const hit = aimedPerson(26); if (hit && hit.role !== 'marat' && hit.role !== 'zavod') { camera.getWorldDirection(tmpV2); killPerson(hit, tmpV2.clone(), Math.hypot(hit.h.obj.position.x - P.x, hit.h.obj.position.z - P.z)); } }
     const S = ctx.getS(); if (S) { ctx.rep('law', -4); ctx.rep('folk', -2); }
     for (const p of people) { if (p.dead) continue; const d = Math.hypot(p.h.obj.position.x - P.x, p.h.obj.position.z - P.z); if (d > 45) continue;
       if (p.role === 'gop') { if (p.group && p.group.state !== 'gone') { gopLeave(p.group, 'flee'); ctx.gopResolved && ctx.gopResolved('shot'); } }
-      else if (p.role === 'vendor') { p.state = 'scared'; p.anim = 'scared'; p.timer = 5; p.h.setExpr('scared'); }
+      else if (p.role === 'vendor' || p.role === 'marat' || p.role === 'zavod') { p.prevState = 'stand'; p.state = 'scared'; p.anim = 'handsUp'; p.timer = 4; p.h.setExpr('scared'); }
       else if (p.role === 'cust') { ctx.customerScared(p.c); }
       else { p.flee = true; p.h.setExpr('scared'); leaveWorld(p); p.speed = 3.6; } }
     ctx.onShot && ctx.onShot();
@@ -3554,14 +4156,24 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
     sun.color.set(sunCol);
     sun.intensity = el > 0 ? (2.4 * clamp(el / 15, 0, 1)) * (1 - over * .75) : 0;
-    hemi.intensity = .18 + dayAmt * (0.90 - over * .18);
-    hemi.color.copy(topC).lerp(cA.set('#d8e2ea'), .40);
-    hemi.groundColor.set(winter ? '#abb4bc' : '#524c3e').multiplyScalar(.55 + dayAmt * .45);
-    if (dayAmt < .2) { hemi.color.lerp(cA.set('#1c283c'), .75); }
-    post.uniforms.exposure.value = 1.02 + nightK * .18;
+    hemi.intensity = .42 + dayAmt * (0.85 - over * .18);
+    hemi.color.copy(topC).lerp(cA.set('#d8e2ea'), .45);
+    hemi.groundColor.set(winter ? '#b8c0c8' : '#625b4c').multiplyScalar(.65 + dayAmt * .35);
+    if (dayAmt < .2) { hemi.color.lerp(cA.set('#38465e'), .55); }
+    post.uniforms.exposure.value = 1.04 + nightK * .20;
     winU.night.value = nightK; winU.time.value = tAll; snowU.sparkle.value = 1 - nightK * .7;
     MAT.lampHead.emissiveIntensity = nightK > .35 ? 4 : 0;
-    streetLights.forEach(l => l.intensity = nightK > .35 ? 55 * nightK : 0); poolMat.opacity = nightK > .35 ? nightK : 0;
+    // Перемещаем 4 точечных источника света к 4 ближайшим уличным фонарям вокруг игрока
+    {
+      const basePoleX = clamp(Math.round((P.x - 14) / 20) * 20 + 14, -406, 54);
+      const offsets = [-20, 0, 20, 40];
+      streetLights.forEach((l, idx) => {
+        const px = clamp(basePoleX + (offsets[idx] || 0), -426, 74);
+        l.position.set(px, 4.9, 7.2);
+        l.intensity = nightK > .25 ? 68 * nightK : 0;
+      });
+    }
+    poolMat.opacity = nightK > .35 ? nightK : 0;
     sign.material.emissiveIntensity = nightK * .9;
     neons.forEach(o => o.material.emissiveIntensity = nightK * .7);
     cars.forEach(c => { c.m.userData.hl.emissiveIntensity = nightK > .3 ? 3 : 0; });
@@ -3649,31 +4261,34 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const lookStorageShelfHit = () => {
       if (!inKiosk()) return null;
       if (life.rayPlaceShelf) {
-        const rp = life.rayPlaceShelf(1.05);
-        if (rp && Math.hypot(rp.point.x - P.x, rp.point.z - P.z) <= .92) return rp;
+        const rp = life.rayPlaceShelf(1.15);
+        // Исключаем стеклянные полки витрины (rowIdx >= 17), чтобы предметы с витрины не улетали на задние полки
+        if (rp && rp.rowIdx < 17 && Math.hypot(rp.point.x - P.x, rp.point.z - P.z) <= .98) return rp;
       }
-      const h = lookingAt([...shelfHitTargets, foodGroup], 1.05);
-      if (!h || Math.hypot(h.point.x - P.x, h.point.z - P.z) > .92) return null;
+      const h = lookingAt([...shelfHitTargets, foodGroup], 1.15);
+      if (!h || Math.hypot(h.point.x - P.x, h.point.z - P.z) > .98) return null;
       let o = h.object, rowIdx = null;
       while (o) {
         if (o.userData && o.userData.shelfRowIdx != null) { rowIdx = o.userData.shelfRowIdx; break; }
         o = o.parent;
       }
+      if (rowIdx != null && rowIdx >= 17) return null;
       return { point: h.point, rowIdx };
     };
     const lookShowcaseSlot = () => {
       if (!inKiosk()) return null;
-      const h = lookingAt(shelfGroup.children, 1.15);
-      if (h && h.object && Math.hypot(h.point.x - P.x, h.point.z - P.z) <= .98) {
+      const maxSlots = ctx.slotCount ? ctx.slotCount() : S.slots.length;
+      const h = lookingAt(shelfGroup.children, 1.55);
+      if (h && h.object && Math.hypot(h.point.x - P.x, h.point.z - P.z) <= 1.35) {
         let o = h.object;
         while (o && o.userData.showcaseSlot == null && o.parent && o.parent !== shelfGroup) o = o.parent;
         if (o && o.userData.showcaseSlot != null) return o.userData.showcaseSlot;
       }
-      // запасной путь: луч попал в стеклянную полку витрины, но не в сам слот — берём ближайший к точке слот
-      const rp = life.rayPlaceShelf && life.rayPlaceShelf(1.15);
-      if (rp && rp.rowIdx >= 17 && Math.hypot(rp.point.x - P.x, rp.point.z - P.z) <= 1.0) {
-        let best = null, bd = .4;
-        SLOT_POS.forEach(([sx, sy], i) => { if (i >= S.slots.length) return; const d = Math.hypot(rp.point.x - sx, (rp.point.y - sy) * 2); if (d < bd) { bd = d; best = i; } });
+      // запасной путь: луч попал в стеклянную полку витрины — всегда берём ближайший слот на этой полке
+      const rp = life.rayPlaceShelf && life.rayPlaceShelf(1.55);
+      if (rp && rp.rowIdx >= 17 && Math.hypot(rp.point.x - P.x, rp.point.z - P.z) <= 1.35) {
+        let best = null, bd = 1.5;
+        SLOT_POS.forEach(([sx, sy], i) => { if (i >= maxSlots) return; const d = Math.hypot(rp.point.x - sx, (rp.point.y - sy) * 2); if (d < bd) { bd = d; best = i; } });
         if (best != null) return best;
       }
       return null;
@@ -3791,18 +4406,19 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
             fn: () => {
               S.slotCounts = S.slotCounts || S.slots.map(id => id ? 1 : 0);
               if (oldId === gid) {
-                S.slotCounts[scSlot] = (S.slotCounts[scSlot] || 1) + 1;
+                S.slotCounts[scSlot] = Math.min(5, (S.slotCounts[scSlot] || 1) + 1);
               } else {
-                for (let j = 0; j < S.slots.length; j++) {
-                  if (j !== scSlot && S.slots[j] === gid) {
-                    S.slotCounts[scSlot] = (S.slotCounts[j] || 1) + 1;
-                    S.slots[j] = null; S.slotCounts[j] = 0;
+                // Если в этом слоте стоял другой товар — аккуратно переносим его на полку, не затрагивая соседние слоты витрины!
+                if (oldId) {
+                  const oldCnt = Math.max(1, S.slotCounts[scSlot] || 1);
+                  S.shelfPlacements = S.shelfPlacements || [];
+                  for (let k = 0; k < oldCnt; k++) {
+                    const sp = findFreeShelfSpot(S.shelfPlacements, oldId, null);
+                    S.shelfPlacements.push({ uid: 'sh_' + Math.random().toString(36).slice(2, 9), id: oldId, x: sp.x, y: sp.y, z: sp.z, ry: sp.ry });
                   }
                 }
-                if (S.slots[scSlot] !== gid) {
-                  S.slots[scSlot] = gid;
-                  S.slotCounts[scSlot] = 1;
-                }
+                S.slots[scSlot] = gid;
+                S.slotCounts[scSlot] = 1;
               }
               returnGoodToShelfStock(gid, null, false, h.data && h.data.unitCost);
               life.removeItem(h);
@@ -4004,28 +4620,159 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   const env2 = { extraAction: () => env2Extra && env2Extra() };
   function talkTo(p) {
-    p.state = 'talking'; p.timer = 12; p.h.setExpr('talk'); p.path = [];
+    releaseBench(p);
+    p.state = 'talking'; p.timer = 16; p.h.setExpr('talk'); p.path = [];
     const L = p.h.L, k = p.kind;
+    const S = ctx.getS();
+    const gMem = S ? (S.npcMemory = S.npcMemory || { talks: {}, crimes: { gunAimed: 0, brawls: 0, kills: 0, lastDay: -1 } }) : { talks: {}, crimes: {} };
+    const mem = p.memory = p.memory || {};
+    mem.talkCount = (mem.talkCount || 0) + 1;
+    const tc = mem.talkCount;
+
+    // Контекст времени суток, даты, погоды, курса доллара и состояния ларька
+    const hh = String(Math.floor(hour) % 24).padStart(2, '0'), mm = String(Math.floor((hour % 1) * 60)).padStart(2, '0');
+    const timeStr = `${hh}:${mm}`;
+    const timePeriod = hour < 6 ? 'глубокая ночь' : hour < 11 ? 'утро' : hour < 17 ? 'день' : hour < 21.5 ? 'вечер' : 'поздний вечер';
+    const weatherDesc = winter
+      ? (weather.state === 'blizzard' ? 'буран метёт, в двух шагах ничего не видать' : weather.snow > .45 ? 'снег валит хлопьями, мороз крепчает' : 'морозно на улице, пар изо рта')
+      : (weather.rain > .4 ? 'дождь льёт как из ведра, сырость кругом' : weather.rain > .05 ? 'морось осенняя, лужи кругом' : 'погода тихая, сухо');
+    const cal = S ? calInfoOf(S) : { curDate: 15, mGen: 'Ноября', yr: 1992, gameDayNum: 1 };
+    const rate = S && S.rate ? Math.round(S.rate) : 410;
+    const mkPct = S ? Math.round((S.markup || .25) * 100) : 25;
+    const vitrineGoods = S && S.slots ? S.slots.filter(Boolean).map(id => goodShortOf(id)) : [];
+    const vitrineNote = vitrineGoods.length
+      ? (mkPct > 55
+          ? `На витрине у тебя ${vitrineGoods.slice(0, 3).join(', ')}, да только наценка ${mkPct}% — кусаются цены-то!`
+          : mkPct <= 20
+          ? `Смотрю, на витрине ${vitrineGoods.slice(0, 3).join(', ')}, и наценка всего ${mkPct}% — честная цена, народ хвалит!`
+          : `Видел у тебя на витрине ${vitrineGoods.slice(0, 3).join(', ')}, цены вроде терпимые (${mkPct}% наценки).`)
+      : 'Кстати, витрина у тебя в ларьке пустовата — выложил бы товар на стекло, народ охотнее пойдёт!';
+
+    // 1. РЕАКЦИЯ СВИДЕТЕЛЯ НА УБИЙСТВО ИЛИ НОКАУТ НА ЕГО ГЛАЗАХ
+    if (mem.sawKill || mem.sawBody) {
+      if (k === 'police') {
+        p.h.setExpr('angry');
+        const fine = S ? Math.min(S.money, Math.max(500, Math.round(rate * 3))) : 1000;
+        ctx.dialog({
+          name: 'Сержант Кузьмин (милиция)',
+          text: `Стоять на месте! На моих глазах совершено тяжкое нападение на человека (в ${timeStr})! Вы задержаны, гражданин коммерсант! Либо оформляем протокол и изымаем оружие, либо платите штраф на месте — ${ctx.fmt(fine)} ₽!`,
+          options: [
+            ...(S && S.money >= fine ? [{ label: `Замять дело на месте (${ctx.fmt(fine)} ₽)`, fn: () => {
+              S.money -= fine; mem.sawKill = false; mem.sawBody = false;
+              ctx.rep && ctx.rep('law', 2); ctx.onStockChange && ctx.onStockChange();
+              ctx.dialog({ name: 'Сержант Кузьмин', text: 'Ладно… Считайте, что вам повезло. Но ещё одна выходка на моём участке — поедете в отделение всерьёз!', options: [{ label: 'Понял, товарищ сержант.', fn: () => ctx.closeDialog() }] });
+            } }] : []),
+            { label: 'Попробуй возьми! (кулачный бой)', fn: () => {
+              ctx.closeDialog();
+              p.brawling = true; p.state = 'brawl'; p.path = [];
+            } },
+            { label: 'Я защищался от бандитов!', fn: () => {
+              mem.sawKill = false; mem.sawBody = false;
+              ctx.dialog({ name: 'Сержант Кузьмин', text: 'Разберёмся в участке! Пока беру вас на карандаш. Чтоб тихо было у ларька!', options: [{ label: 'Есть.', fn: () => ctx.closeDialog() }] });
+            } }
+          ]
+        });
+        return;
+      }
+      p.h.setExpr('scared');
+      const hush = 300;
+      ctx.dialog({
+        name: 'Напуганный свидетель',
+        text: `Не подходи ко мне! Я своими глазами видел, как ты человека тут уложил на снег! В такое время (${timeStr}) на улице страшно находиться рядом с твоим ларьком!`,
+        options: [
+          ...(S && S.money >= hush ? [{ label: `Держи ${hush} ₽ — ты ничего не видел`, fn: () => {
+            S.money -= hush; mem.sawKill = false; mem.sawBody = false;
+            ctx.onStockChange && ctx.onStockChange();
+            ctx.dialog({ name: 'Свидетель', text: 'Ладно-ладно, могила! Никому ни слова не скажу, только не трогай меня…', options: [{ label: 'Иди своей дорогой.', fn: () => { leaveWorld(p); ctx.closeDialog(); } }] });
+          } }] : []),
+          { label: 'Это была самооборона, успокойся!', fn: () => {
+            mem.sawKill = false; mem.sawBody = false;
+            ctx.rep && ctx.rep('folk', .5);
+            ctx.dialog({ name: 'Свидетель', text: 'Ох, время какое лихое пошло в 92-м… Ладно, пойду я домой от греха подальше.', options: [{ label: 'Бывай.', fn: () => { leaveWorld(p); ctx.closeDialog(); } }] });
+          } },
+          { label: 'Проваливай, пока цел!', fn: () => {
+            ctx.rep && ctx.rep('street', 1); ctx.rep && ctx.rep('folk', -2);
+            p.flee = true; leaveWorld(p); p.speed = 3.6;
+            ctx.closeDialog();
+          } }
+        ]
+      });
+      return;
+    }
+
+    // 2. РЕАКЦИЯ НА НАВЕДЁННОЕ ОРУЖИЕ ИЛИ ДРАКУ В ПАМЯТИ NPC
+    if (mem.sawGunAim || mem.wasPunched || mem.sawBrawl) {
+      if (k === 'police') {
+        p.h.setExpr('angry');
+        const fine = S ? Math.min(S.money, Math.max(250, Math.round(rate * 1.5))) : 500;
+        ctx.dialog({
+          name: 'Сержант Кузьмин (милиция)',
+          text: mem.sawGunAim
+            ? `Гражданин! Вы только что размахивали огнестрельным оружием в общественном месте! Нарушаем общественный порядок? Штраф ${ctx.fmt(fine)} ₽!`
+            : `Гражданин коммерсант! Я видел, как вы тут кулаками махали на улице! Прекратить хулиганство!`,
+          options: [
+            ...(S && S.money >= fine ? [{ label: `Оплатить штраф ${ctx.fmt(fine)} ₽`, fn: () => {
+              S.money -= fine; mem.sawGunAim = false; mem.wasPunched = false; mem.sawBrawl = false;
+              ctx.rep && ctx.rep('law', 1); ctx.onStockChange && ctx.onStockChange();
+              ctx.dialog({ name: 'Сержант Кузьмин', text: 'Квитанцию выписал. Впредь держите себя в руках!', options: [{ label: 'Понял.', fn: () => ctx.closeDialog() }] });
+            } }] : []),
+            { label: 'Извините, товарищ сержант, погорячился', fn: () => {
+              mem.sawGunAim = false; mem.wasPunched = false; mem.sawBrawl = false;
+              ctx.dialog({ name: 'Сержант Кузьмин', text: 'На первый раз — устное предупреждение. Идите работайте.', options: [{ label: 'Слушаюсь!', fn: () => ctx.closeDialog() }] });
+            } }
+          ]
+        });
+        return;
+      }
+      p.h.setExpr('angry');
+      ctx.dialog({
+        name: k === 'babka' ? 'Бабушка Клавдия' : k === 'dedushka' ? 'Дедушка Егор' : k === 'worker' ? 'Рабочий завода' : 'Прохожий',
+        text: mem.sawGunAim
+          ? `Ты чего подходишь, мил человек?! Только что ружьё на меня наставлял, у меня чуть ноги не отнялись! Убери свою двустволку, тогда и поговорим по-людски!`
+          : `Слышь, коммерсант, я видел, как ты тут кулаками махал! Ты со мной-то руки не распускай!`,
+        options: [
+          { label: 'Извини, нервы ни к чёрту — шпана одолела', fn: () => {
+            mem.sawGunAim = false; mem.wasPunched = false; mem.sawBrawl = false;
+            p.h.setExpr('neutral');
+            ctx.rep && ctx.rep('folk', 1);
+            ctx.dialog({
+              name: 'Прохожий',
+              text: `Ладно, понимаю, район у нас беспокойный, да ещё и ${weatherDesc}… Забудем обиду. Торгуй спокойно.`,
+              options: [{ label: 'Спасибо за понимание!', fn: () => ctx.closeDialog() }]
+            });
+          } },
+          { label: 'Ладно, иди своей дорогой.', fn: () => ctx.closeDialog() }
+        ]
+      });
+      return;
+    }
+
+    // 3. ДИАЛОГИ С ПАМЯТЬЮ О ПОВТОРНЫХ РАЗГОВОРАХ И ПРИВЯЗКОЙ К ИГРЕ И ВРЕМЕНИ
     if (k === 'dedushka') {
+      const intro = tc === 1
+        ? `Здравствуй, внучок. Сейчас уже ${timeStr} (${timePeriod}), а на дворе ${cal.curDate} ${cal.mGen.toLowerCase()} ${cal.yr} года — ${weatherDesc}. Суставы к непогоде разломило… Как дядя Миша-то, пишет?`
+        : tc === 2
+        ? `Опять ты, внучок? Мы ж с тобой недавно толковали! Ну да старику приятно поболтать. ${vitrineNote}`
+        : `Ты уж в ${tc}-й раз ко мне подходишь, касатик! Я пока до остановки дойду — автобус седьмой пропустим.`;
       ctx.dialog({
         name: 'Дедушка Егор (ветеран труда)',
-        text: 'Здравствуй, внучок. Да вот, в аптеку ковыляю, суставы к морозу разломило... Как дядя Миша-то, передаёт весточки?',
+        text: intro,
         options: [
           { label: 'Как раньше на заводе работали, дедушка?', fn: () => ctx.dialog({
             name: 'Дедушка Егор',
-            text: 'Эх, милок, гремел наш Краснозаводский завод на всю страну! В три смены станки гудели, по пять тысяч комбайнов за год собирали. Орден Трудового Красного Знамени коллективу лично вручали! А нынче… эх, бартер да задержки.',
+            text: `Эх, милок, гремел наш Краснозаводский завод на всю страну! В три смены станки гудели, орден Трудового Красного Знамени вручали! А сейчас доллар уж по ${rate} рублей, цены каждый день скачут…`,
             options: [
-              { label: 'А в ларьке у нас бывали в те годы?', fn: () => ctx.dialog({
+              { label: 'А автобус №7 давно ждёте?', fn: () => ctx.dialog({
                 name: 'Дедушка Егор',
-                text: 'Бывал, как не бывать! В 70-е тут квас из бочки продавали по три копейки кружка, да мороженое пломбир за девятнадцать копеек. Ты честно торгуй, людей не обвешивай, и всё у тебя сладится.',
-                options: [{ label: 'Спасибо за совет, дедушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
+                text: `Да вот, расписание на остановке посмотрел — Дядя Коля по минутам ездит. Заходишь в ПАЗик, садишься на мягкое сиденье у печки — и прямиком до заводской проходной!`,
+                options: [{ label: 'Спасибо, дедушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
               }) },
               { label: 'Здоровья вам, дедушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }
             ]
           }) },
-          { label: 'Заходите в ларёк погреться!', fn: () => {
+          { label: 'Что про мой ларёк люди говорят?', fn: () => {
             ctx.rep('folk', 1);
-            ctx.dialog({ name: 'Дедушка Егор', text: 'Спасибо за доброе слово, внук! Чайку бы грузинского заварить да сухариков купить, загляну непременно.', options: [{ label: 'Ждём вас!', fn: () => ctx.closeDialog() }] });
+            ctx.dialog({ name: 'Дедушка Егор', text: `${vitrineNote} Главное — держи хлеб, тушёнку и чай, старики тебе спасибо скажут!`, options: [{ label: 'Обязательно учту!', fn: () => ctx.closeDialog() }] });
           } },
           { label: 'Доброго здоровья!', fn: () => ctx.closeDialog() }
         ]
@@ -4033,105 +4780,101 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       return;
     }
     if (k === 'babka') {
+      const intro = tc === 1
+        ? `Ой, касатик, здравствуй! На часах ${timeStr}, ${weatherDesc}. За хлебушком вышла, да вот смотрю — доллар уже по ${rate} рублей! Куда ж это годится в ${cal.yr}-м году?`
+        : tc === 2
+        ? `Снова ты, милок! Мы ж с тобой уже здоровались сегодня. ${vitrineNote}`
+        : `Ох, батюшки, уже ${tc}-й раз с тобой лясы точим! Мне ж на автобус седьмой садиться пора, пока места в салоне есть!`;
       ctx.dialog({
         name: 'Бабушка Клавдия',
-        text: 'Ой, касатик, здравствуй. За хлебушком свежим ходила, скользко на тропинке-то… Ты шапку надень, уши продует!',
+        text: intro,
         options: [
-          { label: 'Как здоровье, бабушка?', fn: () => ctx.dialog({
+          { label: 'Как здоровье и что во дворе слышно?', fn: () => ctx.dialog({
             name: 'Бабушка Клавдия',
-            text: 'Да потихоньку, милок. Лишь бы пенсию не задерживали да тепло в батареях было. Во дворе бабы говорят, ваучеры эти выдали, а что с ними делать — Бог весть!',
-            options: [
-              { label: 'Что во дворе слышно?', fn: () => ctx.dialog({
-                name: 'Бабушка Клавдия',
-                text: 'Милиция по ночам патрулирует, гопников разгоняет. А ты у ларька свет включённым держи — при свете хулиганы не сунутся.',
-                options: [{ label: 'Понял, спасибо!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
-              }) },
-              { label: 'Берегите себя, бабушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }
-            ]
+            text: gMem.crimes && gMem.crimes.kills > 0
+              ? `Ох, милок, крестятся все во дворе! Говорят, у ларька твоего стрельба да драки были! Ты уж с бандитами поосторожнее.`
+              : `Да потихоньку, милок. Милиция по вечерам патрулирует, а автобус №7 к остановке подходит — люди чинно по ступенькам заходят и на места рассаживаются.`,
+            options: [{ label: 'Спасибо за новости, бабушка!', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
           }) },
-          { label: 'В ларьке хлеб свежий, заходите!', fn: () => {
+          { label: 'В ларьке свежий товар, заходите!', fn: () => {
             ctx.rep('folk', 1);
-            ctx.dialog({ name: 'Бабушка Клавдия', text: 'Ой, дай Бог тебе здоровья, милок! Сейчас зайду, буханку «Дарницкого» возьму.', options: [{ label: 'Всегда рады!', fn: () => ctx.closeDialog() }] });
+            ctx.dialog({ name: 'Бабушка Клавдия', text: `Дай Бог тебе здоровья! ${vitrineNote}`, options: [{ label: 'Всегда рады!', fn: () => ctx.closeDialog() }] });
           } },
           { label: 'Всего доброго!', fn: () => ctx.closeDialog() }
         ]
       });
       return;
     }
-    if (k === 'school') {
-      ctx.dialog({
-        name: 'Школьник Димка',
-        text: 'Здрасьте! А у вас новые жвачки «Турбина» с машинами завезли? Мы с пацанами за гаражами на вкладыши рубимся!',
-        options: [
-          { label: 'Как в школе дела, Димка?', fn: () => ctx.dialog({
-            name: 'Школьник Димка',
-            text: 'Да историчка двойку влепила ни за что! Зато на большой перемене мы шестиклассников снежками закидали, во весело было!',
-            options: [
-              { label: 'Много вкладышей собрал?', fn: () => ctx.dialog({
-                name: 'Школьник Димка',
-                text: 'У меня уже «Феррари F40» есть и «Ламборджини»! Если у вас блок жвачек взять, там точно редкие попадутся?',
-                options: [{ label: 'Конечно! Заходи в ларёк.', fn: () => { p.h.setExpr('smile'); ctx.closeDialog(); } }]
-              }) },
-              { label: 'Учись давай!', fn: () => ctx.closeDialog() }
-            ]
-          }) },
-          { label: 'Беги на уроки, опоздаешь!', fn: () => ctx.dialog({ name: 'Школьник Димка', text: 'Да вторая смена только в два часа! Мы ещё на карусели покатаемся.', options: [{ label: 'Ну давай!', fn: () => ctx.closeDialog() }] }) }
-        ]
-      });
-      return;
-    }
     if (k === 'worker') {
+      const intro = tc === 1
+        ? `Здорово, хозяин! На часах ${timeStr} (${timePeriod}), ${weatherDesc}. Иду с Краснозаводского завода — семь часов у фрезера отпахал.`
+        : tc === 2
+        ? `Здорово ещё раз! Мы ж с тобой уже виделись сегодня. ${vitrineNote}`
+        : `Ну ты, брат, общительный — уже в ${tc}-й раз заговариваешь! Сейчас седьмой автобус подойдёт, поеду погреюсь.`;
       ctx.dialog({
         name: 'Рабочий завода',
-        text: 'Здорово, хозяин. Со смены иду, в мехосборочном семь часов у фрезера отпахал. Холодрыга на улице.',
+        text: intro,
         options: [
-          { label: 'Как там на заводе дела?', fn: () => ctx.dialog({
+          { label: 'Как на заводе дела и почём товар со склада?', fn: () => ctx.dialog({
             name: 'Рабочий',
-            text: 'Да гудит завод! Заказы есть, но зарплату опять бартером выдали — тушёнкой да ящиком пива. Ты у Гены на складе затаривался? Там для своих скидку дают.',
-            options: [
-              { label: 'Автобус №7 нормально ходит?', fn: () => ctx.dialog({
-                name: 'Рабочий',
-                text: 'Дядя Коля чётко по кольцу крутит, в обе стороны остановки есть. Печка в салоне шпарит — согрелся хоть.',
-                options: [{ label: 'Это отлично.', fn: () => ctx.closeDialog() }]
-              }) },
-              { label: 'Держись, земляк.', fn: () => ctx.closeDialog() }
-            ]
+            text: `В отделе сбыта у проходной кладовщик Геннадий сидит — отпускает заводское пиво, тушёнку, лимонад и сигареты на 20% дешевле базы! Можешь коробку прямо в ПАЗик поставить и привезти, только учти: когда Дядя Коля газует или тормозит, коробки и бутылки по полу автобуса катаются!`,
+            options: [{ label: 'Дельный совет, спасибо!', fn: () => ctx.closeDialog() }]
           }) },
-          { label: 'Заходи за сигаретами и пивом!', fn: () => {
-            ctx.dialog({ name: 'Рабочий', text: 'О, пачку «Космонавта» с фильтром точно прихвачу. Бывай!', options: [{ label: 'Удачи!', fn: () => ctx.closeDialog() }] });
-          } },
-          { label: 'Счастливо.', fn: () => ctx.closeDialog() }
+          { label: 'Что скажешь про цены в ларьке?', fn: () => ctx.dialog({
+            name: 'Рабочий',
+            text: `${vitrineNote} А курс доллара сегодня уже ${rate} ₽ за бакс — в блокноте наценку с умом крути!`,
+            options: [{ label: 'Понял, бывай!', fn: () => ctx.closeDialog() }]
+          }) },
+          { label: 'Счастливо, земляк.', fn: () => ctx.closeDialog() }
         ]
       });
       return;
     }
     if (k === 'police') {
+      const hasCrimes = gMem.crimes && (gMem.crimes.kills > 0 || gMem.crimes.brawls > 0);
+      const intro = tc === 1
+        ? `Здравия желаю! Время ${timeStr}, ${cal.curDate} ${cal.mGen.toLowerCase()} ${cal.yr} г. Патрулируем ул. Заводскую.${hasCrimes ? ' Кстати, по сводке у вашего ларька зафиксированы беспорядки — мы за вами внимательно следим!' : ' Как обстановка у ларька?'}`
+        : `Товарищ коммерсант, мы с вами сегодня уже беседовали (${tc}-й раз). Порядок соблюдаете? Контрабанду и самогон на открытую витрину не выставляйте!`;
       ctx.dialog({
         name: 'Сержант Кузьмин (милиция)',
-        text: 'Здравия желаю. Патрулируем район. Как обстановка у ларька, подозрительных лиц не замечено?',
+        text: intro,
         options: [
-          { label: 'Всё спокойно, товарищ сержант.', fn: () => ctx.dialog({
+          { label: 'Всё по закону, товарищ сержант!', fn: () => ctx.dialog({
             name: 'Сержант Кузьмин',
-            text: 'Вот и порядок. По вечерам у остановки карманники орудуют, да шпана за гаражами шумит. Если что — свисток сразу, наряд рядом.',
+            text: `Вот и отлично. Сейчас ${timePeriod}, ${weatherDesc}. Если шпана или рэкетиры будут ломиться — не устраивайте самосуд на глазах у прохожих, люди всё запоминают!`,
             options: [{ label: 'Так точно!', fn: () => ctx.closeDialog() }]
           }) },
-          { label: 'Служба как идёт?', fn: () => ctx.dialog({
+          { label: 'Как обстановка на маршруте №7?', fn: () => ctx.dialog({
             name: 'Сержант Кузьмин',
-            text: 'Служим закону! На морозе только ноги стынут. Чайку бы горячего выпить.',
-            options: [{ label: 'Спокойного дежурства!', fn: () => ctx.closeDialog() }]
+            text: 'Автобус ходит исправно, пассажиры садятся на остановках. Следите, чтобы в салоне пустые бутылки не били.',
+            options: [{ label: 'Понял, спокойного дежурства!', fn: () => ctx.closeDialog() }]
           }) },
           { label: 'Честь имею.', fn: () => ctx.closeDialog() }
         ]
       });
       return;
     }
-    // Прочие прохожие
+    // Молодёжь, соседи и прочие прохожие
+    const intro = tc === 1
+      ? `Привет, коммерсант! На часах ${timeStr} (${timePeriod}), на улице ${weatherDesc}. Бакс сегодня уже по ${rate} ₽!`
+      : tc === 2
+      ? `О, снова ты! Мы ж с тобой уже болтали сегодня. ${vitrineNote}`
+      : `Слушай, мы уже ${tc}-й раз за день разговариваем! Тебе торговать надо, а мне автобус №7 ловить.`;
     ctx.dialog({
-      name: 'Прохожий',
-      text: pick(['Здорово!', 'Холодно нынче, мороз крепчает.', 'Автобус седьмой недавно прошёл?', 'Привет, коммерсант!']),
+      name: k === 'youth' ? 'Местный парень' : k === 'neighbor' ? 'Сосед по дому' : 'Прохожий',
+      text: intro,
       options: [
-        { label: 'Как дела?', fn: () => ctx.dialog({ name: 'Прохожий', text: 'Да нормально, в магазин бегу. Бывай!', options: [{ label: 'Удачи!', fn: () => ctx.closeDialog() }] }) },
-        { label: 'Заходи в ларёк!', fn: () => { ctx.rep('folk', .5); ctx.dialog({ name: 'Прохожий', text: 'Загляну, если мелочь останется!', options: [{ label: 'Ждём!', fn: () => ctx.closeDialog() }] }); } },
+        { label: 'Что нового на районе слышно?', fn: () => ctx.dialog({
+          name: k === 'youth' ? 'Местный парень' : 'Сосед',
+          text: gMem.crimes && gMem.crimes.kills > 0
+            ? 'Все только и шепчутся, что у ларька кого-то уложили… Народ теперь с опаской ходит!'
+            : `Да всё как обычно в ${cal.yr}-м: у остановки Марат на чёрной БМВ стоит, Дядя Коля на ПАЗике народ до завода возит, а ${vitrineNote.charAt(0).toLowerCase() + vitrineNote.slice(1)}`,
+          options: [{ label: 'Ясно, спасибо!', fn: () => ctx.closeDialog() }]
+        }) },
+        { label: 'Заходи в ларёк за покупками!', fn: () => {
+          ctx.rep('folk', .5);
+          ctx.dialog({ name: 'Прохожий', text: `Обязательно загляну! ${vitrineNote}`, options: [{ label: 'Ждём!', fn: () => ctx.closeDialog() }] });
+        } },
         { label: 'Бывай.', fn: () => ctx.closeDialog() }
       ]
     });
@@ -4521,7 +5264,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
 
   setClock(18.2); resize();
   return {
-    scene, frame, updateShelves, goCounter, sit, stand, nearMarket, nearBooth, P, weapon, loading,
+    scene, frame, updateShelves, goCounter, sit, stand, nearMarket, nearBooth, P, weapon, loading, punch, startGopBrawl,
     action: () => curAct, isNight: () => nightK > .45, canMove, inKiosk, toggleDoor, look, applyQuality, spawnCustomer, customerEvent,
     move(x, y) { input.mx = x; input.my = y; }, nearDoor() { return Math.hypot(P.x - .8, P.z + KD) < 2.2; }, setSprint(v) { P.sprint = v; }, toggleCrouch() { if (transport.seated) { transport.standFromSeat(); return; } if (!P.seated) P.crouch = !P.crouch; }, get crouch() { return P.crouch; }, get sprint() { return P.sprint; },
     unlock() { P.locked = false; ctx.onCtl(); },

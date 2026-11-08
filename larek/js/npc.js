@@ -120,17 +120,22 @@ export function buildHuman(L, staticModel) {
     // персонаж из присланной модели: части меша закреплены на тех же шарнирах
     const P = staticModel, C = P.cfg, s = H / C.height;
     root.userData.static = true;
-    const tint = new THREE.Color().setRGB(rnd(.86, 1.08), rnd(.86, 1.08), rnd(.86, 1.08));
-    const sm = P.map ? new THREE.MeshStandardMaterial({ map: P.map, roughness: .82, side: THREE.DoubleSide }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .88, color: tint }); // у текстурированной модели (милиционер) — своя текстура
+    const tint = new THREE.Color().setRGB(rnd(.90, 1.08), rnd(.90, 1.08), rnd(.90, 1.08));
+    const sm = P.map
+      ? new THREE.MeshStandardMaterial({ map: P.map, emissive: new THREE.Color(0x38322c), emissiveMap: P.map, emissiveIntensity: .28, roughness: .75, metalness: .04, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, emissive: new THREE.Color(0x38322c), emissiveIntensity: .24, roughness: .80, color: tint });
+    R.skinMat = sm;
     hips.position.y = C.hipY * s; spine.position.y = 0;
     part(P.torso, sm, s, s, s, 0, -C.hipY * s, 0, spine, true);
-    R.neck = pivot(spine, 0, (C.neckY - C.hipY) * s, 0); R.head = pivot(R.neck, 0, 0, 0); part(P.head, sm, s, s, s, 0, 0, 0, R.head, true);
-    R.shL = pivot(spine, C.shX * s, (C.shY - C.hipY) * s, 0); R.shR = pivot(spine, -C.shX * s, (C.shY - C.hipY) * s, 0);
+    const nZ = (C.neckZ || 0) * s, sZ = (C.shZ || 0) * s;
+    R.neck = pivot(spine, 0, (C.neckY - C.hipY) * s, nZ); R.head = pivot(R.neck, 0, 0, 0); part(P.head, sm, s, s, s, 0, 0, 0, R.head, true);
+    R.shL = pivot(spine, C.shX * s, (C.shY - C.hipY) * s, sZ); R.shR = pivot(spine, -C.shX * s, (C.shY - C.hipY) * s, sZ);
     part(P.armL, sm, s, s, s, 0, 0, 0, R.shL, true); part(P.armR, sm, s, s, s, 0, 0, 0, R.shR, true);
     R.elL = pivot(R.shL, 0, -.3 * s, 0); R.elR = pivot(R.shR, 0, -.3 * s, 0);
     R.thL = pivot(hips, C.legX * s, 0, 0); R.thR = pivot(hips, -C.legX * s, 0, 0);
     part(P.legL, sm, s, s, s, 0, 0, 0, R.thL, true); part(P.legR, sm, s, s, s, 0, 0, 0, R.thR, true);
     if (P.sds) { // модель с коленями и локтями: голень и предплечье на своих шарнирах
+      R.sds = true;
       R.elL.position.set(P.elbL[0] * s, P.elbL[1] * s, 0); R.elR.position.set(P.elbR[0] * s, P.elbR[1] * s, 0);
       part(P.foreL, sm, s, s, s, 0, 0, 0, R.elL, true); part(P.foreR, sm, s, s, s, 0, 0, 0, R.elR, true);
       R.knL = pivot(R.thL, 0, P.kneeOff * s, 0); R.knR = pivot(R.thR, 0, P.kneeOff * s, 0);
@@ -290,31 +295,62 @@ export function prepareSdsPerson(mesh, name) {
     triReg.push(r); }
   const vertsOf = r => { const out = []; triReg.forEach((q, t) => { if (q === r) for (let v = 0; v < 3; v++) out.push(t * 3 + v); }); return out; };
   const v3 = new THREE.Vector3(), n3 = new THREE.Vector3(), q = new THREE.Quaternion(), Z = new THREE.Vector3(0, 0, 1);
+  const hipY = H * .5, kneeY = H * .27, legX = H * .055, neckY = H * .855;
+  // Находим реальный центр шеи и плеч по оси Z (в SDS-моделях шея и спина смещены примерно на -0.10м по Z относительно носков ботинок)
+  let nzMin = 1e9, nzMax = -1e9, szMin = 1e9, szMax = -1e9;
+  for (let i = 0; i < nv; i++) {
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+    if (Math.abs(y - neckY) < H * .03 && Math.abs(x) < H * .1) { if (z < nzMin) nzMin = z; if (z > nzMax) nzMax = z; }
+    if (Math.abs(y - H * .815) < H * .04 && Math.abs(x) > H * .07 && Math.abs(x) < H * .18) { if (z < szMin) szMin = z; if (z > szMax) szMax = z; }
+  }
+  const neckZ = nzMin < nzMax ? (nzMin + nzMax) * .5 : -H * .06;
+  const shZ = szMin < szMax ? (szMin + szMax) * .5 : neckZ;
   const piv = {}, elbow = {};
   for (const side of ['armL', 'armR']) {
     const vs = vertsOf(side); if (!vs.length) continue; const sg = side === 'armL' ? 1 : -1;
     const shX = Math.abs(arms[side][0][0]), shY = arms[side][0][1], hX = Math.abs(arms[side][1][0]), hY = arms[side][1][1];
-    const ang = Math.atan2(shY - hY, hX - shX), rot = Math.PI / 2 - ang - .1; // угол руки ниже горизонтали → почти вниз
+    const len = Math.hypot(hX - shX, shY - hY);
+    // Опускаем руки ровно вдоль туловища (без торчащей в стороны A-позы) и слегка подгибаем кисти/пальцы внутрь к бедру
+    const ang = Math.atan2(shY - hY, hX - shX), rot = Math.PI / 2 - ang + .045;
     q.setFromAxisAngle(Z, -sg * rot); const done = new Set();
-    for (const i of vs) { if (done.has(i)) continue; done.add(i);
-      v3.set(P.getX(i) - sg * shX, P.getY(i) - shY, P.getZ(i)).applyQuaternion(q); P.setXYZ(i, v3.x + sg * shX, v3.y + shY, v3.z);
-      n3.set(N.getX(i), N.getY(i), N.getZ(i)).applyQuaternion(q); N.setXYZ(i, n3.x, n3.y, n3.z); }
-    const len = Math.hypot(hX - shX, shY - hY); piv[side] = [sg * shX, shY]; elbow[side] = [sg * (shX + Math.sin(.1) * len * .5), shY - Math.cos(.1) * len * .5];
+    for (const i of vs) {
+      if (done.has(i)) continue; done.add(i);
+      v3.set(P.getX(i) - sg * shX, P.getY(i) - shY, P.getZ(i) - shZ).applyQuaternion(q);
+      // Ниже запястья мягко подворачиваем растопыренные пальцы внутрь к ладони
+      const distDown = -v3.y;
+      if (distDown > len * .66) {
+        const handK = distDown - len * .66;
+        v3.x -= sg * handK * .26;
+        v3.z += handK * .08;
+      }
+      P.setXYZ(i, v3.x + sg * shX, v3.y + shY, v3.z + shZ);
+      n3.set(N.getX(i), N.getY(i), N.getZ(i)).applyQuaternion(q); N.setXYZ(i, n3.x, n3.y, n3.z);
+    }
+    piv[side] = [sg * shX, shY];
+    elbow[side] = [sg * (shX - Math.sin(.03) * len * .48), shY - Math.cos(.03) * len * .48];
   }
-  const hipY = H * .5, kneeY = H * .27, legX = H * .055, neckY = H * .855;
-  // сборка частей: геометрия относительно своего шарнира
-  const make = (vs, px, py) => { const m = vs.length, Pa = new Float32Array(m * 3), Na = new Float32Array(m * 3), Ca = new Float32Array(m * 3).fill(1), Ua = new Float32Array(m * 2), UV = g.attributes.uv;
-    vs.forEach((i, j) => { Pa[j * 3] = P.getX(i) - px; Pa[j * 3 + 1] = P.getY(i) - py; Pa[j * 3 + 2] = P.getZ(i); Na[j * 3] = N.getX(i); Na[j * 3 + 1] = N.getY(i); Na[j * 3 + 2] = N.getZ(i); if (UV) { Ua[j * 2] = UV.getX(i); Ua[j * 2 + 1] = UV.getY(i); } });
+  // сборка частей: геометрия относительно своего 3D-шарнира (px, py, pz)
+  const make = (vs, px, py, pz = 0) => { const m = vs.length, Pa = new Float32Array(m * 3), Na = new Float32Array(m * 3), Ca = new Float32Array(m * 3).fill(1), Ua = new Float32Array(m * 2), UV = g.attributes.uv;
+    vs.forEach((i, j) => { Pa[j * 3] = P.getX(i) - px; Pa[j * 3 + 1] = P.getY(i) - py; Pa[j * 3 + 2] = P.getZ(i) - pz; Na[j * 3] = N.getX(i); Na[j * 3 + 1] = N.getY(i); Na[j * 3 + 2] = N.getZ(i); if (UV) { Ua[j * 2] = UV.getX(i); Ua[j * 2 + 1] = UV.getY(i); } });
     const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.BufferAttribute(Pa, 3)); o.setAttribute('normal', new THREE.BufferAttribute(Na, 3)); o.setAttribute('color', new THREE.BufferAttribute(Ca, 3)); o.setAttribute('uv', new THREE.BufferAttribute(Ua, 2)); o.computeBoundingSphere(); return o; };
   const cy = tri => (P.getY(tri[0]) + P.getY(tri[1]) + P.getY(tri[2])) / 3;
-  // деление по высоте с перекрытием: треугольники у сгиба попадают в обе части — при сгибе колена/локтя нет сквозной щели
+  // деление по высоте с перекрытием: треугольники у сгиба попадают в обе части — при сгибе колена/локтя/шеи нет сквозной щели
   const splitBy = (vs, cut, band = H * .025) => { const a = [], b = []; for (let t = 0; t < vs.length; t += 3) { const tri = [vs[t], vs[t + 1], vs[t + 2]], y = cy(tri); if (y < cut + band) a.push(...tri); if (y >= cut - band) b.push(...tri); } return [a, b]; };
-  const out = { cfg: { height: H, hipY, neckY, shY: piv.armL ? piv.armL[1] : H * .82, shX: piv.armL ? piv.armL[0] : H * .11, legX } };
-  out.torso = make(vertsOf('torso'), 0, 0); out.head = make(vertsOf('head'), 0, neckY);
+  const out = { cfg: { height: H, hipY, neckY, neckZ, shY: piv.armL ? piv.armL[1] : H * .82, shX: piv.armL ? piv.armL[0] : H * .11, shZ, legX } };
+  // Перекрытие на шее (neckBand): треугольники воротника и основания шеи входят и в torso, и в head, чтобы при повороте головы шея не разрывалась
+  const neckBand = H * .022, torsoVs = vertsOf('torso'), headVs = vertsOf('head');
+  for (let t = 0; t < nv; t += 3) {
+    const [tx, ty] = triC(t);
+    if (Math.abs(tx) < H * .1 && Math.abs(ty - neckY) < neckBand) {
+      if (triReg[t / 3] === 'torso') headVs.push(t, t + 1, t + 2);
+      else if (triReg[t / 3] === 'head') torsoVs.push(t, t + 1, t + 2);
+    }
+  }
+  out.torso = make(torsoVs, 0, 0, 0); out.head = make(headVs, 0, neckY, neckZ);
   for (const side of ['legL', 'legR']) { const sg = side === 'legL' ? 1 : -1; const [shin, thigh] = splitBy(vertsOf(side), kneeY);
-    out[side] = make(thigh, sg * legX, hipY); out[side === 'legL' ? 'shinL' : 'shinR'] = make(shin, sg * legX, kneeY); }
+    out[side] = make(thigh, sg * legX, hipY, 0); out[side === 'legL' ? 'shinL' : 'shinR'] = make(shin, sg * legX, kneeY, 0); }
   for (const side of ['armL', 'armR']) { const p_ = piv[side] || [0, 0], e = elbow[side] || p_; const [fore, upper] = splitBy(vertsOf(side), e[1]);
-    out[side] = make(upper, p_[0], p_[1]); out[side === 'armL' ? 'foreL' : 'foreR'] = make(fore, e[0], e[1]); out[side === 'armL' ? 'elbL' : 'elbR'] = [e[0] - p_[0], e[1] - p_[1]]; }
+    out[side] = make(upper, p_[0], p_[1], shZ); out[side === 'armL' ? 'foreL' : 'foreR'] = make(fore, e[0], e[1], shZ); out[side === 'armL' ? 'elbL' : 'elbR'] = [e[0] - p_[0], e[1] - p_[1]]; }
   out.head.computeBoundingBox(); out.headTop = out.head.boundingBox.max.y; out.headZ = (out.head.boundingBox.max.z + out.head.boundingBox.min.z) / 2;
   out.torso.computeBoundingBox(); out.chestZ = out.torso.boundingBox.max.z;
   out.kneeOff = kneeY - hipY; out.map = mesh.material && mesh.material.map; out.sds = true;
@@ -432,38 +468,73 @@ export class Human {
       const stride = R.stride * (a === 'walk' ? 1 : 1.5);
       const prev = this.phase; this.phase += (dist / stride) * Math.PI;
       if (onStep && Math.floor(prev / Math.PI) !== Math.floor(this.phase / Math.PI)) onStep();
-      const p = this.phase, run = a !== 'walk', amp = run ? .8 : .42 * (L.age > 60 ? .7 : 1);
-      T.thL.x = Math.sin(p) * amp; T.thR.x = -Math.sin(p) * amp;
-      T.knL.x = Math.max(0, -Math.cos(p)) * amp * (run ? 1.6 : 1.2) + .05; T.knR.x = Math.max(0, Math.cos(p)) * amp * (run ? 1.6 : 1.2) + .05;
-      const arm = (run ? .9 : .38) * (L.swagger > .5 ? 1.3 : 1) * (R.rigidArms ? .5 : 1);
-      T.shL.x = -Math.sin(p) * arm; T.shR.x = Math.sin(p) * arm; T.elL.x = -(run ? 1.3 : .25); T.elR.x = -(run ? 1.3 : .25);
-      T.shL.z = .08 + L.swagger * .12; T.shR.z = -.08 - L.swagger * .12;
-      T.spine.y = Math.sin(p) * (.06 + L.swagger * .12);
-      bob = Math.abs(Math.cos(p)) * (run ? .05 : .025); lean += run ? .22 : .04; sway = Math.sin(p) * (.02 + L.swagger * .03);
+      const p = this.phase, run = a !== 'walk', amp = run ? .76 : .44 * (L.age > 60 ? .74 : 1);
+      // Реалистичный шаг: сгиб бедра + плавный перекат колена в фазе переноса ноги
+      const sL = Math.sin(p), cL = Math.cos(p);
+      T.thL.x = sL * amp; T.thR.x = -sL * amp;
+      T.knL.x = Math.max(0, -cL) * amp * (run ? 1.55 : 1.25) + (sL > 0 ? sL * .14 : .04);
+      T.knR.x = Math.max(0,  cL) * amp * (run ? 1.55 : 1.25) + (-sL > 0 ? -sL * .14 : .04);
+      // Естественный противоход рук вдоль корпуса (без растопыривания в стороны!) + живой сгиб локтей при выносе руки вперёд
+      const arm = (run ? .78 : .36) * (L.swagger > .5 ? 1.22 : 1) * (R.rigidArms ? .45 : 1);
+      T.shL.x = -sL * arm; T.shR.x = sL * arm;
+      T.elL.x = -(run ? 1.15 : .22 + Math.max(0, -sL) * .26);
+      T.elR.x = -(run ? 1.15 : .22 + Math.max(0,  sL) * .26);
+      // Отрицательный Z для левого плеча (+X) и положительный для правого (-X) прижимает руки к пальто
+      T.shL.z = -.035 + L.swagger * .03;
+      T.shR.z =  .035 - L.swagger * .03;
+      T.hips.y = -sL * .07;
+      T.hips.z = cL * .022;
+      T.spine.y = sL * (.06 + L.swagger * .09);
+      bob = Math.abs(cL) * (run ? .048 : .024); lean += run ? .20 : .04; sway = sL * (.018 + L.swagger * .022);
       if (a === 'flee') { T.head.y = Math.sin(this.t * 3) * .4; }
     } else {
-      const br = Math.sin(this.t * 1.7) * .02;
-      T.spine.x = br; T.shL.z = .07; T.shR.z = -.07; T.elL.x = -.12; T.elR.x = -.12;
-      sway = Math.sin(this.t * .5) * .012; T.hips.z = Math.sin(this.t * .5) * .03;
-      if (a === 'idle' || a === 'wait') { this.nextGlance -= dt; if (this.nextGlance < 0) { this.nextGlance = rnd(2, 6); this.lookYaw = rnd(-.7, .7); this.lookPitch = rnd(-.15, .1); } }
-      if (a === 'wait' && (this.t % 9) > 7) { T.shL.x = -1.1; T.elL.x = -1.6; T.shL.z = .3; T.head.x = .35; this.lookYaw = .4; } // смотрит на часы
-      if (a === 'wait') { T.thL.x = Math.max(0, Math.sin(this.t * 1.3)) * .1; T.knL.x = T.thL.x * 1.5; } // переминается
-      if (a === 'inspect') { lean += .18; T.head.x = .35; T.shR.x = -.9; T.elR.x = -1.9; T.shR.z = .2; this.lookYaw = Math.sin(this.t * .7) * .35; this.lookPitch = .2; }
-      if (a === 'talk') { T.shR.x = -.6 + Math.sin(this.t * 4) * .3; T.elR.x = -1.0 + Math.sin(this.t * 5.3) * .3; T.head.x = Math.sin(this.t * 3.1) * .08; this.lookYaw *= .9; }
-      if (a === 'pay' || a === 'receive') { T.shR.x = -1.25; T.elR.x = -.35; if (a === 'receive') { T.shL.x = -1.1; T.elL.x = -.4; } lean += .08; }
-      if (a === 'count') { T.shL.x = -.9; T.elL.x = -1.2; T.shR.x = -.9; T.elR.x = -1.3 + Math.sin(this.t * 9) * .15; T.head.x = .45; }
-      if (a === 'threaten') { T.shR.x = -1.6 + Math.sin(this.t * 6) * .25; T.elR.x = -1.4; T.shR.z = -.2; lean += .14; T.head.x = -.1; T.shL.z = .3; T.elL.x = -.9; }
-      if (a === 'smoke') { const k = (this.t % 6) < 2 ? 1 : 0; T.shR.x = -.3 - k * 1.2; T.elR.x = -.5 - k * 1.7; T.shR.z = -.15; T.shL.x = .1; T.elL.x = -.4; }
-      if (a === 'handsUp') { T.shL.x = -2.9; T.shR.x = -2.9; T.shL.z = .35; T.shR.z = -.35; T.elL.x = -.5; T.elR.x = -.5; lean -= .05; this.lookYaw = 0; }
-      if (a === 'scared') { lean -= .15; T.shL.x = -1.4; T.shR.x = -1.4; T.elL.x = -1.6; T.elR.x = -1.6; T.shL.z = -.25; T.shR.z = .25; T.head.x = .25; T.thL.x = .15; T.knL.x = .3; }
-      if (a === 'pocket') { T.shL.x = .15; T.shR.x = .15; T.elL.x = -.6; T.elR.x = -.6; T.shL.z = .25; T.shR.z = -.25; }
+      const br = Math.sin(this.t * 1.7) * .018;
+      T.spine.x = br;
+      // В покое руки свободно опущены вдоль тела и слегка согнуты в локтях
+      T.shL.z = -.04 - Math.abs(Math.sin(this.t * .6)) * .015;
+      T.shR.z =  .04 + Math.abs(Math.sin(this.t * .6)) * .015;
+      T.shL.x = Math.sin(this.t * .9) * .025;
+      T.shR.x = -Math.sin(this.t * .9) * .025;
+      T.elL.x = -.16; T.elR.x = -.16;
+      sway = Math.sin(this.t * .5) * .010; T.hips.z = Math.sin(this.t * .5) * .024;
+      if (a === 'idle' || a === 'wait' || a === 'sit') { this.nextGlance -= dt; if (this.nextGlance < 0) { this.nextGlance = rnd(2, 5.5); this.lookYaw = rnd(-.65, .65); this.lookPitch = rnd(-.12, .10); } }
+      if (a === 'wait' && (this.t % 9) > 6.8) { T.shL.x = -.95; T.elL.x = -1.45; T.shL.z = -.18; T.head.x = .32; this.lookYaw = .35; } // смотрит на часы
+      if (a === 'wait') { T.thL.x = Math.max(0, Math.sin(this.t * 1.3)) * .09; T.knL.x = T.thL.x * 1.5; } // переминается с ноги на ногу
+      if (a === 'warm') { // греет руки и потирает ладони на морозе
+        T.shL.x = -.72 + Math.sin(this.t * 5) * .06; T.shR.x = -.72 - Math.sin(this.t * 5) * .06;
+        T.shL.z = -.24; T.shR.z = .24;
+        T.elL.x = -1.32 + Math.sin(this.t * 6.5) * .12; T.elR.x = -1.32 - Math.sin(this.t * 6.5) * .12;
+        T.head.x = .18; lean += .06;
+      }
+      if (a === 'sit') { // сидит на скамейке остановки или на сиденье в автобусе ПАЗ
+        T.thL.x = -1.42; T.thR.x = -1.42;
+        T.knL.x = 1.38;  T.knR.x = 1.38;
+        T.shL.x = -.24 + Math.sin(this.t * .8) * .03;
+        T.shR.x = -.24 + Math.cos(this.t * .8) * .03;
+        T.elL.x = -.58;  T.elR.x = -.58;
+        T.shL.z = -.04;  T.shR.z = .04;
+        T.hips.z = 0; sway = Math.sin(this.t * .7) * .006;
+        bob = -.36;
+      }
+      if (a === 'inspect') { lean += .16; T.head.x = .28; T.shR.x = -.68; T.elR.x = -1.38; T.shR.z = .12; this.lookYaw = Math.sin(this.t * .7) * .32; this.lookPitch = .16; }
+      if (a === 'talk') {
+        T.shR.x = -.52 + Math.sin(this.t * 3.8) * .26; T.elR.x = -.92 + Math.sin(this.t * 4.9) * .24; T.shR.z = .06;
+        T.shL.x = -.26 + Math.cos(this.t * 3.1) * .16; T.elL.x = -.52 + Math.cos(this.t * 4.2) * .15; T.shL.z = -.06;
+        T.head.x = Math.sin(this.t * 3.1) * .07; this.lookYaw *= .9;
+      }
+      if (a === 'pay' || a === 'receive') { T.shR.x = -1.15; T.elR.x = -.42; T.shR.z = .05; if (a === 'receive') { T.shL.x = -1.05; T.elL.x = -.45; T.shL.z = -.05; } lean += .08; }
+      if (a === 'count') { T.shL.x = -.82; T.elL.x = -1.15; T.shR.x = -.82; T.elR.x = -1.25 + Math.sin(this.t * 9) * .15; T.head.x = .42; }
+      if (a === 'threaten') { T.shR.x = -1.45 + Math.sin(this.t * 6) * .22; T.elR.x = -1.25; T.shR.z = .12; lean += .14; T.head.x = -.08; T.shL.x = -.55; T.shL.z = -.14; T.elL.x = -.95; }
+      if (a === 'smoke') { const k = (this.t % 6.2) < 2.2 ? 1 : 0; T.shR.x = -.26 - k * 1.02; T.elR.x = -.45 - k * 1.42; T.shR.z = .08 + k * .16; T.shL.x = .06; T.elL.x = -.28; T.shL.z = -.05; }
+      if (a === 'handsUp') { T.shL.x = -2.85; T.shR.x = -2.85; T.shL.z = .25; T.shR.z = -.25; T.elL.x = -.45; T.elR.x = -.45; lean -= .05; this.lookYaw = 0; }
+      if (a === 'scared') { lean -= .15; T.shL.x = -1.35; T.shR.x = -1.35; T.elL.x = -1.55; T.elR.x = -1.55; T.shL.z = -.18; T.shR.z = .18; T.head.x = .25; T.thL.x = .15; T.knL.x = .3; }
+      if (a === 'pocket') { T.shL.x = .12; T.shR.x = .12; T.elL.x = -.52; T.elR.x = -.52; T.shL.z = -.14; T.shR.z = .14; }
     }
-    if (this.umbrella && a !== 'handsUp' && a !== 'scared') { T.shR.x = -.42; T.shR.z = -.12; T.elR.x = -1.45; }
-    if (a !== 'handsUp' && a !== 'scared') { T.neck.y = this.lookYaw * .4; T.head.y = this.lookYaw * .6; T.head.x += this.lookPitch; }
+    if (this.umbrella && a !== 'handsUp' && a !== 'scared') { T.shR.x = -.42; T.shR.z = .08; T.elR.x = -1.45; }
+    if (a !== 'handsUp' && a !== 'scared') { T.neck.y = this.lookYaw * .4; T.head.y = this.lookYaw * .6 - T.spine.y * .45; T.head.x += this.lookPitch; }
     T.spine.x += lean;
-    // у моделей-прохожих рука цельная, без локтя: позы «согнуть в локте» превращались в прямую руку, торчащую вперёд.
-    // Ограничиваем подъём плеча (кроме «руки вверх» и испуга) — рука остаётся вдоль тела, лишь чуть выносится.
-    if (R.root.userData.static && a !== 'handsUp' && a !== 'scared') for (const j of ['shL', 'shR']) { T[j].x = Math.max(-.45, Math.min(.35, T[j].x)); T[j].z = Math.max(-.2, Math.min(.2, T[j].z)); }
+    // Ограничиваем подъём плеча ТОЛЬКО у старых моделей без локтей (!R.sds); у всех SDS-моделей полноценные локти и колени!
+    if (R.root.userData.static && !R.sds && a !== 'handsUp' && a !== 'scared') for (const j of ['shL', 'shR']) { T[j].x = Math.max(-.45, Math.min(.35, T[j].x)); T[j].z = Math.max(-.2, Math.min(.2, T[j].z)); }
     // смешивание
     const k = 1 - Math.exp(-this.blend * dt);
     for (const j of JOINTS) { const o = R[j]; if (!o) continue; const tg = T[j]; o.rotation.x += (tg.x - o.rotation.x) * k; o.rotation.y += (tg.y - o.rotation.y) * k; o.rotation.z += (tg.z - o.rotation.z) * k; }

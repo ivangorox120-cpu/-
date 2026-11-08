@@ -222,6 +222,11 @@ export function createLife(env) {
 
   function surfaceBelow(x, z, yTop, forItem = null) {
     let best = groundHeightAt(x, z);
+    const tr = env.transport && env.transport();
+    if (tr && tr.isInsideBus && tr.isInsideBus(x, z, .08)) {
+      const by = tr.busSurfaceAt(x, z, yTop);
+      if (by > best && by <= yTop + .16) best = by;
+    }
     for (const s of SURF) {
       if (forItem && forItem.kind === "box" && s.name === "shelf") continue;
       if (x > s.x1 && x < s.x2 && z > s.z1 && z < s.z2 && s.y <= yTop + .04 && s.y > best) best = s.y;
@@ -254,6 +259,13 @@ export function createLife(env) {
     ray.setFromCamera(new THREE.Vector2(0, 0), camera); const o = ray.ray.origin, d = ray.ray.direction;
     let best = null;
     const cand = SURF.filter(s => !(heldItem && heldItem.kind === "box" && s.name === "shelf"));
+    const tr = env.transport && env.transport();
+    if (tr && (tr.onBoard || tr.doorK > .4 || tr.isInsideBus(P.x, P.z, .6))) {
+      // Внутри автобуса можно ставить вещи на пол салона (y=0.775), на сиденья (y=1.15) и на капот (y=1.31)
+      cand.push({ name: "bus_floor", y: .775, x1: P.x - 3.5, x2: P.x + 3.5, z1: P.z - 3.5, z2: P.z + 3.5, busCheck: true });
+      cand.push({ name: "bus_seat",  y: 1.15, x1: P.x - 2.6, x2: P.x + 2.6, z1: P.z - 2.6, z2: P.z + 2.6, busCheck: true });
+      cand.push({ name: "bus_hood",  y: 1.31, x1: P.x - 2.6, x2: P.x + 2.6, z1: P.z - 2.6, z2: P.z + 2.6, busCheck: true });
+    }
     if (!inK(P.x, P.z)) cand.push({ name: "ground", y: groundHeightAt(P.x, P.z), x1: -999, x2: 999, z1: -999, z2: 999 });
     for (const it of items) if (it !== heldItem && it.state === "rest" && it.stack && !it.inBoxId) {
       const p = it.obj.position;
@@ -282,6 +294,11 @@ export function createLife(env) {
         if (t > 0 && t <= maxD) {
           const x = o.x + d.x * t, z = o.z + d.z * t;
           if (x > s.x1 && x < s.x2 && z > s.z1 && z < s.z2) {
+            if (s.busCheck && tr) {
+              if (!tr.isInsideBus(x, z, -.05)) continue;
+              const surfH = tr.busSurfaceAt(x, z, s.y + .06);
+              if (Math.abs(surfH - s.y) > .08) continue;
+            }
             const dPlayer = Math.hypot(x - P.x, z - P.z);
             const limitD = (s.name === 'shelf' || s.name === 'counter') ? .92 : 1.15;
             if (dPlayer <= limitD) {
@@ -556,11 +573,13 @@ export function createLife(env) {
       it.mass = it.data.opened ? 1 : 12;
       it.stack = true;
     } else if (rec.kind === "bottle") {
-      it.obj = emptyBottleMesh(rec.data && rec.data.drinkKind);
-      it.half = { x: .04, y: .15, z: .04 };
+      const dk = (rec.data && rec.data.drinkKind) || "vodka";
+      const bH = dk === "beer" ? .24 : dk === "samogon" ? .26 : (dk === "soda" || dk === "buratino") ? .23 : .28;
+      it.obj = emptyBottleMesh(dk);
+      it.half = { x: .036, y: bH / 2, z: .036 };
       it.mass = .4;
-      it.centerY = .135;
-      it.rollR = .036;
+      it.centerY = bH / 2;
+      it.rollR = .035;
       it.stack = false;
       applyBottlePose(it);
     } else if (rec.kind === "pack") {
@@ -807,12 +826,19 @@ export function createLife(env) {
   }
 
   function hitsWallCollider(x, z, r = .05) {
+    const tr = env.transport && env.transport();
+    if (tr && tr.isInsideBus && tr.isInsideBus(x, z, .22)) {
+      const { lx, lz } = tr.worldToBus(x, z);
+      const inDoor = tr.doorK > .45 && (Math.abs(lx - 1.144) < .38 || Math.abs(lx + 2.241) < .38) && lz > .85;
+      if (!inDoor && (lx < -3.22 + r || lx > 2.75 - r || lz < -1.18 + r || lz > 1.18 - r)) return true;
+      return false;
+    }
     if (Math.abs(x) < KW + r && Math.abs(z) < KD + r) {
       // Стены ларька
       if (Math.abs(Math.abs(x) - KW) < r + .04 || Math.abs(Math.abs(z) - KD) < r + .04) return true;
     }
     for (const b of colliders) {
-      if (b.tag === "item" || b.tag === "door") continue;
+      if (b.tag === "item" || b.tag === "door" || b.tag === "bus") continue;
       if (x > b.x1 - r && x < b.x2 + r && z > b.z1 - r && z < b.z2 + r) return true;
     }
     return false;
@@ -852,8 +878,112 @@ export function createLife(env) {
     }
 
     const pSpd = Math.hypot(P.vx || 0, P.vz || 0);
+    const tr = env.transport && env.transport();
+    const bm = tr && tr.busMotion ? tr.busMotion() : null;
     for (const it of items.slice()) {
       if (!items.includes(it)) continue;
+      // Физика предметов внутри автобуса ПАЗ-652: перенос вместе с автобусом + инерция разгона/торможения/поворотов и качение по полу
+      if (tr && bm && it !== held && !it.inBoxId) {
+        const wasInBus = !!it._inBus;
+        // Проверяем принадлежность салону с учётом смещения автобуса за текущий кадр
+        const prevWx = it.obj.position.x - (wasInBus ? bm.dx : 0);
+        const prevWz = it.obj.position.z - (wasInBus ? bm.dz : 0);
+        const insideNow = tr.isInsideBus(prevWx, prevWz, .06) && it.obj.position.y >= .38 && it.obj.position.y <= 2.45;
+        if (insideNow) {
+          it._inBus = true;
+          // 1) Переносим предмет вместе с движением и поворотом кузова автобуса за кадр
+          const cPrev = Math.cos(bm.prevHeading), sPrev = Math.sin(bm.prevHeading);
+          const dx0 = prevWx - (tr.bus.position.x - bm.dx), dz0 = prevWz - (tr.bus.position.z - bm.dz);
+          let lx =  dx0 * cPrev - dz0 * sPrev;
+          let lz =  dx0 * sPrev + dz0 * cPrev;
+          const dHead = bm.heading - bm.prevHeading;
+          it.obj.rotation.y += Math.atan2(Math.sin(dHead), Math.cos(dHead));
+
+          // 2) Инерционные силы от движения автобуса в локальных осях салона (lx — вдоль салона, lz — поперёк)
+          // При разгоне автобуса (accel > 0) предметы откатываются назад (-lx), при торможении (accel < 0) — летят вперёд (+lx);
+          // в поворотах центробежная сила сносит предметы поперёк салона (lz), а кочки дороги добавляют вибрацию.
+          it.busVx = it.busVx || 0;
+          it.busVz = it.busVz || 0;
+          const isRound = canRollOnSide(it);
+          const inertiaMul = isRound ? 1.55 : (it.kind === 'box' ? .75 : 1.05);
+          const axBus = (-bm.accel * 1.35 + bm.bumpX * (isRound ? 1.8 : .9)) * inertiaMul;
+          const azBus = (-bm.turnRate * bm.v * 1.15 + bm.bumpZ * (isRound ? 1.8 : .9)) * inertiaMul;
+
+          const forceMag = Math.hypot(axBus, azBus);
+          const staticThresh = isRound ? .18 : (it.kind === 'box' ? 1.65 : .85);
+          if (forceMag > staticThresh || Math.hypot(it.busVx, it.busVz) > .04) {
+            it.busVx += axBus * dt;
+            it.busVz += azBus * dt;
+            if (isRound && it.state === 'rest') {
+              it.data.lying = true;
+              applyBottlePose(it);
+            }
+          }
+          const bSpd = Math.hypot(it.busVx, it.busVz);
+          if (bSpd > .015) {
+            lx += it.busVx * dt;
+            lz += it.busVz * dt;
+            const rItem = it.kind === 'box' ? .22 : .07;
+            // Отражение от бортов салона, заднего дивана и перегородки водителя
+            let hitBusWall = false;
+            if (lx < -3.12 + rItem) { lx = -3.12 + rItem; it.busVx = -it.busVx * .42; hitBusWall = true; }
+            if (lx >  2.55 - rItem) { lx =  2.55 - rItem; it.busVx = -it.busVx * .42; hitBusWall = true; }
+            const inOpenDoor = bm.doorK > .45 && (Math.abs(lx - 1.144) < .36 || Math.abs(lx + 2.241) < .36);
+            if (lz < -1.14 + rItem) { lz = -1.14 + rItem; it.busVz = -it.busVz * .42; hitBusWall = true; }
+            if (!inOpenDoor && lz > 1.14 - rItem) { lz = 1.14 - rItem; it.busVz = -it.busVz * .42; hitBusWall = true; }
+            // Столкновение с тумбами сидений, если предмет катится по полу (y < 0.95)
+            if (it.obj.position.y < .95 && Math.abs(lz) > .34 && lx > -1.85 && lx < 1.05) {
+              const nearSeatRow = [-1.41, -.58, .22, 1.05].some(sx => Math.abs(lx - sx) < .16);
+              if (nearSeatRow) {
+                it.busVx *= -.38;
+                it.busVz *= -.38;
+                hitBusWall = true;
+              }
+            }
+            if (hitBusWall && bSpd > .35) {
+              env.audio && env.audio.click(isBreakableGlass(it) ? 1620 : 580, Math.min(.38, bSpd * .14), 0, .05);
+            }
+            // Вращение катящихся бутылок и банок по полу автобуса
+            if (isRound) {
+              const cH = Math.cos(bm.heading), sH = Math.sin(bm.heading);
+              const wVx = it.busVx * cH + it.busVz * sH;
+              const wVz = -it.busVx * sH + it.busVz * cH;
+              if (bSpd > .06) it.obj.rotation.y = Math.atan2(wVx, -wVz);
+              const spin = it.obj.userData.spin;
+              if (spin) {
+                spin.rotation.y -= (bSpd * dt) / Math.max(.025, it.rollR || .036);
+                it.data.rollAng = spin.rotation.y;
+              }
+            } else if (bSpd > .25) {
+              it.obj.rotation.y += (it.busVz * .35 - it.busVx * .15) * dt;
+            }
+            const damp = isRound ? 1.25 : (it.kind === 'box' ? 3.8 : 2.6);
+            it.busVx *= Math.max(0, 1 - dt * damp);
+            it.busVz *= Math.max(0, 1 - dt * damp);
+            if (Math.hypot(it.busVx, it.busVz) < .02) {
+              it.busVx = 0; it.busVz = 0;
+            }
+          }
+          const wp = tr.busToWorld(lx, it.obj.position.y, lz, new THREE.Vector3());
+          it.obj.position.x = wp.x;
+          it.obj.position.z = wp.z;
+          if (it.state === 'rest') {
+            const flBus = surfaceBelow(wp.x, wp.z, it.obj.position.y + .08, it);
+            if (it.obj.position.y > flBus + .04) {
+              it.state = 'fall';
+              it.vy = 0;
+            } else {
+              it.obj.position.y = flBus;
+            }
+          }
+          syncCol(it);
+          syncBoxChildren(it);
+        } else {
+          it._inBus = false;
+          it.busVx = 0;
+          it.busVz = 0;
+        }
+      }
       if (it === held) {
         heldYaw += (heldYawT - heldYaw) * Math.min(1, dt * 10);
         camera.getWorldDirection(tmp);
@@ -1332,6 +1462,32 @@ export function createLife(env) {
 
   const hab = { busy: null, t: 0 };
   const handR = makeRigHand(std); handR.visible = false; vm.add(handR);
+  const handL = makeRigHand(std); handL.scale.x = -1; handL.visible = false; vm.add(handL);
+  const punchState = { active: false, t: 0, side: 1, hitDone: false, combo: 0, guardT: 0, onImpact: null };
+  function startPunch(onImpact) {
+    if (hab.busy || held) return false;
+    if (punchState.active && punchState.t < .18) return false;
+    punchState.side = (punchState.combo % 2 === 0) ? 1 : -1;
+    punchState.combo++;
+    punchState.active = true;
+    punchState.t = 0;
+    punchState.hitDone = false;
+    punchState.guardT = .85;
+    punchState.onImpact = onImpact || null;
+    cigNode.visible = false;
+    bottleNode.visible = false;
+    handR.visible = true;
+    handL.visible = true;
+    handR.pose(HAND_POSES.fist, null);
+    handL.pose(HAND_POSES.fist, null);
+    return true;
+  }
+  function hidePunchHands() {
+    punchState.active = false;
+    punchState.guardT = 0;
+    handL.visible = false;
+    if (!hab.busy) handR.visible = false;
+  }
 
   // Сигарета зажата между указательным (x = -.026) и средним (x = -.008) пальцами:
   // фильтр (−Y сигареты) выступает на ладонную сторону вправо-вниз к большому пальцу (−X, −Y кисти),
@@ -1875,8 +2031,65 @@ export function createLife(env) {
         : handR.mix([P_.open, 1 - closeK], [P_.grip, closeK + .001]);
       handR.pose(pose, dt, 16, .008, t);
     }
+    // Анимация кулачного боя (удары правой и левой рукой + боксёрская стойка)
+    if (!hab.busy && (punchState.active || punchState.guardT > 0)) {
+      if (held) { hidePunchHands(); return; }
+      cigNode.visible = false;
+      bottleNode.visible = false;
+      handR.visible = true;
+      handL.visible = true;
+      handR.pose(HAND_POSES.fist, dt, 22);
+      handL.pose(HAND_POSES.fist, dt, 22);
+      const bob = Math.sin(performance.now() * .008) * .008;
+      let rx = .15, ry = -.23 + bob, rz = -.30, rPitch = 1.18, rYaw = .22, rRoll = -.25;
+      let lx = -.15, ly = -.24 - bob, lz = -.30, lPitch = 1.18, lYaw = -.22, lRoll = .25;
+
+      if (punchState.active) {
+        punchState.t += dt;
+        const pt = punchState.t, dur = .32;
+        if (pt >= .10 && !punchState.hitDone) {
+          punchState.hitDone = true;
+          if (punchState.onImpact) punchState.onImpact(punchState.side);
+        }
+        // Профиль удара: короткий замах (0..0.06), резкий выброс кулака вперёд (0.06..0.14), возврат в стойку (0.14..0.32)
+        let ext = 0;
+        if (pt < .06) ext = -ease(pt / .06) * .22;
+        else if (pt < .14) ext = -.22 + ease((pt - .06) / .08) * 1.22;
+        else if (pt < dur) ext = 1 - ease((pt - .14) / (dur - .14));
+        else { punchState.active = false; ext = 0; }
+
+        if (punchState.side > 0) {
+          rx = .15 - ext * .12;
+          ry = -.23 + ext * .11;
+          rz = -.30 - ext * .26;
+          rPitch = 1.18 - ext * .88;
+          rYaw = .22 + ext * .15;
+          rRoll = -.25 - ext * .65;
+        } else {
+          lx = -.15 + ext * .12;
+          ly = -.24 + ext * .11;
+          lz = -.30 - ext * .26;
+          lPitch = 1.18 - ext * .88;
+          lYaw = -.22 - ext * .15;
+          lRoll = .25 + ext * .65;
+        }
+      } else {
+        punchState.guardT = Math.max(0, punchState.guardT - dt);
+        const gk = Math.min(1, punchState.guardT / .25);
+        ry -= (1 - gk) * .24;
+        ly -= (1 - gk) * .24;
+        if (punchState.guardT <= 0) {
+          handR.visible = false;
+          handL.visible = false;
+        }
+      }
+      handR.position.set(rx, ry, rz);
+      handR.rotation.set(rPitch, rYaw, rRoll);
+      handL.position.set(lx, ly, lz);
+      handL.rotation.set(lPitch, lYaw, lRoll);
+    }
   }
-  const habit = { get busy() { return hab.busy; }, get canFinish() { return hab.busy === 'smoke' && hab.doneAsk; }, startSmoke, startDrink, finishHabit, giveEmptyBottle, stashHeldBottle, set onDrinkEnd(f) { hab.onDrinkEnd = f; }, debugPose(t) { hab.t = t; hab.freeze = t != null; }, get hand() { return handR; } };
+  const habit = { get busy() { return hab.busy; }, get canFinish() { return hab.busy === 'smoke' && hab.doneAsk; }, startSmoke: () => { hidePunchHands(); return startSmoke(); }, startDrink: (k, f) => { hidePunchHands(); return startDrink(k, f); }, startPunch, hidePunchHands, get punching() { return punchState.active; }, finishHabit, giveEmptyBottle, stashHeldBottle, set onDrinkEnd(f) { hab.onDrinkEnd = f; }, debugPose(t) { hab.t = t; hab.freeze = t != null; }, get hand() { return handR; } };
 
   return {
     makeHand, items, addItem, removeItem, rebuildPackItem, loadItems, persist, lookItem, pick, placeHeld, dropHeld, trashHeld, unpack, lookingAtOpenBox, throwIntoBox, shatterBottle, rayPlace, surfaceBelow, get held() { return held; },

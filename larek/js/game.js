@@ -385,8 +385,7 @@ function kioskHtml() {
     ${vitrineHtml()}
     <div class="row sp" style="margin-top:6px"><span class="muted">Склад: ${stockTotal()}/${storeCap()}</span><span class="muted">Мест на витрине: ${slotCount()}</span></div>
     <h3>Наценка: ${mk}% <span class="chip">${mkLabel}</span></h3>
-    <input type="range" min="0" max="150" step="5" value="${mk}" data-range="markup">
-    <p class="muted">Высокая наценка — больше денег, но покупатели чаще уходят, а «Народ» запоминает жадность.</p>
+    <p class="muted">Наценка выставляется в бумажном блокноте на прилавке (возле телефона). Высокая наценка — больше денег, но покупатели чаще уходят.</p>
     <div class="mbtns">
       ${S.phase === 'morning' ? `<button class="btn green big" data-a="open">Сесть за прилавок (начать продажу) ▶</button>
       ${S.seller ? '<button class="btn" data-a="auto">Пусть торгует тётя Люба (весь день)</button>' : ''}` : '<p class="warn">Ларёк открыт — идёт продажа. Встаньте из-за прилавка, чтобы закрыть его.</p>'}
@@ -657,6 +656,23 @@ function subtitles(name, words, start) {
     words.forEach((w, i) => { spans[i].classList.toggle('on', t >= w[0] - .05); spans[i].classList.toggle('cur', t >= w[0] - .05 && t < w[1] + .1); });
     if (t > end + 1.8) { el.classList.remove('on'); return; } subsRaf = requestAnimationFrame(step); };
   step();
+}
+// человек вырублен в кулачном бою (нокаут без убийства)
+function onKnockout(role, c, kind) {
+  if (!S) return;
+  if (role === 'gop' || (c && c.k === 'racket')) {
+    S.xp += 3; checkLevel();
+    rep('street', 3);
+    toast('Нокаут! Гопник вырублен с кулака. Улица +3, Опыт +3', 'good');
+  } else if (kind === 'police' || (c && c.k === 'police')) {
+    rep('law', -18);
+    toast('Вырубили милиционера! По району объявлен розыск. Закон −18', 'bad');
+  } else {
+    rep('folk', -5); rep('law', -4);
+    toast('Нокаут! Человек без сознания на снегу. Народ −5, Закон −4', 'bad');
+  }
+  if (T && c) { if (T.cur === c) T.cur = null; T.queue = T.queue.filter(q => q !== c); T.walking = (T.walking || []).filter(q => q !== c); T.lost++; renderTrade(); }
+  save(); renderHud();
 }
 // человек убит из ружья: тяжёлые последствия, но игра продолжается
 function onKill(role, c, kind) {
@@ -1106,7 +1122,7 @@ function heroHtml() {
       <div class="muted">${S.permit ? '📄 Разрешение на торговлю' : '📄 Без разрешения'}</div>
       <div class="muted">Капитал ≈ $${fmt(capitalUsd())} · На полках: ${stockTotal()}/${storeCap()}</div></div></div>
     <h3>Наценка на товар: ${mk}% <span class="chip">${mkLabel}</span></h3>
-    <input type="range" min="0" max="150" step="5" value="${mk}" data-range="markup">
+    <p class="muted">Изменить наценку можно в бумажном блокноте на прилавке ларька.</p>
     <p class="muted">Чтобы выставить товар на продажу, возьмите его рукой с полки в ларьке и поставьте на стеклянную витрину у окна.</p>
     ${ups.length ? '<h3>Улучшения</h3>' + ups.map(([k, u]) => `<div class="card row sp"><div><b>${u.icon} ${u.name}</b><div class="muted">${u.desc}</div></div>
         <button class="btn small yellow" data-up="${k}" ${S.money < usdToRub(u.usd) ? 'disabled' : ''}>${fmt(usdToRub(u.usd))} ₽</button></div>`).join('') : ''}
@@ -1218,8 +1234,12 @@ document.addEventListener('input', e => {
   if (e.target.dataset.range === 'markup') {
     S.markup = +e.target.value / 100;
     const vit = document.querySelector('.vit'); if (vit) vit.outerHTML = vitrineHtml();
-    const h = e.target.previousElementSibling; const mk = Math.round(S.markup * 100);
-    if (h) h.innerHTML = `Наценка на товар: ${mk}% <span class="chip">${mk <= 25 ? 'по-честному' : mk <= 60 ? 'как все' : mk <= 100 ? 'дерзко' : 'грабёж'}</span>`; if (W) W.updateShelves();
+    const mk = Math.round(S.markup * 100);
+    const mkLabel = mk <= 25 ? 'по-честному' : mk <= 60 ? 'как все' : mk <= 100 ? 'дерзко' : 'грабёж';
+    const npMk = document.getElementById('npMkVal');
+    if (npMk) npMk.innerHTML = `<b>+${mk}%</b> <span class="np-dim">(${mkLabel})</span>`;
+    if (npOpen) renderNotepad();
+    if (W) W.updateShelves();
   }
 });
 document.addEventListener('change', e => { if (e.target.dataset.range) save(); });
@@ -1273,22 +1293,36 @@ function setOrd(id, q) { q = Math.max(0, Math.min(200, q)); if (id.startsWith('h
 function notepadHtml() {
   const [cname, ids] = CATS[npCat], hid = cname.startsWith('Карандаш');
   const o = orderSum(false), oh = orderSum(true);
+  const mk = Math.round(S.markup * 100);
+  const mkLabel = mk <= 25 ? 'по-честному' : mk <= 60 ? 'как все' : mk <= 100 ? 'дерзко' : 'грабёж';
   const lines = Object.entries(S.order.lines).filter(([, q]) => q).map(([k, q]) => `<div class="np-ln"><span>${lineInfo(k).name.replace(/«|»/g, '')}</span><span>${q} шт</span><span>${fmt(lineInfo(k).unit * q)}</span><button data-np="del" data-id="${k}">×</button></div>`).join('') || '<div class="np-ln np-dim">пока пусто…</div>';
   const pend = (S.deliveries || []).length;
   return `<div class="np-book">
     <div class="np-cover"></div><div class="np-stack"></div>
     <div class="np-sheet"><div class="np-page ${hid ? 'np-pencilpage' : ''}">
-      <div class="np-label">ЗАКАЗЫ · 1992</div>
+      <div class="np-label">ЗАКАЗЫ И ЦЕНЫ · 1992</div>
       <div class="np-cats">${CATS.map(([n], i) => `<button data-np="cat" data-i="${i}" class="${i === npCat ? 'on' : ''} ${n.startsWith('Карандаш') ? 'pencil' : ''}">${n}</button>`).join('')}</div>
       <div class="np-cols">
         <div class="np-colL">
           <div class="np-h">${cname}</div>
           ${hid ? '<div class="np-dim">для своих. Вова с вокзала, звонить вечером.</div>' : ''}
           ${ids.map(id => { const li = lineInfo(id); if (!li.avail) return ''; const q = ordQty(id);
-            return `<div class="np-item"><div class="np-nm">${li.name}</div><div class="np-pr">${fmt(li.unit)} р.${li.pack > 1 ? '/шт' : ''}</div>
+            const isGood = !li.hidden && !li.outfit && GOODS[id];
+            const prTxt = isGood ? `опт ${fmt(li.unit)} → <b>${fmt(sellPrice(id))} р.</b>` : `${fmt(li.unit)} р.${li.pack > 1 ? '/шт' : ''}`;
+            return `<div class="np-item"><div class="np-nm">${li.name}</div><div class="np-pr">${prTxt}</div>
               <div class="np-q"><button data-np="q" data-id="${id}" data-d="-${li.pack}">−</button><span>${q}</span><button data-np="q" data-id="${id}" data-d="${li.pack}">+</button></div></div>`; }).join('')}
         </div>
         <div class="np-colR">
+          <div class="np-h">Наценка в ларьке</div>
+          <div id="npMkVal"><b>+${mk}%</b> <span class="np-dim">(${mkLabel})</span></div>
+          <div style="display:flex;align-items:center;gap:6px;margin:2px 0 4px">
+            <button data-np="mk" data-d="-5" style="border:1px solid #1d2f7a66;border-radius:12px;padding:0 8px;line-height:22px">−5%</button>
+            <input type="range" min="0" max="150" step="5" value="${mk}" data-range="markup" style="flex:1;accent-color:#7a1a1a">
+            <button data-np="mk" data-d="5" style="border:1px solid #1d2f7a66;border-radius:12px;padding:0 8px;line-height:22px">+5%</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;border-bottom:1px solid #1d2f7a44;padding-bottom:6px">
+            ${[20, 40, 60, 100].map(v => `<button data-np="mkset" data-v="${v}" style="border:1px dashed #1d2f7a66;border-radius:4px;padding:0 6px;font-size:.86em;${mk === v ? 'color:#7a1a1a;font-weight:700;border-style:solid' : ''}">${v}%</button>`).join('')}
+          </div>
           <div class="np-h">Заказ на базу «Оптторг»</div>
           ${lines}
           <div class="np-sum"><div>товар: <b>${fmt(o.sum)} р.</b></div><div>доставка (прим.): <b>${fmt(o.deliv)} р.</b></div><div class="np-tot">итого: ${fmt(o.total)} р.</div></div>
@@ -1317,6 +1351,8 @@ document.addEventListener('click', e => {
   const a = b.dataset.np; sfx.click();
   if (a === 'close') { closeOrders(); return; }
   if (a === 'cat') { const i = +b.dataset.i; if (i === npCat) return; const fl = document.querySelector('.np-flip'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go'); audio.click(2400, .25, 0, .12); setTimeout(() => { npCat = i; renderNotepad(); }, 280); return; }
+  if (a === 'mk') { S.markup = clamp(Math.round((S.markup * 100 + +b.dataset.d) / 5) * 5, 0, 150) / 100; if (W) W.updateShelves(); save(); renderHud(); }
+  if (a === 'mkset') { S.markup = clamp(+b.dataset.v, 0, 150) / 100; if (W) W.updateShelves(); save(); renderHud(); }
   if (a === 'q') { setOrd(b.dataset.id, ordQty(b.dataset.id) + +b.dataset.d); }
   if (a === 'del') setOrd(b.dataset.id, 0);
   if (a === 'clear') { S.order = { lines: {}, hidden: {} }; save(); }
@@ -1408,7 +1444,19 @@ function factoryTalk() {
 function maratTalk() {
   if (!W) return; const m = W.debug.people.find(p => p.role === 'marat'); if (m) m.talking = true;
   const done = () => { if (m) m.talking = false; closeDialog(); };
-  if (S.flags.maratAngry === S.day) { showDialog({ name: 'Марат', text: 'Ты на меня ствол наставлял. Сегодня — разговора нет. Иди.', options: [{ label: 'Ладно…', fn: done }] }); return; }
+  const gMem = S.npcMemory = S.npcMemory || { talks: {}, crimes: { gunAimed: 0, brawls: 0, kills: 0 } };
+  gMem.talks.marat = (gMem.talks.marat || 0) + 1;
+  if (S.flags.maratAngry === S.day || (m && m.memory && m.memory.sawGunAim)) {
+    showDialog({
+      name: 'Марат',
+      text: 'Ты на меня ствол наставлял, коммерсант. Память у меня длинная. Или гони 500 ₽ за неуважение, или сегодня разговора нет.',
+      options: [
+        ...(S.money >= 500 ? [{ label: 'Держи 500 ₽, Марат, погорячился', fn: () => { S.money -= 500; S.flags.maratAngry = -1; if (m && m.memory) m.memory.sawGunAim = false; renderHud(); save(); maratTalk(); } }] : []),
+        { label: 'Ладно, зайду позже…', fn: done }
+      ]
+    });
+    return;
+  }
   if (!S.marat || S.marat.day !== S.day) S.marat = { day: S.day, stock: RI(10, 25) };
   const price5 = usdToRub(4), have = S.marat.stock;
   const buy = n => { const cost = price5 * n / 5; if (have < n) { showDialog({ name: 'Марат', text: `Столько нет. Осталось ${have}.`, options: [{ label: 'Понял', fn: () => maratTalk() }] }); return; } if (S.money < cost) { showDialog({ name: 'Марат', text: 'Денег не хватает, брат. Без денег — никак.', options: [{ label: 'Понял', fn: done }] }); return; }
@@ -1547,6 +1595,7 @@ function gopnikDemand(g) {
   showDialog({ name: 'Гопник', text: pick(['Слышь, мужик, есть чё? Делись, не жмись.', 'Ты чё, не понял? Бабки гони, сказал.', 'Здорово, коммерсант. С тебя за проход по району.', 'Сигареты есть? А если найду?']), options: [
     { label: `Отдать ${fmt(ask)} ₽`, fn() { closeDialog(); const k = Math.min(S.money, ask); S.money -= k; rep('street', 2); W.gopLeave(g, 'paid'); toast(`Отдали ${fmt(k)} ₽. Пацаны довольны.`); render(); } },
     { label: 'Нету у меня ничего', fn() { closeDialog(); if (lead.aggression > .72 && !W.weapon.drawn) { const take = Math.round(S.money * .2); S.money -= take; rep('street', -3); sfx.bad(); toast(`Вас прижали к стенке и забрали ${fmt(take)} ₽`, 'bad'); W.gopLeave(g, 'paid'); } else { say(g.leader, pick(['Ну смотри, ещё встретимся.', 'Ладно, живи пока.'])); W.gopLeave(g, 'back'); } render(); } },
+    ...(!W.weapon.drawn ? [{ label: '🥊 Дать в морду (кулачный бой)', fn() { closeDialog(); W.startGopBrawl(g); W.punch(); toast('Кулачный бой! Бейте кнопкой «Ударить»!', 'good'); } }] : []),
     ...(S.gun ? [{ label: '🔫 Достать ружьё', fn() { closeDialog(); W.weapon.draw(); toast('Наведите ружьё на них. Стрелять не обязательно.'); } }] : []),
     { label: 'Позвать милицию', fn() { closeDialog(); if (S.rep.law >= 10) { rep('law', 2); rep('street', -5); W.gopLeave(g, 'flee'); toast('Свисток участкового — гопники разбежались', 'good'); } else { say(g.leader, 'Ха! Какая тебе милиция?'); } } },
   ] });
@@ -1571,7 +1620,7 @@ const W = (() => { try { return createWorld({
     }
   },
   onStockChange: () => { renderHud(); save(); if (T) renderTrade(); }, sellPrice, stockTotal, GOODS, fmt, MONTHS, monthOf, yearOf, audio, look,
-  arrive, customerScared, onKill, subtitles, gopnikDemand, say, sleep, maratTalk, factoryTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack, onSitCounter, onStandCounter,
+  arrive, customerScared, onKill, onKnockout, subtitles, gopnikDemand, say, sleep, maratTalk, factoryTalk, phoneCall, openOrders, notepadOpen: () => npOpen || npBusy, onDelivered, onUnpack, onSitCounter, onStandCounter,
   onDrink(k, strong, total) {
     if (k === 'soda') { toast('Сладкий холодный лимонад «Буратинка» отлично освежает!'); return; }
     const d = total ?? (W && W.life.fx.drunkTarget) ?? strong;
@@ -1628,10 +1677,11 @@ if (W) {
     move:      { label: 'Движение', icon: 'move', kind: 'stick' },
     interact:  { label: 'Действие', icon: 'interact', kind: 'tap', down() { const a = W.action(); if (a) { sfx.click(); a.fn(); } }, visible: () => !!W.action(), text: () => { const a = W.action(); return a ? a.label : 'Действие'; } },
     use:       { label: 'Ещё', icon: 'hand', kind: 'tap', down() { const a = W.action(); if (a && a.alt) { sfx.click(); a.alt.fn(); } }, visible: () => { const a = W.action(); return !!(a && a.alt); }, text: () => { const a = W.action(); return a && a.alt ? a.alt.label : ''; } },
-    fire:      { label: 'Огонь', icon: 'fire', kind: 'tap', down() { if (!canUseWeapon()) return; if (!W.weapon.drawn) { W.weapon.draw(); renderHud(); renderControls(); return; } const r = W.weapon.fire(); if (r === 'empty') toast('Стволы пусты — перезарядите'); syncAmmoFromWeapon(); renderHud(); }, visible: canUseWeapon },
+    punch:     { label: 'Ударить', icon: '<svg class="ctl-img" viewBox="0 0 64 64" fill="currentColor"><path d="M18 14c2.8 0 5 2.2 5 5v3h2v-5c0-2.8 2.2-5 5-5s5 2.2 5 5v5h2v-4c0-2.8 2.2-5 5-5s5 2.2 5 5v6h1.5c2.5 0 4.5 2 4.5 4.5V39c0 8.8-7.2 16-16 16H25c-7.7 0-14-6.3-14-14V27c0-3.3 2.7-6 6-6h7v4h-5c-1.7 0-3 1.3-3 3v3c0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3s-1.3-3-3-3H18v-9c0-2.8 0-5 0-5z"/></svg>', kind: 'tap', down() { if (!handsFree()) return; W.punch(); }, visible: () => handsFree() && !W.P.seated },
+    fire:      { label: 'Огонь', icon: 'fire', kind: 'tap', down() { if (!canUseWeapon() || !W.weapon.drawn) return; const r = W.weapon.fire(); if (r === 'empty') toast('Стволы пусты — перезарядите'); syncAmmoFromWeapon(); renderHud(); }, visible: () => canUseWeapon() && W.weapon.drawn },
     aim:       { label: 'Прицел', icon: 'aim', kind: 'hold', down() { if (canUseWeapon()) W.weapon.aim(true); }, up() { W.weapon.aim(false); }, visible: () => canUseWeapon() && W.weapon.drawn, active: () => W.weapon.aiming },
     reload:    { label: 'Перезарядка', icon: 'reload', kind: 'tap', down() { if (!canUseWeapon()) return; if (!W.weapon.reload()) { if (W.weapon.reserve <= 0) toast('Патронов нет — спросите у Марата на остановке'); } setTimeout(() => { syncAmmoFromWeapon(); renderHud(); }, 2500); }, visible: () => canUseWeapon() && W.weapon.drawn && W.weapon.ammo < 2 },
-    weapon:    { label: 'Ружьё', icon: 'weapon', kind: 'tap', down() { if (!canUseWeapon()) return; W.weapon.toggle(); setTimeout(() => { renderHud(); renderControls(); }, 500); }, visible: canUseWeapon, active: () => W.weapon.drawn },
+    weapon:    { label: 'Ружьё', icon: 'weapon', kind: 'tap', down() { if (!canUseWeapon()) return; W.life.habit.hidePunchHands && W.life.habit.hidePunchHands(); W.weapon.toggle(); renderControls(); setTimeout(() => { renderHud(); renderControls(); }, 480); }, visible: canUseWeapon, active: () => W.weapon.drawn },
     gunput:    { label: 'Положить ружьё', icon: 'drop', kind: 'tap', down() { if (!canUseWeapon()) return; W.putGunDown(); save(); renderHud(); renderControls(); }, visible: () => canUseWeapon() && !W.weapon.aiming },
     sprint:    { label: 'Бег', icon: 'sprint', kind: 'hold', down() { W.setSprint(true); }, up() { W.setSprint(false); }, active: () => W.sprint, visible: () => !W.P.seated },
     crouch:    { label: 'Присесть', icon: 'crouch', kind: 'tap', down() { W.toggleCrouch(); }, active: () => W.crouch, visible: () => !W.P.seated },
@@ -1681,6 +1731,7 @@ if (W) {
     { uid: 'mv', action: 'move', x: .13, y: .76, size: 150, opacity: .6, hit: 1.5, sens: 1 },
     { uid: 'in', action: 'interact', x: .66, y: .84, size: 78, opacity: .85, hit: 1.2 },
     { uid: 'us', action: 'use', x: .53, y: .86, size: 60, opacity: .8, hit: 1.2 },
+    { uid: 'pn', action: 'punch', x: .89, y: .79, size: 76, opacity: .78, hit: 1.2 },
     { uid: 'fi', action: 'fire', x: .9, y: .8, size: 84, opacity: .75, hit: 1.2 },
     { uid: 'ai', action: 'aim', x: .78, y: .88, size: 62, opacity: .7, hit: 1.2 },
     { uid: 're', action: 'reload', x: .79, y: .7, size: 52, opacity: .7, hit: 1.2 },
@@ -1697,7 +1748,7 @@ if (W) {
   window.addEventListener('keydown', e => {
     if (!S || cardOpen || dialogOpen || sheetOpen || e.repeat) return;
     const k = e.code;
-    if (k === 'KeyE') ACTIONS.interact.down(); if (k === 'KeyF') ACTIONS.use.down(); if (k === 'KeyQ' && canUseWeapon()) ACTIONS.weapon.down(); if (k === 'KeyR' && canUseWeapon()) ACTIONS.reload.down(); if (k === 'KeyT' && ACTIONS.smoke.visible()) ACTIONS.smoke.down(); if (k === 'KeyY' && ACTIONS.drink.visible()) ACTIONS.drink.down(); if (k === 'KeyX' && canUseWeapon()) ACTIONS.gunput.down();
+    if (k === 'KeyE') ACTIONS.interact.down(); if (k === 'KeyF') ACTIONS.use.down(); if (k === 'KeyV' && ACTIONS.punch.visible()) ACTIONS.punch.down(); if (k === 'KeyQ' && canUseWeapon()) ACTIONS.weapon.down(); if (k === 'KeyR' && canUseWeapon()) ACTIONS.reload.down(); if (k === 'KeyT' && ACTIONS.smoke.visible()) ACTIONS.smoke.down(); if (k === 'KeyY' && ACTIONS.drink.visible()) ACTIONS.drink.down(); if (k === 'KeyX' && canUseWeapon()) ACTIONS.gunput.down();
     if (k === 'KeyC') ACTIONS.crouch.down(); if (k === 'ShiftLeft') W.setSprint(true); if (k === 'Tab') { e.preventDefault(); openSheet(); }
   });
   window.addEventListener('keyup', e => { if (e.code === 'ShiftLeft') W.setSprint(false); });

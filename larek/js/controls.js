@@ -12,8 +12,21 @@ export function createControls({ root, actions, onLook, onMove, storageKey = 'co
   let lookPtr = null;
 
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(storageKey)); if (s && s.profiles && s.active && s.profiles[s.active]) return s; } catch (e) {}
-    return { active: 'Стандарт', profiles: { 'Стандарт': defaults() }, lookSens: 1, invertY: false };
+    const def = defaults();
+    try {
+      const s = JSON.parse(localStorage.getItem(storageKey));
+      if (s && s.profiles && s.active && s.profiles[s.active]) {
+        for (const p of Object.values(s.profiles)) {
+          if (p && Array.isArray(p.elements) && def && Array.isArray(def.elements)) {
+            for (const de of def.elements) {
+              if (!p.elements.some(e => e.action === de.action)) p.elements.push(Object.assign({}, de));
+            }
+          }
+        }
+        return s;
+      }
+    } catch (e) {}
+    return { active: 'Стандарт', profiles: { 'Стандарт': def }, lookSens: 1, invertY: false };
   }
   function persist() { try { localStorage.setItem(storageKey, JSON.stringify(store)); } catch (e) {} }
   const layout = () => store.profiles[store.active];
