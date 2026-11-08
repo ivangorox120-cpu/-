@@ -722,7 +722,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Fallout 3 / New Vegas читают мышь через DirectInput — только сдвиги «сырой» мыши; без них
         // курсор в меню стоит на месте, а камера упирается в край экрана.
         touchpad.onDelta = { dx, dy ->
-            if (!pointerLocked && relativeMouseMode()) {
+            if (!pointerLocked) {
                 drawnRect()?.let { rect ->
                     val scale = sceneScale(rect)
                     sendSceneDelta(dx * scale, dy * scale * lookYSign())
@@ -1941,8 +1941,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         physicalShortcuts.bindings = PhysicalShortcuts.read(this)
         backDoubleTapMs = SessionPrefs.backDoubleTapMs(this)
         lowLatency = SessionPrefs.lowLatency(this)
-        evdevMouseOn = SessionPrefs.evdevMouse(this)
-        if (!evdevMouseOn) releaseEvdevMouse()
+        evdevMouseOn = SessionPrefs.evdevMouse(this) || mouseDeviceMode()
+        if (!evdevMouseOn) releaseEvdevMouse() else if (mouseDeviceMode()) openEvdevMouse()
         directCursorOn = SessionPrefs.directCursor(this)
         padType = SessionPrefs.steamController(this)
     }
@@ -3038,9 +3038,11 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Fallout Droid: в относительном режиме игре уходят только сдвиги (sendSceneDelta).
         // Абсолютная позиция здесь всё ломала: игра держит свой курсор сама и возвращала его
         // обратно, поэтому на экране он не двигался.
-        WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
-        dbgAbs++
-        inputDebugTick()
+        if (!relativeMouseMode()) {
+            WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
+            dbgAbs++
+            inputDebugTick()
+        }
         showCursor(cx, cy)
     }
 
@@ -3051,8 +3053,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
      * абсолютная мышь: туда, куда ведёт палец.
      */
     private fun relativeMouseMode(): Boolean =
-        SessionState.mode == SessionService.MODE_RUN && usingTouchpad() && clientHidesCursor &&
-            com.wastelanddroid.engine.FalloutInput.relativeMouse(this)
+        SessionState.mode == SessionService.MODE_RUN && usingTouchpad() &&
+            com.wastelanddroid.engine.FalloutInput.mouseRelativeOnly(this)
+
+    /** Мышь отдаётся игре отдельным устройством ввода внутри контейнера, а не через композитор. */
+    private fun mouseDeviceMode(): Boolean =
+        SessionState.mode == SessionService.MODE_RUN &&
+            com.wastelanddroid.engine.FalloutInput.mouseDevice(this)
 
     private fun showCursor(x: Float, y: Float) {
         cursorPos = androidx.compose.ui.geometry.Offset(x, y)
@@ -3409,7 +3416,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         SessionState.outputSize.first / rect.width()
 
     private fun openEvdevMouse() {
-        if (evdevMouseActive || !evdevMouseOn) return
+        if (evdevMouseActive || !(evdevMouseOn || mouseDeviceMode())) return
         val writer = mouseWriter ?: com.droiddeck.launcher.input.FakeInputWriter(
             File(LinuxRuntime.sessionRoot(this), "dev/input").absolutePath,
             com.droiddeck.launcher.input.FakeInputWriter.MOUSE_SLOT,

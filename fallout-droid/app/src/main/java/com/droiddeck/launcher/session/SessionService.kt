@@ -805,6 +805,10 @@ class SessionService : Service() {
         }
         FexCatalog.cached(this)?.let { guest.addAll(FexCatalog.environment(it)) }
         if (SessionState.mode == MODE_RUN &&
+            "touch" == getSharedPreferences("wasteland", MODE_PRIVATE).getString("mouse_mode", "compositor")) {
+            guest.add("BL_TOUCH_AS_MOUSE=1")
+        }
+        if (SessionState.mode == MODE_RUN &&
             getSharedPreferences("wasteland", MODE_PRIVATE).getBoolean("stretch_screen", true)) {
             // Fallout Droid: картинка игры растягивается на весь экран телефона (без чёрных полос)
             guest.add("BL_GAMESCOPE_ARGS=-S stretch")

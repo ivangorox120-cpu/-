@@ -17,6 +17,12 @@ public final class FalloutInput {
     public static final String SHOW_CURSOR = "show_cursor";
     public static final String INVERT_Y = "invert_y";
     public static final String DEBUG = "input_debug";
+    /** Способ доставки мыши игре: compositor | relative | device. */
+    public static final String MOUSE_MODE = "mouse_mode";
+    public static final String MOUSE_COMPOSITOR = "compositor";
+    public static final String MOUSE_RELATIVE = "relative";
+    public static final String MOUSE_DEVICE = "device";
+    public static final String MOUSE_TOUCH = "touch";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -58,4 +64,18 @@ public final class FalloutInput {
 
     /** Строка отладки ввода поверх игры. */
     public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
+
+    public static String mouseMode(Context c) {
+        return p(c).getString(MOUSE_MODE, MOUSE_COMPOSITOR);
+    }
+
+    public static boolean mouseDevice(Context c) { return MOUSE_DEVICE.equals(mouseMode(c)); }
+
+    /** Касания уходят игре как есть, а в мышь их превращает gamescope. */
+    public static boolean mouseTouch(Context c) { return MOUSE_TOUCH.equals(mouseMode(c)); }
+
+    public static boolean mouseRelativeOnly(Context c) {
+        String m = mouseMode(c);
+        return MOUSE_RELATIVE.equals(m) || MOUSE_DEVICE.equals(m);
+    }
 }
