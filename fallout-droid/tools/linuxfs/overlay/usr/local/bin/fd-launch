@@ -1,0 +1,64 @@
+#!/bin/bash
+# Fallout Droid: start Fallout 3 / New Vegas straight into the game, also on the very first run.
+#
+#   fd-launch SCOPE GAME_DIR GAME_EXE MY_GAMES_FOLDER REGISTRY_FOLDER
+#
+# On a fresh prefix the game finds no Fallout.ini in "My Games" and no installer keys in the
+# registry, so it opens Bethesda's launcher instead of itself. Before the game starts this script
+#   1. creates the Proton prefix by running Wine's reg.exe, which also writes the installer keys
+#      (both registry views), so nothing has to edit system.reg by hand;
+#   2. copies the ini files the app prepared into "My Games" of every Wine user;
+#   3. starts the game.
+scope=$1 dir=$2 exe=$3 folder=$4 regfolder=$5
+log() { echo "fd-launch: $*" >&2; }
+run() { /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" -- "$@"; }
+
+root=${HOME:-/root}/.local/share/Steam
+pfx=$root/steamapps/compatdata/$scope/pfx
+stage=${HOME:-/root}/.local/share/fallout-droid/ini/$folder
+marker=$pfx/.fallout-droid-registry-$regfolder
+
+if [ ! -f "$marker" ]; then
+  regexe=
+  for base in "$root/compatibilitytools.d" /usr/share/steam/compatibilitytools.d /usr/local/share/steam/compatibilitytools.d; do
+    for arch in aarch64-windows x86_64-windows i386-windows; do
+      for f in "$base"/*/files/lib/wine/$arch/reg.exe "$base"/*/files/lib64/wine/$arch/reg.exe; do
+        [ -f "$f" ] && { regexe=$f; break 3; }
+      done
+    done
+  done
+  if [ -z "$regexe" ]; then
+    for base in "$root/compatibilitytools.d" /usr/share/steam/compatibilitytools.d /usr/local/share/steam/compatibilitytools.d; do
+      [ -d "$base" ] || continue
+      regexe=$(find -L "$base" -maxdepth 7 -type f -iname reg.exe -path '*windows*' 2>/dev/null | sort | head -1)
+      [ -n "$regexe" ] && break
+    done
+  fi
+  win="Z:${dir//\//\\}\\"
+  if [ -n "$regexe" ]; then
+    log "preparing the prefix and the installer keys with $regexe"
+    key="HKLM\\Software\\Bethesda Softworks\\$regfolder"
+    ok=1
+    for view in /reg:32 /reg:64; do
+      run "$regexe" add "$key" /v "Installed Path" /t REG_SZ /d "$win" /f $view || ok=0
+      run "$regexe" add "$key" /v "Installed" /t REG_DWORD /d 1 /f $view || true
+    done
+    [ "$ok" = 1 ] && touch "$marker"
+  else
+    log "no reg.exe found in the Proton folders; the app writes the keys on the next start"
+  fi
+fi
+
+if [ -d "$stage" ]; then
+  for user in "$pfx"/drive_c/users/*/; do
+    [ -d "$user" ] || continue
+    case $(basename "$user") in Public|public) continue ;; esac
+    games="$user/Documents/My Games/$folder"
+    mkdir -p "$games"
+    for ini in Fallout.ini FalloutPrefs.ini; do
+      [ -f "$stage/$ini" ] && [ ! -f "$games/$ini" ] && cp "$stage/$ini" "$games/$ini" && log "placed $ini for $(basename "$user")"
+    done
+  done
+fi
+
+exec /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" -- "$exe"

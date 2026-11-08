@@ -301,7 +301,7 @@ public final class MainActivity extends Activity {
                         com.wastelanddroid.util.Files2.findCaseInsensitive(new File(dir), d.exe));
                 com.wastelanddroid.mods.ModManager mm = new com.wastelanddroid.mods.ModManager(this, d, new File(dir));
                 mm.saveOrder(mm.loadPlugins());
-                r = FalloutEngine.prepare(this, target);
+                r = FalloutEngine.prepare(this, target, d.folder, d.folder);
                 if (r instanceof FalloutEngine.Prepared.Ok) prepareGamePrefix(d, new File(dir), ((FalloutEngine.Prepared.Ok) r).getScope());
             } catch (Throwable e) {
                 com.wastelanddroid.util.CrashLog.write(this, "prepare", e);

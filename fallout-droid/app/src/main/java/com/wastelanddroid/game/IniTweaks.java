@@ -86,6 +86,15 @@ public final class IniTweaks {
             pr.set("GamePlay", "bSaveOnRest", "1");
         }
         pr.save(prefs);
+        // Копия для скрипта запуска: он разложит ini всем пользователям Wine сразу после того,
+        // как Proton создаст префикс (до первого старта игры).
+        // pfx = <rootfs>/root/.local/share/Steam/steamapps/compatdata/<id>/pfx
+        File share = winePrefix.getParentFile().getParentFile().getParentFile().getParentFile().getParentFile();
+        File stage = new File(share, "fallout-droid/ini/" + g.folder);
+        if (stage.mkdirs() || stage.isDirectory()) {
+            Files2.copy(ini, new File(stage, "Fallout.ini"));
+            Files2.copy(prefs, new File(stage, "FalloutPrefs.ini"));
+        }
         // Если Wine завёл пользователя с другим именем, кладём те же ini и ему: без них игра
         // открывает оригинальный лаунчер вместо себя.
         File users = new File(winePrefix, "drive_c/users");

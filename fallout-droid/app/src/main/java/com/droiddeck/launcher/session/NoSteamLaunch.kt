@@ -59,6 +59,7 @@ object NoSteamLaunch {
         EPIC -> Library.EPIC_LAUNCHER_NAME
         BATTLENET -> args.getOrNull(args.indexOf("launch") + 1)?.takeIf { args.contains("launch") }?.let { names[it] } ?: com.droiddeck.launcher.stores.Store.BATTLENET.label
         PROTON_RUN -> args.getOrNull(args.indexOf("--app") + 1)?.takeIf { args.contains("--app") }?.let { names[it] }
+        "/usr/local/bin/fd-launch" -> args.firstOrNull()?.let { names[it] }
         else -> null
     }
 

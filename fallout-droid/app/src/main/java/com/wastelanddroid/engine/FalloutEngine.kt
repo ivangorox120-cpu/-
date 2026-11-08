@@ -26,6 +26,8 @@ import java.io.File
 object FalloutEngine {
     fun interface Progress { fun on(stage: String, percent: Int) }
 
+    const val FD_LAUNCH = "/usr/local/bin/fd-launch"
+
     sealed class Prepared {
         class Ok(val program: String, val args: Array<String>, val scope: String, val proton: String?) : Prepared()
         class Error(val message: String) : Prepared()
@@ -162,7 +164,15 @@ object FalloutEngine {
 
     /** Регистрирует exe в движке и собирает команду запуска. Не из UI-потока. */
     @JvmStatic
-    fun prepare(context: Context, exe: File): Prepared {
+    fun prepare(context: Context, exe: File): Prepared = prepare(context, exe, null, null)
+
+    /**
+     * [myGamesFolder] и [registryFolder] заданы — запуск идёт через fd-launch: он при первом
+     * запуске создаёт префикс, прописывает ключи реестра и кладёт ini, чтобы сразу стартовала игра,
+     * а не лаунчер Bethesda.
+     */
+    @JvmStatic
+    fun prepare(context: Context, exe: File, myGamesFolder: String?, registryFolder: String?): Prepared {
         val app = context.applicationContext
         val game = when (val r = AddedGames.addExe(app, exe)) {
             is AddedGames.AddResult.Added -> r.game
@@ -177,6 +187,10 @@ object FalloutEngine {
         if (proton != null) runCatching { ProtonDefault.requestGame(app, scope, proton) }
         val command = NoSteamLaunch.addedCommand(game)
         NoSteamLaunch.remember(command)
+        if (myGamesFolder != null && registryFolder != null) {
+            val args = arrayOf(scope, game.guestDir, game.guestExe, myGamesFolder, registryFolder)
+            return Prepared.Ok(FD_LAUNCH, args, scope, proton?.name)
+        }
         return Prepared.Ok(command.program, command.args.toTypedArray(), scope, proton?.name)
     }
 

@@ -134,7 +134,7 @@ public final class ControlsEditorActivity extends Activity {
         panelBody.addView(opts);
         LinearLayout opts2 = Ui.row(this);
         opts2.addView(pref(ip, "Вибрация", com.wastelanddroid.engine.FalloutInput.HAPTICS, true), Ui.weight());
-        opts2.addView(pref(ip, "Касание стреляет", com.wastelanddroid.engine.FalloutInput.TAP_FIRES, false), Ui.weight());
+        opts2.addView(pref(ip, "Касание = клик мыши", com.wastelanddroid.engine.FalloutInput.TAP_FIRES, true), Ui.weight());
         CheckBox labels = Ui.check(this, "Подписи", ip.getBoolean(com.wastelanddroid.engine.FalloutInput.BTN_LABELS, true));
         labels.setOnCheckedChangeListener((v, on) -> {
             ip.edit().putBoolean(com.wastelanddroid.engine.FalloutInput.BTN_LABELS, on).apply();

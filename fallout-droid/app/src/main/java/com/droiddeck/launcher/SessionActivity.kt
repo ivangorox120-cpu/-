@@ -253,6 +253,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var cursorSerial = 0
     private var clientHidesCursor = false
     private var pointerLocked = false
+    private var lookDownX = 0f
+    private var lookDownY = 0f
     private val pointerLockListener = WaylandCompositor.PointerLockListener { locked, _, _ ->
         uiHandler.post {
             if (pointerLocked == locked) return@post
@@ -1130,9 +1132,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                         pauseAnimated = false
                     },
                 )
-                if (leaving) com.droiddeck.launcher.ui.FloodSpread(
-                    com.droiddeck.launcher.ui.LocalPalette.current.signal,
-                    ball = if (loading.visible) com.droiddeck.launcher.ui.ThrobberSpot.ball else null,
+                // Fallout Droid: вместо синей заливки — выключение лампового телевизора
+                if (leaving) com.droiddeck.launcher.ui.CrtPowerOff(
+                    androidx.compose.ui.graphics.Color(com.wastelanddroid.util.Ui.FG),
                 ) { completeLeave() }
                 quitFrom?.let { from ->
                     val error = androidx.compose.material3.MaterialTheme.colorScheme.error
@@ -3472,12 +3474,21 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val rect = drawnRect() ?: return false
                     // Fallout Droid: мышь ведёт камеру с правой части экрана, слева остаётся стик движения
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        lookDownX = event.x; lookDownY = event.y
                         lookIgnored = com.wastelanddroid.engine.FalloutInput.lookOnRightOnly(this) &&
                             event.x < rect.left + rect.width() * 0.42f
                         touchpad.sensitivity = com.wastelanddroid.engine.FalloutInput.lookSensitivity(this)
                         touchpad.tapClicks = com.wastelanddroid.engine.FalloutInput.tapFires(this)
                     }
                     if (lookIgnored) {
+                        // Слева камера не крутится, но короткое касание всё равно щёлкает (меню, Пип-бой)
+                        if (event.actionMasked == MotionEvent.ACTION_UP &&
+                            event.eventTime - event.downTime < 300 &&
+                            kotlin.math.hypot(event.x - lookDownX, event.y - lookDownY) < PointerGestures.slop(this) * 2 &&
+                            com.wastelanddroid.engine.FalloutInput.tapFires(this)) {
+                            sendSceneButton(PointerGestures.BTN_LEFT, true)
+                            uiHandler.postDelayed({ sendSceneButton(PointerGestures.BTN_LEFT, false) }, 40)
+                        }
                         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) lookIgnored = false
                         return true
                     }
@@ -4502,9 +4513,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun finishFlooded() {
         if (isFinishing) return
-        val signal = com.droiddeck.launcher.ui.Themes.current(this).signal
-        com.droiddeck.launcher.ui.QuitFlood.mark(signal.toArgb())
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(signal.toArgb()))
+        // Fallout Droid: после «выключения телевизора» — чёрный экран, без синей заливки движка
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
         quitFlooded = true
         SessionService.stop(this)
         finish()
@@ -4549,9 +4559,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun completeLeave() {
         if (isFinishing) return
-        val signal = com.droiddeck.launcher.ui.Themes.current(this).signal
-        com.droiddeck.launcher.ui.QuitFlood.mark(signal.toArgb())
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(signal.toArgb()))
+        // Fallout Droid: после «выключения телевизора» — чёрный экран, без синей заливки движка
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
         quitFlooded = true
         finish()
     }

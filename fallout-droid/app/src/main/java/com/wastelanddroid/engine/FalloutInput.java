@@ -31,7 +31,7 @@ public final class FalloutInput {
     public static float lookSensitivity(Context c) { return p(c).getInt(LOOK_SENS, 115) / 100f; }
 
     /** Стрелять по касанию экрана (обычно не нужно: огонь на экранной кнопке). */
-    public static boolean tapFires(Context c) { return p(c).getBoolean(TAP_FIRES, false); }
+    public static boolean tapFires(Context c) { return p(c).getBoolean(TAP_FIRES, true); }
 
     /** Обзор пальцем, который держит кнопку огня. */
     public static boolean fireLook(Context c) { return p(c).getBoolean(FIRE_LOOK, true); }

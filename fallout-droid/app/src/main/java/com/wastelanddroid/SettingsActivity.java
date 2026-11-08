@@ -396,6 +396,7 @@ public final class SettingsActivity extends Activity {
                 v -> prefs.edit().putInt(Prefs.RES_SCALE, v).apply());
         slider.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         g.addView(slider);
+        toggle(g, "На весь экран", "Растягивать картинку под экран телефона, без чёрных полос по бокам", "stretch_screen", true, null);
         toggle(g, "Счётчик FPS", "Показывает частоту кадров поверх игры", Prefs.SHOW_HUD, false, null);
         info(g, R.drawable.ic_lock, "Ограничение 60 FPS включено всегда: выше 60 ломается физика движка.", Ui.TEXT_DIM);
         LinearLayout more = group(null);
