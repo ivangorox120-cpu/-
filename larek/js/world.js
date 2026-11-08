@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { Human, makeLook, splitStaticModel, preparePeople } from './npc.js';
+import { Human, makeLook, splitStaticModel, preparePeople, preparePolice, prepareSdsPerson } from './npc.js';
 import { createWeapon } from './weapon.js';
 import { createLife } from './life.js';
 import { Rope } from './rope.js';
@@ -530,37 +530,12 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   cyl(.0018, .0018, .022, MAT.dark, .008, -.026, 0, 4, bird);
 
   // 4) Нижний фасад киоска: вертикальные сине-белые рифлёные полосы (как на референсе 5731.jpg)
-  const frontSkirt = new THREE.Mesh(new THREE.PlaneGeometry(KW * 2 - .02, .98), MAT_SOYUZ_EXT);
-  frontSkirt.position.set(0, .49, KD + .018); K.add(frontSkirt);
+  // накладка-«юбка» убрана: стена уже в полоску, плоскость поверх неё мерцала (z-fighting)
   // Горизонтальный защитный поручень/рейка вдоль низа витрины (как на референсе)
   cyl(.012, .012, KW * 2 + .06, std({ color: 0x225588, metalness: .7, roughness: .35 }), 0, .72, KD + .042, 8, K).rotation.z = Math.PI / 2;
 
-  // 5) Наклонные витринные стеллажи с советскими газетами, журналами и открытками в левой и правой секциях (референс 5731.jpg)
-  const rackTexLeft = regTex(ctex(256, 256, (g, w, h) => {
-    g.fillStyle = '#b8823c'; g.fillRect(0, 0, w, h);
-    // Миниатюрные обложки журналов и портрет с гитарой (Высоцкий)
-    g.fillStyle = '#222'; g.fillRect(16, 16, 100, 110);
-    g.fillStyle = '#d43628'; g.font = '900 16px Arial'; g.fillText('ВЫСОЦКИЙ', 20, 36);
-    g.fillStyle = '#e8dfcc'; g.fillRect(135, 16, 105, 110);
-    g.fillStyle = '#1a3a6a'; g.font = '900 18px Arial'; g.fillText('ОГОНЁК', 145, 38);
-    g.fillStyle = '#f5efe0'; g.fillRect(16, 138, 224, 105);
-    g.fillStyle = '#9b1c14'; g.font = '900 22px "Times New Roman"'; g.fillText('ПРАВДА', 30, 168);
-  }));
-  const rackTexRight = regTex(ctex(256, 256, (g, w, h) => {
-    g.fillStyle = '#b8823c'; g.fillRect(0, 0, w, h);
-    // Миниатюрные плакаты (Ленин, космос, советский экран)
-    g.fillStyle = '#9b1c14'; g.fillRect(16, 16, 105, 110);
-    g.fillStyle = '#ffd244'; g.font = '900 16px Arial'; g.fillText('ЛЕНИН', 32, 38);
-    g.fillStyle = '#1c3654'; g.fillRect(135, 16, 105, 110);
-    g.fillStyle = '#fff'; g.font = '900 16px Arial'; g.fillText('КОСМОС', 145, 38);
-    g.fillStyle = '#f2ece0'; g.fillRect(16, 138, 224, 105);
-    g.fillStyle = '#1c1a18'; g.font = '900 22px "Times New Roman"'; g.fillText('ИЗВЕСТИЯ', 30, 168);
-  }));
-  const rackGeo = new THREE.PlaneGeometry(.88, .85);
-  const showRackL = new THREE.Mesh(rackGeo, std({ map: rackTexLeft, roughness: .6 }));
-  showRackL.position.set(-.98, 1.48, KD - .10); showRackL.rotation.x = -.22; K.add(showRackL);
-  const showRackR = new THREE.Mesh(rackGeo, std({ map: rackTexRight, roughness: .6 }));
-  showRackR.position.set(.98, 1.48, KD - .10); showRackR.rotation.x = -.22; K.add(showRackR);
+  // плакаты-стеллажи внутри витрины убраны: они пересекались со стеклянными полками и товаром
+
   // панорамная витрина без решёток: стекло в алюминиевой раме; зимой — иней от краёв, в остальное время — пыль и потёки
   const winTexes = (() => { const W = 512, H = 224;
     const mk = draw => { const t = regTex(ctex(W, H, g => draw(g, W, H))); return t; };
@@ -2346,7 +2321,8 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   // ---------- загрузка моделей ----------
   const loader = new GLTFLoader();
   const ASSETS = {};
-  let loadedN = 0; const toLoad = ['apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'people', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
+  let loadedN = 0; const SDS_NPC = ["cmeszl", "cmeszl2", "cmeszz", "cmeszz2", "cmeszz3", "cpros1l", "cpros1z", "cpros2l", "cpros2z", "cirand", "cvezedv"]; // прохожие: *z — зимняя одежда, *l — летняя, без суффикса — на любой сезон
+  const toLoad = [...SDS_NPC.map(n => 'npc_' + n), 'police', 'bmw733i', 'apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   // детализация фасадов панелек: фактура бетона в мировых координатах (без растяжения по UV), потёки от швов и подоконников, сырость и грязь у цоколя
   const facadeTex = (() => { const t = TL.load('assets/tex/pbr/concrete_col.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return regTex(t); })();
@@ -2384,7 +2360,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   function prepMats(root) { root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) if (m[k]) m[k].anisotropy = Q.aniso; }); } }); }
   function placeModel(g, x, z, rotY, scale = 1) { const o = g.scene.clone(true); o.userData.tag = g.__name || "model"; o.position.set(x, 0, z); o.rotation.y = rotY; o.scale.setScalar(scale); scene.add(o); prepMats(o); o.updateMatrixWorld(true); return o; }
   function colFromBox(o, shrink = 0) { const b = new THREE.Box3().setFromObject(o); return addCol(b.min.x + shrink, b.max.x - shrink, b.min.z + shrink, b.max.z - shrink); }
-  let staticWorker = null, peopleModels = []; const peopleByOutfit = {};
+  let staticWorker = null, peopleModels = [], policeModel = null; const peopleByOutfit = {};
   const outfitNow = () => { const m = season < 0 ? 0 : season; return (m >= 10 || m <= 2) ? 'winter' : (m >= 5 && m <= 7) ? 'summer' : 'mid'; };
   loading.then(() => {
     // машины: заменить процедурные на модели
@@ -2490,7 +2466,17 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // радио на полке
     if (ASSETS.radio) { const o = placeModel(ASSETS.radio, -KW + .17, -.62, Math.PI / 2, 1.0); o.position.y = 1.315; radioObj = o; radioBox = new THREE.Box3().setFromObject(o).expandByScalar(.03); }
     // модель рабочего — один из вариантов NPC
-    if (ASSETS.people) { try { for (const o of ['winter', 'mid', 'summer']) peopleByOutfit[o] = preparePeople(ASSETS.people.scene, o); peopleModels = peopleByOutfit.winter; } catch (e) { console.warn('Модели людей', e); } }
+    { // новые прохожие из присланных моделей; заменяют прежний набор «Зимние люди»
+      const sdsList = [];
+      for (const n of SDS_NPC) { const A = ASSETS['npc_' + n]; if (!A) continue; try { const m = meshesOf(A)[0]; if (m.material.map) m.material.map.colorSpace = THREE.SRGBColorSpace; sdsList.push(prepareSdsPerson(m, n)); } catch (e) { console.warn('Модель прохожего ' + n, e); } }
+      if (sdsList.length) {
+        const season = s => sdsList.filter(p => s === 'winter' ? !/l\d?$/.test(p.name) : s === 'summer' ? !/z\d?$/.test(p.name) : true);
+        for (const o of ['winter', 'mid', 'summer']) peopleByOutfit[o] = season(o);
+        peopleModels = peopleByOutfit.winter;
+      }
+    }
+    if (ASSETS.people && !peopleModels.length) { try { for (const o of ['winter', 'mid', 'summer']) peopleByOutfit[o] = preparePeople(ASSETS.people.scene, o); peopleModels = peopleByOutfit.winter; } catch (e) { console.warn('Модели людей', e); } }
+    if (ASSETS.police) { try { const m = meshesOf(ASSETS.police)[0]; if (m) { m.updateMatrixWorld(true); const mp = m.material.map; if (mp) mp.colorSpace = THREE.SRGBColorSpace; policeModel = preparePolice(m.geometry.clone().applyMatrix4(m.matrixWorld), mp); } } catch (e) { console.warn('Модель милиционера', e); } }
     if (ASSETS.steelworker) { const m = meshesOf(ASSETS.steelworker)[0]; if (m) staticWorker = splitStaticModel(m.geometry.clone().applyMatrix4(m.matrixWorld)); }
     fixNodes();
     // --- предметы интерьера из присланных моделей ---
@@ -2690,6 +2676,23 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       else if (m.name === 'glass_front') { m.material = parked ? FROST.full : FROST.wiper; m.castShadow = false; m.renderOrder = 2; }
       else if (m.name === 'glass_side' || m.name === 'glass_rear') { m.material = FROST.side; m.castShadow = false; m.renderOrder = 2; }
       if (m.userData.lamp === 'f') m.material = hl; else if (m.userData.lamp === 'r') m.material = tl; }); }
+    // у модели ВАЗ-2101 нет салона — сквозь стёкла было пусто: ставим сиденья, задний диван, торпедо с рулём, пол и обшивку дверей
+    if (kind === 'vaz2101') {
+      if (!realCar.int01) { const seat = std({ color: 0x5b3b2a, roughness: .75 }), dark = std({ color: 0x1d1c1b, roughness: .8 }), floor = std({ color: 0x252320, roughness: .95 }), card = std({ color: 0x6a4a36, roughness: .8 }), chrome = std({ color: 0xb8b8b4, metalness: .8, roughness: .3 });
+        const ig = new THREE.Group();
+        box(1.9, .03, 1.36, floor, 0, .3, 0, ig, false); // пол
+        for (const z of [.34, -.34]) { box(.48, .1, .48, seat, -.05, .45, z, ig); const bk = box(.1, .56, .46, seat, .2, .76, z, ig); bk.rotation.z = -.18; box(.1, .14, .26, seat, .24, 1.1, z, ig); } // передние кресла с подголовниками
+        box(.5, .12, 1.3, seat, .78, .44, 0, ig); const rb = box(.1, .5, 1.3, seat, 1.02, .74, 0, ig); rb.rotation.z = -.2; // задний диван
+        box(.24, .26, 1.38, dark, -.9, .8, 0, ig); box(.06, .1, 1.3, dark, -.8, .95, 0, ig); // торпедо и козырёк приборов
+        for (const [z, r] of [[.34, .07], [.12, .06]]) { const d = new THREE.Mesh(new THREE.CircleGeometry(r * .7, 16), std({ color: 0xe8e2cc, roughness: .5 })); d.position.set(-.775, .86, z); d.rotation.y = Math.PI / 2; ig.add(d); } // приборы
+        const wheel = new THREE.Mesh(new THREE.TorusGeometry(.18, .014, 8, 24), dark); wheel.position.set(-.62, .88, .34); wheel.rotation.y = Math.PI / 2; wheel.rotation.x = -.45; ig.add(wheel);
+        cyl(.018, .018, .32, dark, -.72, .82, .34, 8, ig).rotation.z = 1.1; // рулевая колонка
+        box(.12, .3, .04, dark, -.2, .45, 0, ig).rotation.z = .25; cyl(.02, .015, .02, chrome, -.17, .6, 0, 8, ig); // рычаг КПП
+        for (const z of [.66, -.66]) box(1.6, .42, .02, card, .05, .62, z, ig); // обшивка дверей
+        ig.scale.x = -1; // перед модели — в сторону +x (как у фар в prepCar), салон строился носом в −x
+        realCar.int01 = ig; }
+      g.add(realCar.int01.clone());
+    }
     // снег: шапка на крыше у всех, у стоящих — ещё на капоте и багажнике
     { const sg = parked ? pr.snowFull : pr.snowRoof; if (sg) { const c = new THREE.Mesh(sg, MAT.snow); c.castShadow = true; c.receiveShadow = true; c.userData.winter = true; g.add(c); } }
     const blob = new THREE.Mesh(carBlobGeo, carBlobMat); blob.rotation.x = -Math.PI / 2; blob.position.y = .02; blob.renderOrder = 1; g.add(blob);
@@ -2840,7 +2843,8 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     const look = makeLook(kind);
     // модели «Зимние люди» для всех, кроме милиции (у неё своя форма); сталевар — среди рабочих
     let model = null;
-    if (kind !== 'police') {
+    if (kind === 'police' && policeModel) model = policeModel; // милиционер — своя модель в форме
+    else if (kind !== 'police') {
       if (staticWorker && kind === 'worker' && outfitNow() === 'summer' && Math.random() < .2) model = staticWorker; // рабочий в майке — только летом
       else if (peopleModels.length) {
         const peopleModels = peopleByOutfit[outfitNow()] || peopleByOutfit.winter; // одежда по сезону
@@ -2850,6 +2854,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
         const pm = pick(fresh.length ? fresh : (pool.length ? pool : peopleModels)); model = pm.parts; extra = Object.assign({ modelName: pm.name }, extra || {});
       }
     }
+    if (kind === 'school') model = null; // школьники — процедурные (взрослые модели в рост ребёнка выглядели странно)
     if (model && kind === 'school') look.height = 1.45;
     const h = new Human(look, model);
     const n = NODES[nodeId]; h.obj.position.set(n.x + R(-.3, .3), 0, n.z + R(-.3, .3)); scene.add(h.obj);
@@ -3072,9 +3077,19 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   // ---------- Марат: посредник на остановке у ларька ----------
   let marat = null, zavodNpc = null;
+  const MARAT_CAR = { x: STOPS.kiosk.x + .6, z: -1.15 }; // чёрная BMW Марата — за павильоном остановки, вдоль улицы
+  function placeMaratCar() {
+    if (!ASSETS.bmw733i || placeMaratCar.done) return; placeMaratCar.done = true;
+    const o = placeModel(ASSETS.bmw733i, MARAT_CAR.x, MARAT_CAR.z, 0);
+    o.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    addCol(MARAT_CAR.x - 2.43, MARAT_CAR.x + 2.43, MARAT_CAR.z - .97, MARAT_CAR.z + .97); occ(o);
+    const blob = new THREE.Mesh(carBlobGeo, carBlobMat); blob.rotation.x = -Math.PI / 2; blob.position.set(MARAT_CAR.x, .02, MARAT_CAR.z); blob.scale.set(1.15, 1.1, 1); scene.add(blob);
+  }
   function spawnMarat() {
+    placeMaratCar();
     const look = makeLook('worker'); Object.assign(look, { male: true, height: 1.78, build: 1.15, top: '#141414', leather: true, puffy: false, pants: '#1d1d22', boots: '#111', hat: 'kepka', hatC: '#262626', hairStyle: 'short', hair: '#1c1410', facial: 'mustache', chain: true, scarf: null, bag: null, coat: false, stripes: null, apron: null, age: 38, nerve: .7, aggression: .2, swagger: .6, kind: 'worker' });
-    const h = new Human(look, null); h.obj.position.set(STOPS.kiosk.x + 3.1, 0, 4.25); scene.add(h.obj);
+    const h = new Human(look, null); h.obj.position.set(MARAT_CAR.x - .3, 0, MARAT_CAR.z + 1.12); h.obj.rotation.y = 0; scene.add(h.obj); // за остановкой, у своей BMW
+    h.R.body.rotation.x = -.11; // опёрся спиной о машину
     const sh = new THREE.Mesh(blobGeo, blobMat); sh.rotation.x = -Math.PI / 2; sh.position.y = .02; h.obj.add(sh);
     marat = { h, role: 'marat', state: 'stand', anim: 'smoke', path: [], kind: 'worker', title: 'Марат', talk: () => ctx.maratTalk && ctx.maratTalk(), id: 'marat' };
     people.push(marat);
@@ -4349,7 +4364,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       for (const o of cars) if (o !== c && o.ri === c.ri) { const ds = ((o.s - c.s) % total + total) % total; if (ds > 0 && ds < 12) block = Math.min(block, ds - 5); }
       const ahead = (px, pz) => { const vx = px - x, vz = pz - z, al = (vx * dirx + vz * dirz) / dl, lat = Math.abs(vx * dirz - vz * dirx) / dl; return al > 0 && lat < 1.6 ? al : 99; };
       { const bo = transport.obstacle(), ba = ahead(bo.x, bo.z); if (ba < 18) block = Math.min(block, ba - 8); }
-      const pAhead = ahead(P.x, P.z); if (pAhead < 9) { block = Math.min(block, pAhead - 2.6); if (c.honk <= 0 && c.v > 3) { ctx.audio && ctx.audio.horn(); c.honk = 4; } }
+      const pAhead = ahead(P.x, P.z); if (pAhead < 9) { block = Math.min(block, pAhead - 2.6); if (c.honk <= 0 && c.v > 3) { ctx.audio && ctx.audio.horn(c.m.position); c.honk = 4; } }
       for (const p of people) { const a = ahead(p.h.obj.position.x, p.h.obj.position.z); if (a < 10) block = Math.min(block, a - 3); }
       c.honk -= dt;
       const want = block < 99 ? clamp(block * 1.1, 0, c.vmax) : c.vmax;
@@ -4368,7 +4383,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   }
   function hitByCar(c, dx, dz) {
     const sp = c.v; P.stun = 2.5; P.vx = dx * sp * .7 + (Math.random() - .5) * 2; P.vz = dz * sp * .7 + (Math.random() - .5) * 2; P.shake = 1.4; P.pitch = clamp(P.pitch + .5, -1.3, 1.2);
-    post.uniforms.hurt.value = 1; c.v *= .3; ctx.audio && ctx.audio.thud(1.2); ctx.audio && ctx.audio.horn();
+    post.uniforms.hurt.value = 1; c.v *= .3; ctx.audio && ctx.audio.thud(1.2); ctx.audio && ctx.audio.horn(c.m.position);
     if (weapon.drawn) weapon.holster();
     ctx.onHit && ctx.onHit(sp);
   }
@@ -4445,6 +4460,6 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     batchInfo, renderInfo() { const i = renderer.info; let tris = 0; return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures, progs: (i.programs || []).length, lights: scene.children.filter(o => o.isLight).length }; },
     triStats() { const out = {}; scene.traverse(o => { if (!o.isMesh || !o.visible) return; const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1); let k = o.name || o.material && (Array.isArray(o.material) ? o.material[0].name : o.material.name) || o.geometry.type; let p = o; while (p.parent && p.parent !== scene) p = p.parent; k = (p.userData.tag || p.name || p.type) + '/' + k; out[k] = (out[k] || 0) + t; }); return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => k + ':' + Math.round(v)); },
     setRetro(v) { post.uniforms.retro.value = v ? 1 : 0; },
-    debug: { spawnPed: () => { const p = newPerson(pick(["worker", "youth", "neighbor", "babka"]), "ped", "s5"); return p; }, TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
+    debug: { spawnPed: () => { const p = newPerson(pick(["worker", "youth", "neighbor", "babka"]), "ped", "s5"); return p; }, spawnKind: (k, node = "s5") => newPerson(k, "ped", node), TIM, people, cars, carGroups, weather, colliders, NODES, visibleFromPlayer, spawnGopniks, get gop() { return gopnikGroup; } },
   };
 }

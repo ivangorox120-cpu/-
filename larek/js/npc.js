@@ -121,7 +121,7 @@ export function buildHuman(L, staticModel) {
     const P = staticModel, C = P.cfg, s = H / C.height;
     root.userData.static = true;
     const tint = new THREE.Color().setRGB(rnd(.86, 1.08), rnd(.86, 1.08), rnd(.86, 1.08));
-    const sm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .88, color: tint });
+    const sm = P.map ? new THREE.MeshStandardMaterial({ map: P.map, roughness: .82 }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .88, color: tint }); // у текстурированной модели (милиционер) — своя текстура
     hips.position.y = C.hipY * s; spine.position.y = 0;
     part(P.torso, sm, s, s, s, 0, -C.hipY * s, 0, spine, true);
     R.neck = pivot(spine, 0, (C.neckY - C.hipY) * s, 0); R.head = pivot(R.neck, 0, 0, 0); part(P.head, sm, s, s, s, 0, 0, 0, R.head, true);
@@ -130,7 +130,12 @@ export function buildHuman(L, staticModel) {
     R.elL = pivot(R.shL, 0, -.3 * s, 0); R.elR = pivot(R.shR, 0, -.3 * s, 0);
     R.thL = pivot(hips, C.legX * s, 0, 0); R.thR = pivot(hips, -C.legX * s, 0, 0);
     part(P.legL, sm, s, s, s, 0, 0, 0, R.thL, true); part(P.legR, sm, s, s, s, 0, 0, 0, R.thR, true);
-    R.knL = pivot(R.thL, 0, -.45 * s, 0); R.knR = pivot(R.thR, 0, -.45 * s, 0);
+    if (P.sds) { // модель с коленями и локтями: голень и предплечье на своих шарнирах
+      R.elL.position.set(P.elbL[0] * s, P.elbL[1] * s, 0); R.elR.position.set(P.elbR[0] * s, P.elbR[1] * s, 0);
+      part(P.foreL, sm, s, s, s, 0, 0, 0, R.elL, true); part(P.foreR, sm, s, s, s, 0, 0, 0, R.elR, true);
+      R.knL = pivot(R.thL, 0, P.kneeOff * s, 0); R.knR = pivot(R.thR, 0, P.kneeOff * s, 0);
+      part(P.shinL, sm, s, s, s, 0, 0, 0, R.knL, true); part(P.shinR, sm, s, s, s, 0, 0, 0, R.knR, true);
+    } else { R.knL = pivot(R.thL, 0, -.45 * s, 0); R.knR = pivot(R.thR, 0, -.45 * s, 0); }
     R.face = null; R.legLen = C.hipY * s; R.stride = .68 * s * (C.hipY / .95);
     R.rigidArms = !!C.posedArms; // у некоторых моделей руки уже в позе (машут, в карманах)
     return R;
@@ -240,20 +245,104 @@ export function splitParts(prims, cfg) {
   const PIV = { torso: [0, 0, 0], head: [0, cfg.neckY, 0], armL: [cfg.shX, cfg.shY, 0], armR: [-cfg.shX, cfg.shY, 0], legL: [cfg.legX, cfg.hipY, 0], legR: [-cfg.legX, cfg.hipY, 0] };
   const out = { cfg };
   for (const k in parts) {
-    const tris = parts[k], m = tris.length * 3, P = new Float32Array(m * 3), N = new Float32Array(m * 3), C = new Float32Array(m * 3);
+    const tris = parts[k], m = tris.length * 3, P = new Float32Array(m * 3), N = new Float32Array(m * 3), C = new Float32Array(m * 3), hasUV = tris.length && tris[0][0].attributes.uv, UV = hasUV ? new Float32Array(m * 2) : null;
     let i = 0; const [px, py, pz] = PIV[k];
     for (const [geo, t] of tris) { const pos = geo.attributes.position, nor = geo.attributes.normal, col = geo.attributes.color;
       for (let v = 0; v < 3; v++, i++) {
         P[i * 3] = pos.getX(t + v) - px; P[i * 3 + 1] = pos.getY(t + v) - py; P[i * 3 + 2] = pos.getZ(t + v) - pz;
         N[i * 3] = nor.getX(t + v); N[i * 3 + 1] = nor.getY(t + v); N[i * 3 + 2] = nor.getZ(t + v);
         if (col) { C[i * 3] = col.getX(t + v); C[i * 3 + 1] = col.getY(t + v); C[i * 3 + 2] = col.getZ(t + v); } else C[i * 3] = C[i * 3 + 1] = C[i * 3 + 2] = .8;
+        if (UV) { const uv = geo.attributes.uv; UV[i * 2] = uv.getX(t + v); UV[i * 2 + 1] = uv.getY(t + v); }
       } }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('color', new THREE.BufferAttribute(C, 3));
+    if (UV) g.setAttribute('uv', new THREE.BufferAttribute(UV, 2));
     g.computeBoundingSphere(); out[k] = g;
   }
   return out;
 }
 export function splitStaticModel(geo) { return splitParts([{ geo, legsOK: true }], STEEL_CFG); }
+
+// прохожие из присланных SDS-моделей (A-поза, с весами скина): части тела определяются по костям, а не по высоте треугольника —
+// одежда не «рвётся» между частями. Руки опускаются вдоль тела, ноги и руки делятся на бедро/голень и плечо/предплечье,
+// чтобы в походке сгибались колени и локти. Текстура-атлас персонажа сохраняется.
+export const SDS_FEMALE = n => /^c(mesz|pros)/.test(n);
+export function prepareSdsPerson(mesh, name) {
+  let g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+  mesh.updateMatrixWorld(true); g.applyMatrix4(mesh.matrixWorld);
+  g.computeBoundingBox(); const H0 = g.boundingBox.max.y - g.boundingBox.min.y, H = SDS_FEMALE(name) ? 1.68 : 1.78, k = H / H0;
+  g.translate(0, -g.boundingBox.min.y, 0); g.scale(k, k, k);
+  if (!g.attributes.normal) g.computeVertexNormals();
+  const P = g.attributes.position, N = g.attributes.normal, B = g.attributes._bones, W = g.attributes._weights, nv = P.count;
+  // части тела по геометрии (индексы костей в модели локальные для каждого куска меша — по ним делить нельзя):
+  // руки — треугольники у отрезка «плечо → кисть» в A-позе; ноги — ниже бёдер, а у юбки/пальто — ниже подола
+  const triC = t => [(P.getX(t) + P.getX(t + 1) + P.getX(t + 2)) / 3, (P.getY(t) + P.getY(t + 1) + P.getY(t + 2)) / 3, (P.getZ(t) + P.getZ(t + 1) + P.getZ(t + 2)) / 3];
+  const handPt = sg => { let bx = 0, by = 0, n = 0, mx = 0; for (let i = 0; i < nv; i++) mx = Math.max(mx, sg * P.getX(i)); for (let i = 0; i < nv; i++) if (sg * P.getX(i) > mx - H * .06) { bx += P.getX(i); by += P.getY(i); n++; } return [bx / n, by / n]; };
+  const shoulder = sg => [sg * H * .1, H * .815];
+  let hemY = H * .47; // подол: самая низкая высота, где ещё есть ткань по центру спереди (у брюк ниже паха её нет)
+  for (let i = 0; i < nv; i++) if (Math.abs(P.getX(i)) < H * .012 && P.getZ(i) > 0 && P.getY(i) < hemY && P.getY(i) > H * .12) hemY = P.getY(i);
+  const legTop = Math.min(H * .47, hemY - H * .005);
+  const segD = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy; let t = ((x - a[0]) * dx + (y - a[1]) * dy) / L2; const tc = Math.max(0, Math.min(1, t)); return [Math.hypot(x - a[0] - dx * tc, y - a[1] - dy * tc), t]; };
+  const arms = { armL: [shoulder(1), handPt(1)], armR: [shoulder(-1), handPt(-1)] };
+  const triReg = [];
+  for (let t = 0; t < nv; t += 3) { const [x, y] = triC(t); let r = 'torso';
+    for (const side of ['armL', 'armR']) { const [a_, b_] = arms[side]; const sg = side === 'armL' ? 1 : -1; const [d, tt] = segD(x, y, a_, b_); if (sg * x > H * .115 && tt > .04 && d < H * .075) r = side; }
+    if (r === 'torso') { if (y > H * .855 && Math.abs(x) < H * .1) r = 'head'; else if (y < legTop) r = x > 0 ? 'legL' : 'legR'; }
+    triReg.push(r); }
+  const vertsOf = r => { const out = []; triReg.forEach((q, t) => { if (q === r) for (let v = 0; v < 3; v++) out.push(t * 3 + v); }); return out; };
+  const v3 = new THREE.Vector3(), n3 = new THREE.Vector3(), q = new THREE.Quaternion(), Z = new THREE.Vector3(0, 0, 1);
+  const piv = {}, elbow = {};
+  for (const side of ['armL', 'armR']) {
+    const vs = vertsOf(side); if (!vs.length) continue; const sg = side === 'armL' ? 1 : -1;
+    const shX = Math.abs(arms[side][0][0]), shY = arms[side][0][1], hX = Math.abs(arms[side][1][0]), hY = arms[side][1][1];
+    const ang = Math.atan2(shY - hY, hX - shX), rot = Math.PI / 2 - ang - .1; // угол руки ниже горизонтали → почти вниз
+    q.setFromAxisAngle(Z, -sg * rot); const done = new Set();
+    for (const i of vs) { if (done.has(i)) continue; done.add(i);
+      v3.set(P.getX(i) - sg * shX, P.getY(i) - shY, P.getZ(i)).applyQuaternion(q); P.setXYZ(i, v3.x + sg * shX, v3.y + shY, v3.z);
+      n3.set(N.getX(i), N.getY(i), N.getZ(i)).applyQuaternion(q); N.setXYZ(i, n3.x, n3.y, n3.z); }
+    const len = Math.hypot(hX - shX, shY - hY); piv[side] = [sg * shX, shY]; elbow[side] = [sg * (shX + Math.sin(.1) * len * .5), shY - Math.cos(.1) * len * .5];
+  }
+  const hipY = H * .5, kneeY = H * .27, legX = H * .055, neckY = H * .855;
+  // сборка частей: геометрия относительно своего шарнира
+  const make = (vs, px, py) => { const m = vs.length, Pa = new Float32Array(m * 3), Na = new Float32Array(m * 3), Ca = new Float32Array(m * 3).fill(1), Ua = new Float32Array(m * 2), UV = g.attributes.uv;
+    vs.forEach((i, j) => { Pa[j * 3] = P.getX(i) - px; Pa[j * 3 + 1] = P.getY(i) - py; Pa[j * 3 + 2] = P.getZ(i); Na[j * 3] = N.getX(i); Na[j * 3 + 1] = N.getY(i); Na[j * 3 + 2] = N.getZ(i); if (UV) { Ua[j * 2] = UV.getX(i); Ua[j * 2 + 1] = UV.getY(i); } });
+    const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.BufferAttribute(Pa, 3)); o.setAttribute('normal', new THREE.BufferAttribute(Na, 3)); o.setAttribute('color', new THREE.BufferAttribute(Ca, 3)); o.setAttribute('uv', new THREE.BufferAttribute(Ua, 2)); o.computeBoundingSphere(); return o; };
+  const splitBy = (vs, test) => { const a = [], b = []; for (let t = 0; t < vs.length; t += 3) { const tri = [vs[t], vs[t + 1], vs[t + 2]]; (test(tri) ? a : b).push(...tri); } return [a, b]; };
+  const cy = tri => (P.getY(tri[0]) + P.getY(tri[1]) + P.getY(tri[2])) / 3;
+  const out = { cfg: { height: H, hipY, neckY, shY: piv.armL ? piv.armL[1] : H * .82, shX: piv.armL ? piv.armL[0] : H * .11, legX } };
+  out.torso = make(vertsOf('torso'), 0, 0); out.head = make(vertsOf('head'), 0, neckY);
+  for (const side of ['legL', 'legR']) { const sg = side === 'legL' ? 1 : -1; const [shin, thigh] = splitBy(vertsOf(side), tri => cy(tri) < kneeY);
+    out[side] = make(thigh, sg * legX, hipY); out[side === 'legL' ? 'shinL' : 'shinR'] = make(shin, sg * legX, kneeY); }
+  for (const side of ['armL', 'armR']) { const p_ = piv[side] || [0, 0], e = elbow[side] || p_; const [fore, upper] = splitBy(vertsOf(side), tri => cy(tri) < e[1]);
+    out[side] = make(upper, p_[0], p_[1]); out[side === 'armL' ? 'foreL' : 'foreR'] = make(fore, e[0], e[1]); out[side === 'armL' ? 'elbL' : 'elbR'] = [e[0] - p_[0], e[1] - p_[1]]; }
+  out.kneeOff = kneeY - hipY; out.map = mesh.material && mesh.material.map; out.sds = true;
+  return { name, female: SDS_FEMALE(name), parts: out };
+}
+
+// милиционер из присланной модели (T-поза, лицом по +X): разворачиваем лицом вперёд, ставим на землю, опускаем руки вдоль тела
+// и режем на те же части, что у остальных прохожих; текстура формы сохраняется (uv)
+export function preparePolice(srcGeo, map) {
+  let g = srcGeo.index ? srcGeo.toNonIndexed() : srcGeo.clone();
+  g.rotateY(-Math.PI / 2); g.computeBoundingBox(); let bb = g.boundingBox;
+  const sc = 1.8 / (bb.max.y - bb.min.y); g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2); g.scale(sc, sc, sc);
+  if (!g.attributes.normal) g.computeVertexNormals();
+  const P = g.attributes.position, N = g.attributes.normal, shX = .2;
+  // высота плеча — по вершинам рук в районе плечевого сустава
+  let sy = 0, sn = 0; for (let i = 0; i < P.count; i++) { const ax = Math.abs(P.getX(i)); if (ax > .26 && ax < .36 && P.getY(i) > 1.2) { sy += P.getY(i); sn++; } }
+  const shY = sn ? sy / sn : 1.43, th = 1.36; // руки опускаются на ~78°, чуть в стороны от корпуса
+  const armTri = new Uint8Array(P.count / 3);
+  for (let t = 0; t < P.count; t += 3) { let cx = 0, cy = 0; for (let k = 0; k < 3; k++) { cx += P.getX(t + k); cy += P.getY(t + k); } cx /= 3; cy /= 3;
+    if (Math.abs(cx) > .24 && cy > shY - .22) armTri[t / 3] = cx > 0 ? 1 : 2; }
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), q = new THREE.Quaternion(), ax = new THREE.Vector3(0, 0, 1);
+  for (let t = 0; t < P.count; t += 3) { const a = armTri[t / 3]; if (!a) continue; const sgn = a === 1 ? 1 : -1; q.setFromAxisAngle(ax, -sgn * th);
+    for (let k = 0; k < 3; k++) { const i = t + k; v.set(P.getX(i) - sgn * shX, P.getY(i) - shY, P.getZ(i)).applyQuaternion(q); P.setXYZ(i, v.x + sgn * shX, v.y + shY, v.z); n.set(N.getX(i), N.getY(i), N.getZ(i)).applyQuaternion(q); N.setXYZ(i, n.x, n.y, n.z); } }
+  // разносим треугольники рук по отдельным примитивам, чтобы они точно попали в руки, а не в ноги/корпус
+  const pick = sel => { const idx = []; for (let t = 0; t < P.count / 3; t++) if (sel(armTri[t])) idx.push(t); const out = new THREE.BufferGeometry();
+    for (const [name, at] of Object.entries(g.attributes)) { const sz = at.itemSize, arr = new Float32Array(idx.length * 3 * sz); const G = ['getX', 'getY', 'getZ', 'getW']; idx.forEach((t, j) => { for (let vv = 0; vv < 3; vv++) for (let c = 0; c < sz; c++) arr[(j * 3 + vv) * sz + c] = at[G[c]](t * 3 + vv); }); out.setAttribute(name, new THREE.BufferAttribute(arr, sz)); }
+    return out; };
+  const cfg = { height: 1.8, hipY: .93, neckY: 1.5, headCut: 1.53, headHalfW: .2, shY, shX, armCut: 9, armTop: 0, armBottom: 0, legCut: .9, legX: .09 };
+  const parts = splitParts([{ geo: pick(a => !a), legsOK: true }, { geo: pick(a => a === 1), force: 'armL' }, { geo: pick(a => a === 2), force: 'armR' }], cfg);
+  parts.map = map; return parts;
+}
 
 // набор «Зимние люди»: 10 персонажей из отдельных частей; цвет материала запекаем в вершины
 export const PEOPLE_FEMALE = ['Anna', 'Galina', 'Elena', 'Irina'];

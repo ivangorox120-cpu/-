@@ -24,7 +24,7 @@ export function createAudio() {
     sfxBus = ctx.createGain(); sfxBus.connect(master);
     ambBus = ctx.createGain(); ambBus.gain.value = st.ambience; ambBus.connect(master);
     // шаги
-    for (const [k, url] of [['walk', 'assets/audio/walk.mp3'], ['snow', 'assets/audio/walk_snow.mp3'], ...['shot', 'gun_open', 'gun_shell', 'gun_shell2', 'gun_close', 'shell_drop', 'gun_move', 'stuk', 'dostavka'].map(n => [n, 'assets/audio/' + n + '.mp3'])])
+    for (const [k, url] of [['walk', 'assets/audio/walk.mp3'], ['snow', 'assets/audio/walk_snow.mp3'], ...['shot', 'gun_open', 'gun_shell', 'gun_shell2', 'gun_close', 'shell_drop', 'gun_move', 'stuk', 'dostavka', 'horn'].map(n => [n, 'assets/audio/' + n + '.mp3'])])
       fetch(url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(b => { buffers[k] = b; }).catch(e => console.warn('audio', url, e));
     // радио — потоковый <audio>, подключённый в граф (панорама + фильтр)
     radioEl = new Audio('assets/audio/radio.mp3'); radioEl.loop = true; radioEl.preload = 'auto'; radioEl.crossOrigin = 'anonymous';
@@ -204,7 +204,9 @@ export function createAudio() {
     const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + .4); o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + .45);
     const n = ctx.createBufferSource(); n.buffer = noiseBuf(.25, 3); const ng = ctx.createGain(); ng.gain.value = vol * .6; n.connect(ng); ng.connect(sfxBus); n.start(t);
   }
-  function horn() {
+  function horn(pos = null, vol = 1) {
+    // клаксон из файла пользователя (машины и автобус); пока файл не загрузился — прежний синтезированный сигнал
+    if (sample('horn', .9 * vol, pos && pos.isVector3 ? pos : null, .97 + Math.random() * .06)) return;
     if (!ensure()) return; const t = ctx.currentTime;
     for (const fr of [392, 494]) { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = fr; const g = ctx.createGain(); g.gain.setValueAtTime(.06, t); g.gain.setValueAtTime(.06, t + .45); g.gain.exponentialRampToValueAtTime(.001, t + .55); o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + .6); }
   }

@@ -606,6 +606,7 @@ export function createTransport(env) {
         B_.doorK = Math.max(0, B_.doorK - dt * 1.25);
       }
       if (B_.t > waitTime + 1 && B_.doorK <= 0) {
+        env.audio && env.audio.horn && env.audio.horn(null, .5); // автобус сигналит, трогаясь с остановки
         B_.state = 'drive'; B_.stop = null;
       }
     }
