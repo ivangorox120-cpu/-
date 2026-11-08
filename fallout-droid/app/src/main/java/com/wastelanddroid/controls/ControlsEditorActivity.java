@@ -143,7 +143,7 @@ public final class ControlsEditorActivity extends Activity {
         opts2.addView(labels, Ui.weight());
         panelBody.addView(opts2);
         LinearLayout opts3 = Ui.row(this);
-        opts3.addView(pref(ip, "Сырая мышь", com.wastelanddroid.engine.FalloutInput.RELATIVE_MOUSE, true), Ui.weight());
+        opts3.addView(pref(ip, "Мышь как в Winlator", com.wastelanddroid.engine.FalloutInput.RELATIVE_MOUSE, true), Ui.weight());
         opts3.addView(pref(ip, "Показывать курсор", com.wastelanddroid.engine.FalloutInput.SHOW_CURSOR, true), Ui.weight());
         panelBody.addView(opts3);
         LinearLayout colors = Ui.row(this);

@@ -125,7 +125,7 @@ object FalloutEngine {
             val prefs = com.droiddeck.launcher.session.SessionPrefs
             prefs.setTouchMode(context, prefs.TOUCH_PAD)          // свайп = обзор мышью
             prefs.setOscMode(context, prefs.OSC_NEVER)            // геймпадный оверлей движка не нужен
-            prefs.setEvdevMouse(context, true)                    // «сырая» мышь, когда игра захватывает курсор
+            prefs.setEvdevMouse(context, false)                   // мышь идёт через композитор, не через evdev
             prefs.setDirectCursor(context, true)
             com.droiddeck.launcher.input.ControllerPrefs.setScreenKeysShown(context, overlayMode != "off")
         }

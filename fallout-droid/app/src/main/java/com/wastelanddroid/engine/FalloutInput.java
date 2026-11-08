@@ -41,7 +41,11 @@ public final class FalloutInput {
     /** Вибрация при нажатии экранных кнопок. */
     public static boolean haptics(Context c) { return p(c).getBoolean(HAPTICS, true); }
 
-    /** Относительные сдвиги мыши вдобавок к положению курсора (как в Winlator) — для DirectInput. */
+    /**
+     * Мышь как в Winlator: игре идут только относительные сдвиги, без «телепорта» курсора
+     * в точку. Fallout читает мышь через DirectInput и сам рисует курсор по этим сдвигам;
+     * абсолютная позиция ему мешает — игра возвращает курсор назад, и он стоит на месте.
+     */
     public static boolean relativeMouse(Context c) { return p(c).getBoolean(RELATIVE_MOUSE, true); }
 
     /** Рисовать свой указатель, даже когда игра прячет системный курсор (меню Fallout). */

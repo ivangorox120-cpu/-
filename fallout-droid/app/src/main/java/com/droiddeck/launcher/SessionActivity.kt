@@ -281,7 +281,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         override fun run() {
             if (syncClientCursor() && clientHidesCursor) {
                 // Fallout Droid: своя стрелка остаётся, пока мышь ведёт палец (см. showCursor)
-                if (pointerLocked || !usingTouchpad() ||
+                if (pointerLocked || !usingTouchpad() || relativeMouseMode() ||
                     !com.wastelanddroid.engine.FalloutInput.showCursor(this@SessionActivity)) {
                     cursorVisible = false
                     return
@@ -703,10 +703,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Fallout 3 / New Vegas читают мышь через DirectInput — только сдвиги «сырой» мыши; без них
         // курсор в меню стоит на месте, а камера упирается в край экрана.
         touchpad.onDelta = { dx, dy ->
-            if (!pointerLocked && com.wastelanddroid.engine.FalloutInput.relativeMouse(this)) {
+            if (!pointerLocked && relativeMouseMode()) {
                 drawnRect()?.let { rect ->
                     val scale = sceneScale(rect)
-                    WaylandCompositor.sendPointerDelta(dx * scale, dy * scale)
+                    sendSceneDelta(dx * scale, dy * scale)
                 }
             }
         }
@@ -3012,9 +3012,19 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         val rect = drawnRect() ?: return
         val cx = x.coerceIn(rect.left, rect.right)
         val cy = y.coerceIn(rect.top, rect.bottom)
-        WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
+        // Fallout Droid: в относительном режиме игре уходят только сдвиги (sendSceneDelta).
+        // Абсолютная позиция здесь всё ломала: игра держит свой курсор сама и возвращала его
+        // обратно, поэтому на экране он не двигался.
+        if (!relativeMouseMode()) {
+            WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
+        }
         showCursor(cx, cy)
     }
+
+    /** Относительная мышь: только для наших запусков игры, и пока её не выключили в настройках. */
+    private fun relativeMouseMode(): Boolean =
+        SessionState.mode == SessionService.MODE_RUN && usingTouchpad() &&
+            com.wastelanddroid.engine.FalloutInput.relativeMouse(this)
 
     private fun showCursor(x: Float, y: Float) {
         cursorPos = androidx.compose.ui.geometry.Offset(x, y)
@@ -3024,7 +3034,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!touchDrivesPointer()) uiHandler.postDelayed(cursorResync, 60)
         // Fallout Droid: в меню игра прячет системный курсор и рисует свой; пока мышь ведёт палец,
         // показываем собственную стрелку, иначе непонятно, куда нажимаешь.
-        val ownCursor = !pointerLocked && usingTouchpad() &&
+        val ownCursor = !pointerLocked && usingTouchpad() && !relativeMouseMode() &&
             com.wastelanddroid.engine.FalloutInput.showCursor(this)
         if (clientHidesCursor && !ownCursor) { cursorVisible = false; return }
         if (clientHidesCursor) cursorImage = null
@@ -3472,6 +3482,11 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (route != touchRoute) {
             Log.i(TAG, "touch route $touchRoute -> $route (mode=$routedTouchMode steamUi=${SessionState.steamUi} scrollLayer=$scrollTouchGesture)")
             touchRoute = route
+            if (CompositorHost.isStarted) WaylandCompositor.nativeLog(
+                "input",
+                "touch route $route (touch mode $routedTouchMode, relative mouse ${relativeMouseMode()}, " +
+                    "pointer lock $pointerLocked, raw mouse $evdevMouseActive)",
+            )
         }
         return when (route) {
             com.droiddeck.launcher.input.TouchRouter.Route.BLOCKED,
