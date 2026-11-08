@@ -272,7 +272,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         val now = android.os.SystemClock.uptimeMillis()
         if (now - dbgAt < 250) return
         dbgAt = now
-        inputDebug = "touch $dbgTouch · route $touchRoute · lock $pointerLocked · hide $clientHidesCursor\n" +
+        inputDebug = "${com.wastelanddroid.engine.FalloutInput.mouseMode(this)} · touch $dbgTouch · " +
+            "route $touchRoute · lock $pointerLocked · hide $clientHidesCursor\n" +
             "abs $dbgAbs · rel $dbgRel · btn $dbgBtn · raw $evdevMouseActive · " +
             "xtest ${com.wastelanddroid.engine.XMouse.ready(this)}"
     }

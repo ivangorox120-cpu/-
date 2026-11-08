@@ -77,7 +77,15 @@ public final class FalloutInput {
     public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
 
     public static String mouseMode(Context c) {
-        return p(c).getString(MOUSE_MODE, MOUSE_XTEST);
+        android.content.SharedPreferences prefs = p(c);
+        // Прежний выбранный вручную способ перебивал новый по умолчанию, и XTEST не запускался:
+        // один раз переводим всех на него.
+        if (prefs.getInt("mouse_mode_version", 0) < 2) {
+            prefs.edit().putInt("mouse_mode_version", 2).putString(MOUSE_MODE, MOUSE_XTEST)
+                    .putBoolean(WINE_DESKTOP, false).apply();
+            return MOUSE_XTEST;
+        }
+        return prefs.getString(MOUSE_MODE, MOUSE_XTEST);
     }
 
     public static boolean mouseXtest(Context c) { return MOUSE_XTEST.equals(mouseMode(c)); }
@@ -107,5 +115,5 @@ public final class FalloutInput {
 
     public static String mouseWarp(Context c) { return p(c).getString(MOUSE_WARP, ""); }
 
-    public static boolean wineDesktop(Context c) { return p(c).getBoolean(WINE_DESKTOP, true); }
+    public static boolean wineDesktop(Context c) { return p(c).getBoolean(WINE_DESKTOP, false); }
 }
