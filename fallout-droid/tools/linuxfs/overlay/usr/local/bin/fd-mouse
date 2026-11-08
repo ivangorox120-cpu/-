@@ -81,8 +81,12 @@ def connect():
     body = recvall(sock, extra * 4)
     if status != 1:
         raise IOError("the X server refused the connection: %r" % body[:80])
-    say("connected to %s" % display)
-    return sock
+    # корневое окно первого экрана: нужно, чтобы спросить X-сервер, где сейчас указатель
+    vendor, nformats = struct.unpack_from("<HxB", body, 16)
+    at = 32 + (vendor + 3) // 4 * 4 + 8 * nformats
+    root, = struct.unpack_from("<I", body, at)
+    say("connected to %s (root window %#x)" % (display, root))
+    return sock, root
 
 
 def query_xtest(sock):
@@ -95,6 +99,19 @@ def query_xtest(sock):
     return reply[9]
 
 
+def where(sock, root):
+    """Где сейчас указатель по мнению X-сервера — видно, доходят ли наши события."""
+    try:
+        sock.sendall(struct.pack("<BxHI", 38, 2, root))
+        reply = recvall(sock, 32)
+        if reply[0] == 0:
+            return "X error code %d on request %d" % (reply[1], reply[10])
+        x, y = struct.unpack_from("<hh", reply, 16)
+        return "pointer at %d,%d" % (x, y)
+    except (IOError, OSError, struct.error) as e:
+        return "pointer unknown (%s)" % e
+
+
 def fake(sock, opcode, kind, detail, x=0, y=0):
     sock.sendall(struct.pack("<BBHBBHIIIIhhIHH", opcode, 2, 9, kind, detail, 0, 0, 0, 0, 0,
                              x, y, 0, 0, 0))
@@ -102,7 +119,7 @@ def fake(sock, opcode, kind, detail, x=0, y=0):
 
 def main():
     try:
-        sock = connect()
+        sock, root = connect()
         opcode = query_xtest(sock)
     except (IOError, OSError, struct.error) as e:
         say("not started: %s" % e)
@@ -117,7 +134,7 @@ def main():
             for line in pipe:
                 seen += 1
                 if seen == 1 or seen % 500 == 0:
-                    say("%d commands so far (last: %s)" % (seen, line.strip()))
+                    say("%d commands so far (last: %s); %s" % (seen, line.strip(), where(sock, root)))
                 parts = line.split()
                 if not parts:
                     continue

@@ -3041,7 +3041,15 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Fallout Droid: в относительном режиме игре уходят только сдвиги (sendSceneDelta).
         // Абсолютная позиция здесь всё ломала: игра держит свой курсор сама и возвращала его
         // обратно, поэтому на экране он не двигался.
-        if (!relativeMouseMode()) {
+        if (com.wastelanddroid.engine.XMouse.ready(this)) {
+            // XTEST: ставим курсор туда, где палец. Тогда нажатия попадают в пункт меню под ним.
+            val out = SessionState.outputSize
+            val ox = ((cx - rect.left) / rect.width() * out.first).toInt().coerceIn(0, out.first - 1)
+            val oy = ((cy - rect.top) / rect.height() * out.second).toInt().coerceIn(0, out.second - 1)
+            com.wastelanddroid.engine.XMouse.moveTo(this, ox, oy)
+            dbgAbs++
+            inputDebugTick()
+        } else if (!relativeMouseMode()) {
             WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
             dbgAbs++
             inputDebugTick()
