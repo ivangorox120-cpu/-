@@ -17,7 +17,7 @@ import socket
 import struct
 import sys
 
-FIFO = os.environ.get("FD_MOUSE_FIFO", "/tmp/fd-mouse")
+FIFO = os.environ.get("FD_MOUSE_FIFO", os.path.join(os.environ.get("HOME", "/root"), ".fd-mouse"))
 MOTION, PRESS, RELEASE = 6, 4, 5
 
 
@@ -111,9 +111,13 @@ def main():
         os.mkfifo(FIFO, 0o666)
     os.chmod(FIFO, 0o666)
     say("ready on %s" % FIFO)
+    seen = 0
     while True:
         with open(FIFO, "r") as pipe:
             for line in pipe:
+                seen += 1
+                if seen == 1 or seen % 500 == 0:
+                    say("%d commands so far (last: %s)" % (seen, line.strip()))
                 parts = line.split()
                 if not parts:
                     continue

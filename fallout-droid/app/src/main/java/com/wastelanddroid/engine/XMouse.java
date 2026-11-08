@@ -23,7 +23,8 @@ import java.nio.charset.StandardCharsets;
  */
 public final class XMouse {
     private static final String TAG = "FdXMouse";
-    private static final String FIFO = "tmp/fd-mouse";
+    /** Домашняя папка Linux-среды: этот путь виден и приложению, и контейнеру. */
+    private static final String FIFO = "root/.fd-mouse";
 
     private static FileOutputStream out;
     private static long nextTry;
@@ -36,7 +37,7 @@ public final class XMouse {
         long now = android.os.SystemClock.uptimeMillis();
         if (now < nextTry) return false;
         nextTry = now + 1000;
-        File fifo = new File(LinuxRuntime.sessionRoot(c), FIFO);
+        File fifo = new File(LinuxRuntime.rootDir(c), FIFO);
         if (!fifo.exists()) return false;
         try {
             FileDescriptor fd = Os.open(fifo.getAbsolutePath(),
