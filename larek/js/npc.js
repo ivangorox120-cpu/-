@@ -121,7 +121,7 @@ export function buildHuman(L, staticModel) {
     const P = staticModel, C = P.cfg, s = H / C.height;
     root.userData.static = true;
     const tint = new THREE.Color().setRGB(rnd(.86, 1.08), rnd(.86, 1.08), rnd(.86, 1.08));
-    const sm = P.map ? new THREE.MeshStandardMaterial({ map: P.map, roughness: .82 }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .88, color: tint }); // у текстурированной модели (милиционер) — своя текстура
+    const sm = P.map ? new THREE.MeshStandardMaterial({ map: P.map, roughness: .82, side: THREE.DoubleSide }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .88, color: tint }); // у текстурированной модели (милиционер) — своя текстура
     hips.position.y = C.hipY * s; spine.position.y = 0;
     part(P.torso, sm, s, s, s, 0, -C.hipY * s, 0, spine, true);
     R.neck = pivot(spine, 0, (C.neckY - C.hipY) * s, 0); R.head = pivot(R.neck, 0, 0, 0); part(P.head, sm, s, s, s, 0, 0, 0, R.head, true);
@@ -306,13 +306,14 @@ export function prepareSdsPerson(mesh, name) {
   const make = (vs, px, py) => { const m = vs.length, Pa = new Float32Array(m * 3), Na = new Float32Array(m * 3), Ca = new Float32Array(m * 3).fill(1), Ua = new Float32Array(m * 2), UV = g.attributes.uv;
     vs.forEach((i, j) => { Pa[j * 3] = P.getX(i) - px; Pa[j * 3 + 1] = P.getY(i) - py; Pa[j * 3 + 2] = P.getZ(i); Na[j * 3] = N.getX(i); Na[j * 3 + 1] = N.getY(i); Na[j * 3 + 2] = N.getZ(i); if (UV) { Ua[j * 2] = UV.getX(i); Ua[j * 2 + 1] = UV.getY(i); } });
     const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.BufferAttribute(Pa, 3)); o.setAttribute('normal', new THREE.BufferAttribute(Na, 3)); o.setAttribute('color', new THREE.BufferAttribute(Ca, 3)); o.setAttribute('uv', new THREE.BufferAttribute(Ua, 2)); o.computeBoundingSphere(); return o; };
-  const splitBy = (vs, test) => { const a = [], b = []; for (let t = 0; t < vs.length; t += 3) { const tri = [vs[t], vs[t + 1], vs[t + 2]]; (test(tri) ? a : b).push(...tri); } return [a, b]; };
   const cy = tri => (P.getY(tri[0]) + P.getY(tri[1]) + P.getY(tri[2])) / 3;
+  // деление по высоте с перекрытием: треугольники у сгиба попадают в обе части — при сгибе колена/локтя нет сквозной щели
+  const splitBy = (vs, cut, band = H * .025) => { const a = [], b = []; for (let t = 0; t < vs.length; t += 3) { const tri = [vs[t], vs[t + 1], vs[t + 2]], y = cy(tri); if (y < cut + band) a.push(...tri); if (y >= cut - band) b.push(...tri); } return [a, b]; };
   const out = { cfg: { height: H, hipY, neckY, shY: piv.armL ? piv.armL[1] : H * .82, shX: piv.armL ? piv.armL[0] : H * .11, legX } };
   out.torso = make(vertsOf('torso'), 0, 0); out.head = make(vertsOf('head'), 0, neckY);
-  for (const side of ['legL', 'legR']) { const sg = side === 'legL' ? 1 : -1; const [shin, thigh] = splitBy(vertsOf(side), tri => cy(tri) < kneeY);
+  for (const side of ['legL', 'legR']) { const sg = side === 'legL' ? 1 : -1; const [shin, thigh] = splitBy(vertsOf(side), kneeY);
     out[side] = make(thigh, sg * legX, hipY); out[side === 'legL' ? 'shinL' : 'shinR'] = make(shin, sg * legX, kneeY); }
-  for (const side of ['armL', 'armR']) { const p_ = piv[side] || [0, 0], e = elbow[side] || p_; const [fore, upper] = splitBy(vertsOf(side), tri => cy(tri) < e[1]);
+  for (const side of ['armL', 'armR']) { const p_ = piv[side] || [0, 0], e = elbow[side] || p_; const [fore, upper] = splitBy(vertsOf(side), e[1]);
     out[side] = make(upper, p_[0], p_[1]); out[side === 'armL' ? 'foreL' : 'foreR'] = make(fore, e[0], e[1]); out[side === 'armL' ? 'elbL' : 'elbR'] = [e[0] - p_[0], e[1] - p_[1]]; }
   out.head.computeBoundingBox(); out.headTop = out.head.boundingBox.max.y; out.headZ = (out.head.boundingBox.max.z + out.head.boundingBox.min.z) / 2;
   out.torso.computeBoundingBox(); out.chestZ = out.torso.boundingBox.max.z;

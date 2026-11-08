@@ -2681,17 +2681,16 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     // у модели ВАЗ-2101 нет салона — сквозь стёкла было пусто: ставим сиденья, задний диван, торпедо с рулём, пол и обшивку дверей
     if (kind === 'vaz2101') {
       if (!realCar.int01) { const seat = std({ color: 0x5b3b2a, roughness: .75 }), dark = std({ color: 0x1d1c1b, roughness: .8 }), floor = std({ color: 0x252320, roughness: .95 }), card = std({ color: 0x6a4a36, roughness: .8 }), chrome = std({ color: 0xb8b8b4, metalness: .8, roughness: .3 });
-        const ig = new THREE.Group();
-        box(1.9, .03, 1.36, floor, 0, .3, 0, ig, false); // пол
-        for (const z of [.34, -.34]) { box(.48, .1, .48, seat, -.05, .45, z, ig); const bk = box(.1, .56, .46, seat, .2, .76, z, ig); bk.rotation.z = -.18; box(.1, .14, .26, seat, .24, 1.1, z, ig); } // передние кресла с подголовниками
-        box(.5, .12, 1.3, seat, .78, .44, 0, ig); const rb = box(.1, .5, 1.3, seat, 1.02, .74, 0, ig); rb.rotation.z = -.2; // задний диван
-        box(.24, .26, 1.38, dark, -.9, .8, 0, ig); box(.06, .1, 1.3, dark, -.8, .95, 0, ig); // торпедо и козырёк приборов
-        for (const [z, r] of [[.34, .07], [.12, .06]]) { const d = new THREE.Mesh(new THREE.CircleGeometry(r * .7, 16), std({ color: 0xe8e2cc, roughness: .5 })); d.position.set(-.775, .86, z); d.rotation.y = Math.PI / 2; ig.add(d); } // приборы
-        const wheel = new THREE.Mesh(new THREE.TorusGeometry(.18, .014, 8, 24), dark); wheel.position.set(-.62, .88, .34); wheel.rotation.y = Math.PI / 2; wheel.rotation.x = -.45; ig.add(wheel);
-        cyl(.018, .018, .32, dark, -.72, .82, .34, 8, ig).rotation.z = 1.1; // рулевая колонка
-        box(.12, .3, .04, dark, -.2, .45, 0, ig).rotation.z = .25; cyl(.02, .015, .02, chrome, -.17, .6, 0, 8, ig); // рычаг КПП
-        for (const z of [.66, -.66]) box(1.6, .42, .02, card, .05, .62, z, ig); // обшивка дверей
-        ig.scale.x = -1; // перед модели — в сторону +x (как у фар в prepCar), салон строился носом в −x
+        const ig = new THREE.Group(); // перед модели — +x; лобовое стекло от (x 1.0, y .79) до (x .59, y 1.21), салон x −1.2…0.6
+        box(1.75, .03, 1.3, floor, -.3, .3, 0, ig, false); // пол
+        for (const z of [.33, -.33]) { box(.46, .1, .46, seat, -.08, .45, z, ig); const bk = box(.09, .52, .44, seat, -.33, .74, z, ig); bk.rotation.z = .16; box(.08, .13, .24, seat, -.37, 1.05, z, ig); } // передние кресла с подголовниками
+        box(.46, .12, 1.26, seat, -.82, .44, 0, ig); const rb = box(.09, .46, 1.26, seat, -1.06, .72, 0, ig); rb.rotation.z = .18; // задний диван
+        box(.2, .2, 1.3, dark, .48, .72, 0, ig); box(.06, .05, 1.24, dark, .4, .83, 0, ig); // торпедо ниже линии стекла и козырёк приборов
+        for (const [z, r] of [[.33, .055], [.16, .045]]) { const d = new THREE.Mesh(new THREE.CircleGeometry(r, 16), std({ color: 0xe8e2cc, roughness: .5 })); d.position.set(.375, .76, z); d.rotation.y = -Math.PI / 2; ig.add(d); } // приборы
+        const wheel = new THREE.Mesh(new THREE.TorusGeometry(.17, .013, 8, 24), dark); wheel.position.set(.24, .78, .33); wheel.rotation.y = Math.PI / 2; wheel.rotation.x = .45; ig.add(wheel);
+        cyl(.017, .017, .28, dark, .33, .74, .33, 8, ig).rotation.z = -1.1; // рулевая колонка
+        box(.04, .26, .04, dark, .18, .45, 0, ig).rotation.z = -.25; cyl(.022, .022, .03, chrome, .15, .59, 0, 8, ig); // рычаг КПП
+        for (const z of [.65, -.65]) box(1.55, .34, .02, card, -.3, .58, z, ig); // обшивка дверей ниже окон
         realCar.int01 = ig; }
       g.add(realCar.int01.clone());
     }
@@ -2873,7 +2872,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       }
     }
     if (kind === 'school') model = null; // школьники — процедурные (взрослые модели в рост ребёнка выглядели странно)
-    if (model && model.sds) look.height = (model === policeModel || !/^c(mesz|pros)/.test(extra && extra.modelName || '')) ? 1.79 : 1.71; // все одного роста, женщины чуть ниже
+    if (model && model.sds) look.height = (model === policeModel || !/^c(mesz|pros)/.test(extra && extra.modelName || '')) ? 1.79 : 1.75; // все одного роста, женщины чуть ниже
     if (model && kind === 'school') look.height = 1.45;
     const h = new Human(look, model);
     if (model && model === policeModel && model.sds) dressPolice(h, model);
@@ -4374,15 +4373,19 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const TIM = {};
   function carsTick(dt) {
     const need = { low: 2, medium: 3, high: 4, max: 5 }[ctx.settings().quality] || 3;
-    while (cars.length < need) addCar(cars.length % 2, R(0, 400), CAR_COLORS[cars.length % CAR_COLORS.length]);
+    while (cars.length < need) { // новая машина — не ближе 15 м к другим
+      const ri = cars.length % 2; let s0 = R(0, 400);
+      for (let k = 0; k < 20; k++) { const [x0, z0] = routePoint(ROUTES[ri], s0); if (cars.every(o => Math.hypot(o.m.position.x - x0, o.m.position.z - z0) > 15)) break; s0 = R(0, 400); }
+      addCar(ri, s0, CAR_COLORS[cars.length % CAR_COLORS.length]); const nc = cars[cars.length - 1]; const [x1, z1] = routePoint(ROUTES[ri], s0); nc.m.position.set(x1, 0, z1); }
     for (const c of cars) {
       const route = ROUTES[c.ri];
       const [x, z, total] = routePoint(route, c.s), [ax, az] = routePoint(route, c.s + 2.5);
       const dirx = ax - x, dirz = az - z, dl = Math.hypot(dirx, dirz) || 1;
       // препятствия впереди: другие машины, игрок, пешеходы на дороге
       let block = 99;
-      for (const o of cars) if (o !== c && o.ri === c.ri) { const ds = ((o.s - c.s) % total + total) % total; if (ds > 0 && ds < 12) block = Math.min(block, ds - 5); }
       const ahead = (px, pz) => { const vx = px - x, vz = pz - z, al = (vx * dirx + vz * dirz) / dl, lat = Math.abs(vx * dirz - vz * dirx) / dl; return al > 0 && lat < 1.6 ? al : 99; };
+      // машины впереди — любые (маршруты делят одни полосы), а не только со своего маршрута; вплотную — стоп
+      for (const o of cars) if (o !== c) { const a = ahead(o.m.position.x, o.m.position.z); if (a < 14) block = Math.min(block, a - 5.2); }
       { const bo = transport.obstacle(), ba = ahead(bo.x, bo.z); if (ba < 18) block = Math.min(block, ba - 8); }
       const pAhead = ahead(P.x, P.z); if (pAhead < 9) { block = Math.min(block, pAhead - 2.6); if (c.honk <= 0 && c.v > 3) { ctx.audio && ctx.audio.horn(c.m.position); c.honk = 4; } }
       for (const p of people) { const a = ahead(p.h.obj.position.x, p.h.obj.position.z); if (a < 10) block = Math.min(block, a - 3); }
@@ -4392,6 +4395,7 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       const [bx, bz] = routePoint(route, c.s + 9), turn = Math.abs(Math.atan2(bz - az, bx - ax) - Math.atan2(dirz, dirx)); const curve = Math.min(Math.PI, turn > Math.PI ? 2 * Math.PI - turn : turn);
       const target = Math.min(want, curve > .3 ? 5 : c.vmax);
       c.v += clamp(target - c.v, -9 * dt, 2.2 * dt); // торможение резче разгона
+      if (block < .5) c.v = Math.min(c.v, Math.max(0, block) * 2); // упёрся — не въезжать в машину впереди
       c.s += c.v * dt;
       const h = Math.atan2(dirz, dirx); let dh = -h - c.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); c.heading += dh * Math.min(1, dt * 6);
       c.m.position.set(x, 0, z); c.m.rotation.y = c.heading; for (const w of c.m.userData.wheels) w.rotation.z -= c.v * dt / c.m.userData.wheelR;
