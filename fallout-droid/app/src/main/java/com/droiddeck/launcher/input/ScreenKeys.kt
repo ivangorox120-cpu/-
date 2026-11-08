@@ -419,7 +419,7 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
                 entry.halfH * (0.62f * chars + 1.35f).coerceIn(1.45f, 5.0f)
             }
             entry.image.isNotEmpty() -> entry.halfH * 1.15f
-            hasIcon(entry) -> entry.halfH * 1.15f
+            hasIcon(entry) && entry.text.isEmpty() -> entry.halfH * 1.15f
             else -> {
                 val chars = label(entry).length
                 entry.halfH * (0.55f * chars + 1.05f).coerceIn(1.7f, 4.6f)
@@ -430,7 +430,7 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
     }
 
     private fun hasIcon(entry: Entry): Boolean =
-        entry.text.isEmpty() && entry.glyph.isEmpty() && entry.codes.size == 1 && ScreenKeyIcons.has(entry.codes[0])
+        entry.glyph.isEmpty() && entry.codes.size == 1 && ScreenKeyIcons.has(entry.codes[0])
 
     private fun unit() = minOf(width / 1280f, height / 720f)
 
@@ -821,10 +821,22 @@ class ScreenKeys(context: Context, private val sendKey: (Int, Boolean) -> Unit) 
         textPaint.color = inkColor
         if (bitmap != null && name.isEmpty()) return
         var iconDrawn = false
+        val caption = icon && name.isNotEmpty() && entry.labels
         if (icon) {
-            val box = minOf(entry.halfW, entry.halfH) * 1.35f
-            iconDrawn = ScreenKeyIcons.draw(canvas, entry.codes[0], entry.cx, entry.cy, box, textPaint)
+            // со значком подпись уезжает вниз и становится мельче — как в мобильных портах игры
+            val box = minOf(entry.halfW, entry.halfH) * (if (caption) 1.00f else 1.35f)
+            val iy = if (caption) entry.cy - entry.halfH * 0.16f else entry.cy
+            iconDrawn = ScreenKeyIcons.draw(canvas, entry.codes[0], entry.cx, iy, box, textPaint)
             textPaint.color = inkColor
+        }
+        if (iconDrawn && caption) {
+            textPaint.setShadowLayer(0f, 0f, 0f, 0)
+            textPaint.textSize = dp(48f)
+            val room = (entry.halfW * 1.8f - hairline * 3f).coerceAtLeast(dp(8f))
+            val fit = 48f * room / textPaint.measureText(name).coerceAtLeast(1f)
+            textPaint.textSize = minOf(fit, entry.halfH * 0.42f).coerceIn(dp(7f), dp(22f))
+            canvas.drawText(name, entry.cx, entry.cy + entry.halfH * 0.78f, textPaint)
+            return
         }
         if (iconDrawn || name.isEmpty()) return
         val overImage = bitmap != null

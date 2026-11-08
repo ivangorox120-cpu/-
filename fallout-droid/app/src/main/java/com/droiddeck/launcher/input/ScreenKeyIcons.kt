@@ -5,12 +5,14 @@ import android.graphics.Paint
 import android.graphics.Path
 
 object ScreenKeyIcons {
-    fun has(code: Int): Boolean = code in SET
+    // Значки Fallout Droid идут первыми: у огня, прицела, V.A.T.S. и прочего свои рисунки.
+    fun has(code: Int): Boolean = com.wastelanddroid.controls.FalloutIcons.has(code) || code in SET
 
     private val SET = setOf(28, 14, 15, 57, 42, 54, 29, 97, 125, 103, 108, 105, 106)
 
     fun draw(canvas: Canvas, code: Int, cx: Float, cy: Float, box: Float, paint: Paint): Boolean {
-        if (!has(code)) return false
+        if (com.wastelanddroid.controls.FalloutIcons.draw(canvas, code, cx, cy, box, paint)) return true
+        if (code !in SET) return false
         val h = box / 2f
         val stroke = box * 0.085f
         val path = Path()

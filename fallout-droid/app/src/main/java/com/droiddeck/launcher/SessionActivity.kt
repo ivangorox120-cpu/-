@@ -706,7 +706,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             if (!pointerLocked && relativeMouseMode()) {
                 drawnRect()?.let { rect ->
                     val scale = sceneScale(rect)
-                    sendSceneDelta(dx * scale, dy * scale)
+                    sendSceneDelta(dx * scale, dy * scale * lookYSign())
                 }
             }
         }
@@ -3000,10 +3000,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (rect.contains(x, y)) touchpad.place(x, y)
     }
 
+    /** Инверсия обзора по вертикали из настроек управления. */
+    private fun lookYSign(): Float = if (com.wastelanddroid.engine.FalloutInput.invertY(this)) -1f else 1f
+
     private fun moveLockedPointer(x: Float, y: Float) {
         val rect = drawnRect() ?: return
         val scale = sceneScale(rect)
-        sendSceneDelta((x - rect.centerX()) * scale, (y - rect.centerY()) * scale)
+        sendSceneDelta((x - rect.centerX()) * scale, (y - rect.centerY()) * scale * lookYSign())
         touchpad.place(rect.centerX(), rect.centerY())
         cursorVisible = false
     }
@@ -3530,7 +3533,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     if (lookIgnored) {
                         // Слева камера не крутится, но короткое касание всё равно щёлкает (меню, Пип-бой)
                         if (event.actionMasked == MotionEvent.ACTION_UP &&
-                            event.eventTime - event.downTime < 300 &&
+                            event.eventTime - event.downTime < 350 &&
                             kotlin.math.hypot(event.x - lookDownX, event.y - lookDownY) < PointerGestures.slop(this) * 2 &&
                             com.wastelanddroid.engine.FalloutInput.tapFires(this)) {
                             sendSceneButton(PointerGestures.BTN_LEFT, true)
