@@ -280,8 +280,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val cursorResync = object : Runnable {
         override fun run() {
             if (syncClientCursor() && clientHidesCursor) {
-                cursorVisible = false
-                return
+                // Fallout Droid: своя стрелка остаётся, пока мышь ведёт палец (см. showCursor)
+                if (pointerLocked || !usingTouchpad() ||
+                    !com.wastelanddroid.engine.FalloutInput.showCursor(this@SessionActivity)) {
+                    cursorVisible = false
+                    return
+                }
+                cursorImage = null
             }
             if (touchDrivesPointer()) return
             cursorResyncIdle = if (alignCursorToGuest()) 0 else cursorResyncIdle + 1
@@ -3017,7 +3022,12 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         uiHandler.removeCallbacks(cursorResync)
         cursorResyncIdle = 0
         if (!touchDrivesPointer()) uiHandler.postDelayed(cursorResync, 60)
-        if (clientHidesCursor) { cursorVisible = false; return }
+        // Fallout Droid: в меню игра прячет системный курсор и рисует свой; пока мышь ведёт палец,
+        // показываем собственную стрелку, иначе непонятно, куда нажимаешь.
+        val ownCursor = !pointerLocked && usingTouchpad() &&
+            com.wastelanddroid.engine.FalloutInput.showCursor(this)
+        if (clientHidesCursor && !ownCursor) { cursorVisible = false; return }
+        if (clientHidesCursor) cursorImage = null
         if (directTouchCursorHidden()) { cursorVisible = false; return }
         if (android.os.SystemClock.uptimeMillis() - lastPadInputMs < CURSOR_PAD_HOLD_MS) return
         cursorVisible = true
@@ -3319,8 +3329,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun applyTouchRouting() {
         val next = effectiveTouchMode()
         if (::touchpad.isInitialized) {
-            val speed = steamTouchOptions?.trackpadSensitivity?.takeIf { steamTouchControls?.visibility == View.VISIBLE } ?: 1f
-            touchpad.sensitivity = 1.15f * speed
+            val speed = steamTouchOptions?.trackpadSensitivity?.takeIf { steamTouchControls?.visibility == View.VISIBLE }
+            touchpad.sensitivity = speed?.let { 1.15f * it }
+                ?: com.wastelanddroid.engine.FalloutInput.lookSensitivity(this)
         }
         if (next == routedTouchMode) return
         if (::touchscreenGestures.isInitialized) touchscreenGestures.cancel()
@@ -3488,10 +3499,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     // Fallout Droid: мышь ведёт камеру с правой части экрана, слева остаётся стик движения
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                         lookDownX = event.x; lookDownY = event.y
-                        lookIgnored = com.wastelanddroid.engine.FalloutInput.lookOnRightOnly(this) &&
+                        // Пока игра не захватила мышь (меню, Пип-бой), весь экран водит курсор и
+                        // касание нажимает; в бою левый край можно не отдавать под обзор.
+                        lookIgnored = pointerLocked &&
+                            com.wastelanddroid.engine.FalloutInput.lookOnRightOnly(this) &&
                             event.x < rect.left + rect.width() * 0.42f
                         touchpad.sensitivity = com.wastelanddroid.engine.FalloutInput.lookSensitivity(this)
-                        touchpad.tapClicks = com.wastelanddroid.engine.FalloutInput.tapFires(this)
+                        touchpad.tapClicks = !pointerLocked || com.wastelanddroid.engine.FalloutInput.tapFires(this)
                     }
                     if (lookIgnored) {
                         // Слева камера не крутится, но короткое касание всё равно щёлкает (меню, Пип-бой)

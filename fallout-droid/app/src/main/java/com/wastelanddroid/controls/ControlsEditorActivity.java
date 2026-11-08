@@ -130,7 +130,7 @@ public final class ControlsEditorActivity extends Activity {
         panelBody.addView(look);
         LinearLayout opts = Ui.row(this);
         opts.addView(pref(ip, "Обзор с кнопки огня", com.wastelanddroid.engine.FalloutInput.FIRE_LOOK, true), Ui.weight());
-        opts.addView(pref(ip, "Обзор правой половиной", com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, true), Ui.weight());
+        opts.addView(pref(ip, "Обзор правой половиной", com.wastelanddroid.engine.FalloutInput.LOOK_RIGHT, false), Ui.weight());
         panelBody.addView(opts);
         LinearLayout opts2 = Ui.row(this);
         opts2.addView(pref(ip, "Вибрация", com.wastelanddroid.engine.FalloutInput.HAPTICS, true), Ui.weight());
@@ -143,7 +143,8 @@ public final class ControlsEditorActivity extends Activity {
         opts2.addView(labels, Ui.weight());
         panelBody.addView(opts2);
         LinearLayout opts3 = Ui.row(this);
-        opts3.addView(pref(ip, "Сырая мышь (курсор в меню игры)", com.wastelanddroid.engine.FalloutInput.RELATIVE_MOUSE, true), Ui.weight());
+        opts3.addView(pref(ip, "Сырая мышь", com.wastelanddroid.engine.FalloutInput.RELATIVE_MOUSE, true), Ui.weight());
+        opts3.addView(pref(ip, "Показывать курсор", com.wastelanddroid.engine.FalloutInput.SHOW_CURSOR, true), Ui.weight());
         panelBody.addView(opts3);
         LinearLayout colors = Ui.row(this);
         colors.addView(Ui.hint(this, "Цвет кнопок:"));

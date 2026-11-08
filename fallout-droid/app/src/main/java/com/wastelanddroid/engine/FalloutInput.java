@@ -14,6 +14,7 @@ public final class FalloutInput {
     public static final String TAP_FIRES = "tap_fires";
     public static final String FIRE_LOOK = "fire_look";
     public static final String RELATIVE_MOUSE = "relative_mouse";
+    public static final String SHOW_CURSOR = "show_cursor";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -26,7 +27,7 @@ public final class FalloutInput {
     }
 
     /** Обзор только правой половиной экрана: слева остаётся стик движения. */
-    public static boolean lookOnRightOnly(Context c) { return p(c).getBoolean(LOOK_RIGHT, true); }
+    public static boolean lookOnRightOnly(Context c) { return p(c).getBoolean(LOOK_RIGHT, false); }
 
     /** Чувствительность обзора, проценты (100 = как мышь один к одному). */
     public static float lookSensitivity(Context c) { return p(c).getInt(LOOK_SENS, 115) / 100f; }
@@ -42,4 +43,7 @@ public final class FalloutInput {
 
     /** Относительные сдвиги мыши вдобавок к положению курсора (как в Winlator) — для DirectInput. */
     public static boolean relativeMouse(Context c) { return p(c).getBoolean(RELATIVE_MOUSE, true); }
+
+    /** Рисовать свой указатель, даже когда игра прячет системный курсор (меню Fallout). */
+    public static boolean showCursor(Context c) { return p(c).getBoolean(SHOW_CURSOR, true); }
 }
