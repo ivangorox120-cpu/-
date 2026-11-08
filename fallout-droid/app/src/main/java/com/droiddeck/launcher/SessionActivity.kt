@@ -272,8 +272,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         val now = android.os.SystemClock.uptimeMillis()
         if (now - dbgAt < 250) return
         dbgAt = now
-        inputDebug = "${com.wastelanddroid.engine.FalloutInput.mouseMode(this)} · touch $dbgTouch · " +
-            "route $touchRoute · lock $pointerLocked · hide $clientHidesCursor\n" +
+        inputDebug = "touch $dbgTouch · route $touchRoute · lock $pointerLocked · hide $clientHidesCursor\n" +
             "abs $dbgAbs · rel $dbgRel · btn $dbgBtn · raw $evdevMouseActive · " +
             "xtest ${com.wastelanddroid.engine.XMouse.ready(this)}"
     }
@@ -1945,8 +1944,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         physicalShortcuts.bindings = PhysicalShortcuts.read(this)
         backDoubleTapMs = SessionPrefs.backDoubleTapMs(this)
         lowLatency = SessionPrefs.lowLatency(this)
-        evdevMouseOn = SessionPrefs.evdevMouse(this) || mouseDeviceMode()
-        if (!evdevMouseOn) releaseEvdevMouse() else if (mouseDeviceMode()) openEvdevMouse()
+        evdevMouseOn = SessionPrefs.evdevMouse(this)
+        if (!evdevMouseOn) releaseEvdevMouse()
         directCursorOn = SessionPrefs.directCursor(this)
         padType = SessionPrefs.steamController(this)
     }
@@ -3057,13 +3056,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
      * абсолютная мышь: туда, куда ведёт палец.
      */
     private fun relativeMouseMode(): Boolean =
-        SessionState.mode == SessionService.MODE_RUN && usingTouchpad() &&
-            com.wastelanddroid.engine.FalloutInput.mouseRelativeOnly(this)
+        SessionState.mode == SessionService.MODE_RUN && usingTouchpad()
 
-    /** Мышь отдаётся игре отдельным устройством ввода внутри контейнера, а не через композитор. */
-    private fun mouseDeviceMode(): Boolean =
-        SessionState.mode == SessionService.MODE_RUN &&
-            com.wastelanddroid.engine.FalloutInput.mouseDevice(this)
 
     private fun showCursor(x: Float, y: Float) {
         cursorPos = androidx.compose.ui.geometry.Offset(x, y)
@@ -3420,7 +3414,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         SessionState.outputSize.first / rect.width()
 
     private fun openEvdevMouse() {
-        if (evdevMouseActive || !(evdevMouseOn || mouseDeviceMode())) return
+        if (evdevMouseActive || !evdevMouseOn) return
         val writer = mouseWriter ?: com.droiddeck.launcher.input.FakeInputWriter(
             File(LinuxRuntime.sessionRoot(this), "dev/input").absolutePath,
             com.droiddeck.launcher.input.FakeInputWriter.MOUSE_SLOT,
@@ -3449,7 +3443,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun sendSceneDelta(dx: Float, dy: Float) {
         dbgRel++
         inputDebugTick()
-        if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) {
+        if (com.wastelanddroid.engine.XMouse.ready(this)) {
             xRestX += dx; xRestY += dy
             val ix = xRestX.toInt(); val iy = xRestY.toInt()
             xRestX -= ix; xRestY -= iy
@@ -3464,7 +3458,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun sendSceneButton(code: Int, down: Boolean) {
         if (down) dbgBtn++
         inputDebugTick()
-        if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) {
+        if (com.wastelanddroid.engine.XMouse.ready(this)) {
             com.wastelanddroid.engine.XMouse.button(this, com.wastelanddroid.engine.XMouse.x11Button(code), down)
             return
         }
@@ -3474,7 +3468,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private fun sendSceneWheel(steps: Int) {
-        if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) {
+        if (com.wastelanddroid.engine.XMouse.ready(this)) {
             com.wastelanddroid.engine.XMouse.wheel(this, steps)
             return
         }
@@ -3604,22 +3598,6 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     }
                     touchpad.onTouch(event)
                 } else {
-                    // Fallout Droid: курсор ведёт касание (gamescope, режим hover), а короткий тап
-                    // отдельно нажимает левую кнопку — иначе в меню нечем выбрать пункт.
-                    if (com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH ==
-                        com.wastelanddroid.engine.FalloutInput.mouseMode(this)) {
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> { lookDownX = event.x; lookDownY = event.y }
-                            MotionEvent.ACTION_UP ->
-                                if (event.eventTime - event.downTime < 350 &&
-                                    kotlin.math.hypot(event.x - lookDownX, event.y - lookDownY) <
-                                    PointerGestures.slop(this) * 2
-                                ) {
-                                    sendSceneButton(PointerGestures.BTN_LEFT, true)
-                                    uiHandler.postDelayed({ sendSceneButton(PointerGestures.BTN_LEFT, false) }, 50)
-                                }
-                        }
-                    }
                     dispatchDirectTouch(event)
                 }
             }

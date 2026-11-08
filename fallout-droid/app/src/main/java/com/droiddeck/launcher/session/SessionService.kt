@@ -805,12 +805,8 @@ class SessionService : Service() {
         }
         FexCatalog.cached(this)?.let { guest.addAll(FexCatalog.environment(it)) }
         if (SessionState.mode == MODE_RUN) {
-            com.wastelanddroid.engine.FalloutInput.gamescopeTouchMode(this)?.let { guest.add("BL_TOUCH_MODE=$it") }
+            guest.add("FD_XTEST=1")
             if (com.wastelanddroid.engine.FalloutInput.grabCursor(this)) guest.add("BL_GRAB_CURSOR=1")
-            if (com.wastelanddroid.engine.FalloutInput.wineDesktop(this)) guest.add("FD_DESKTOP=1280x720")
-            if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) guest.add("FD_XTEST=1")
-            com.wastelanddroid.engine.FalloutInput.mouseWarp(this).takeIf { it.isNotEmpty() }
-                ?.let { guest.add("FD_MOUSE_WARP=$it") }
         }
         if (SessionState.mode == MODE_RUN &&
             getSharedPreferences("wasteland", MODE_PRIVATE).getBoolean("stretch_screen", true)) {

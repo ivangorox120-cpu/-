@@ -410,27 +410,9 @@ public final class SettingsActivity extends Activity {
                 new String[]{"auto", "on", "off"}, Prefs.OVERLAY_MODE, "auto");
         action(g, R.drawable.ic_touch, "Редактор экранных кнопок", "Размер, прозрачность, форма, расположение и действия",
                 v -> open(new Intent(this, ControlsEditorActivity.class)));
-        toggle(g, "Виртуальный рабочий стол Wine", "Игра идёт в окне Wine 1280x720 вместо полного экрана. "
-                + "Рекомендованное лечение для мыши в Fallout под Proton",
-                com.wastelanddroid.engine.FalloutInput.WINE_DESKTOP, false, null);
-        toggle(g, "Удерживать мышь в игре", "gamescope всегда держит относительный режим мыши. "
-                + "Без этого игры на DirectInput, прячущие курсор, не получают движение вовсе",
+        toggle(g, "Удерживать мышь в игре", "Нужно играм, которые прячут курсор и читают мышь напрямую. "
+                + "Выключайте, только если мышь ведёт себя странно",
                 com.wastelanddroid.engine.FalloutInput.GRAB_CURSOR, true, null);
-        choice(g, "Мышь в DirectInput", new String[]{"Как в Wine по умолчанию", "enable", "force", "disable"},
-                new String[]{"", "enable", "force", "disable"},
-                com.wastelanddroid.engine.FalloutInput.MOUSE_WARP, "");
-        choice(g, "Как мышь попадает в игру",
-                new String[]{"Прямо в X-сервер (XTEST)", "Касание ведёт курсор", "Касание ведёт и нажимает",
-                        "Через композитор", "Только сдвиги мыши", "Отдельным устройством"},
-                new String[]{com.wastelanddroid.engine.FalloutInput.MOUSE_XTEST,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH_CLICK,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_RELATIVE,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_DEVICE},
-                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_XTEST);
-        info(g, R.drawable.ic_info, "Если мышь в игре не слушается, попробуйте другие способы по очереди: "
-                + "включите «Отладка ввода» в разделе Логи и смотрите, меняется ли что-то в игре.", Ui.TEXT_DIM);
         info(g, R.drawable.ic_gamepad, "Геймпад по Bluetooth или USB игра видит как Xbox 360 — он работает сразу.", Ui.TEXT_DIM);
         info(g, R.drawable.ic_info, "Обзор мышью — свайп по правой половине экрана. Чувствительность настраивается в редакторе.", Ui.TEXT_DIM);
     }

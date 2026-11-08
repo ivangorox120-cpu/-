@@ -123,9 +123,7 @@ object FalloutEngine {
     @JvmStatic fun applyPcControls(context: Context, overlayMode: String) {
         runCatching {
             val prefs = com.droiddeck.launcher.session.SessionPrefs
-            // свайп = обзор мышью; в режиме «прямые касания» их превращает в мышь сам gamescope
-            val touch = if (FalloutInput.mouseTouch(context)) prefs.TOUCH_DIRECT else prefs.TOUCH_PAD
-            prefs.setTouchMode(context, touch)
+            prefs.setTouchMode(context, prefs.TOUCH_PAD)          // свайп = обзор мышью
             prefs.setOscMode(context, prefs.OSC_NEVER)            // геймпадный оверлей движка не нужен
             prefs.setEvdevMouse(context, false)                   // мышь идёт через композитор, не через evdev
             prefs.setDirectCursor(context, true)

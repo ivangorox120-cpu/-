@@ -9,35 +9,23 @@ import android.content.SharedPreferences;
  */
 public final class FalloutInput {
     private static final String PREFS = "wasteland";
+
+    // обзор и касания
     public static final String LOOK_RIGHT = "look_right_half";
     public static final String LOOK_SENS = "look_sensitivity";
     public static final String TAP_FIRES = "tap_fires";
     public static final String FIRE_LOOK = "fire_look";
-    public static final String RELATIVE_MOUSE = "relative_mouse";
-    public static final String SHOW_CURSOR = "show_cursor";
     public static final String INVERT_Y = "invert_y";
-    public static final String DEBUG = "input_debug";
-    /** Способ доставки мыши игре: compositor | relative | device. */
-    public static final String MOUSE_MODE = "mouse_mode";
-    public static final String MOUSE_COMPOSITOR = "compositor";
-    public static final String MOUSE_RELATIVE = "relative";
-    public static final String MOUSE_DEVICE = "device";
-    /** Касания двигают курсор игры (gamescope, режим hover). */
-    /** Мышь прямо в X-сервер через XTEST — для игры это настоящая мышь. */
-    public static final String MOUSE_XTEST = "xtest";
-    public static final String MOUSE_TOUCH = "touch";
-    /** Касания двигают курсор и нажимают левую кнопку (gamescope, режим left). */
-    public static final String MOUSE_TOUCH_CLICK = "touchclick";
-    /** Постоянный относительный режим мыши в gamescope (--force-grab-cursor). */
-    public static final String GRAB_CURSOR = "grab_cursor";
-    /** Поведение мыши в DirectInput: "" | enable | force | disable. */
-    public static final String MOUSE_WARP = "mouse_warp";
-    /** Виртуальный рабочий стол Wine: игра не полноэкранная для X, мышь работает как обычно. */
-    public static final String WINE_DESKTOP = "wine_desktop";
+    public static final String SHOW_CURSOR = "show_cursor";
+    // экранные кнопки
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
     public static final String BTN_LABELS = "btn_labels";
+    // движок
+    public static final String DEBUG = "input_debug";
+    /** Постоянный относительный режим мыши в gamescope (--force-grab-cursor). */
+    public static final String GRAB_CURSOR = "grab_cursor";
 
     private FalloutInput() {}
 
@@ -51,69 +39,23 @@ public final class FalloutInput {
     /** Чувствительность обзора, проценты (100 = как мышь один к одному). */
     public static float lookSensitivity(Context c) { return p(c).getInt(LOOK_SENS, 115) / 100f; }
 
-    /** Стрелять по касанию экрана (обычно не нужно: огонь на экранной кнопке). */
+    /** Короткое касание нажимает левую кнопку мыши. */
     public static boolean tapFires(Context c) { return p(c).getBoolean(TAP_FIRES, true); }
 
     /** Обзор пальцем, который держит кнопку огня. */
     public static boolean fireLook(Context c) { return p(c).getBoolean(FIRE_LOOK, true); }
 
-    /** Вибрация при нажатии экранных кнопок. */
-    public static boolean haptics(Context c) { return p(c).getBoolean(HAPTICS, true); }
-
-    /**
-     * Мышь как в Winlator: игре идут только относительные сдвиги, без «телепорта» курсора
-     * в точку. Fallout читает мышь через DirectInput и сам рисует курсор по этим сдвигам;
-     * абсолютная позиция ему мешает — игра возвращает курсор назад, и он стоит на месте.
-     */
-    public static boolean relativeMouse(Context c) { return p(c).getBoolean(RELATIVE_MOUSE, true); }
-
-    /** Рисовать свой указатель, даже когда игра прячет системный курсор (меню Fallout). */
-    public static boolean showCursor(Context c) { return p(c).getBoolean(SHOW_CURSOR, true); }
-
     /** Инверсия обзора по вертикали. */
     public static boolean invertY(Context c) { return p(c).getBoolean(INVERT_Y, false); }
+
+    /** Рисовать свой указатель, даже когда игра прячет системный курсор. */
+    public static boolean showCursor(Context c) { return p(c).getBoolean(SHOW_CURSOR, true); }
+
+    /** Вибрация при нажатии экранных кнопок. */
+    public static boolean haptics(Context c) { return p(c).getBoolean(HAPTICS, true); }
 
     /** Строка отладки ввода поверх игры. */
     public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
 
-    public static String mouseMode(Context c) {
-        android.content.SharedPreferences prefs = p(c);
-        // Прежний выбранный вручную способ перебивал новый по умолчанию, и XTEST не запускался:
-        // один раз переводим всех на него.
-        if (prefs.getInt("mouse_mode_version", 0) < 2) {
-            prefs.edit().putInt("mouse_mode_version", 2).putString(MOUSE_MODE, MOUSE_XTEST)
-                    .putBoolean(WINE_DESKTOP, false).apply();
-            return MOUSE_XTEST;
-        }
-        return prefs.getString(MOUSE_MODE, MOUSE_XTEST);
-    }
-
-    public static boolean mouseXtest(Context c) { return MOUSE_XTEST.equals(mouseMode(c)); }
-
-    public static boolean mouseDevice(Context c) { return MOUSE_DEVICE.equals(mouseMode(c)); }
-
-    /** Касания уходят игре как есть, а в мышь их превращает gamescope. */
-    public static boolean mouseTouch(Context c) {
-        String m = mouseMode(c);
-        return MOUSE_TOUCH.equals(m) || MOUSE_TOUCH_CLICK.equals(m);
-    }
-
-    /** Номер режима касаний gamescope для выбранного способа, или null. */
-    public static String gamescopeTouchMode(Context c) {
-        String m = mouseMode(c);
-        if (MOUSE_TOUCH.equals(m)) return "0";
-        if (MOUSE_TOUCH_CLICK.equals(m)) return "1";
-        return null;
-    }
-
-    public static boolean mouseRelativeOnly(Context c) {
-        String m = mouseMode(c);
-        return MOUSE_RELATIVE.equals(m) || MOUSE_DEVICE.equals(m) || MOUSE_XTEST.equals(m);
-    }
-
     public static boolean grabCursor(Context c) { return p(c).getBoolean(GRAB_CURSOR, true); }
-
-    public static String mouseWarp(Context c) { return p(c).getString(MOUSE_WARP, ""); }
-
-    public static boolean wineDesktop(Context c) { return p(c).getBoolean(WINE_DESKTOP, false); }
 }
