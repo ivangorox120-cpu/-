@@ -13,6 +13,7 @@ public final class FalloutInput {
     public static final String LOOK_SENS = "look_sensitivity";
     public static final String TAP_FIRES = "tap_fires";
     public static final String FIRE_LOOK = "fire_look";
+    public static final String RELATIVE_MOUSE = "relative_mouse";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -38,4 +39,7 @@ public final class FalloutInput {
 
     /** Вибрация при нажатии экранных кнопок. */
     public static boolean haptics(Context c) { return p(c).getBoolean(HAPTICS, true); }
+
+    /** Относительные сдвиги мыши вдобавок к положению курсора (как в Winlator) — для DirectInput. */
+    public static boolean relativeMouse(Context c) { return p(c).getBoolean(RELATIVE_MOUSE, true); }
 }

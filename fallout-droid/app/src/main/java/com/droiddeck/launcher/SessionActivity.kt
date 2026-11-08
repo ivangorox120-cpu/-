@@ -366,7 +366,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun noSteamSession(): Boolean = SessionState.mode == SessionService.MODE_RUN &&
         SessionState.program in setOf(
             com.droiddeck.launcher.session.NoSteamLaunch.PROTON_RUN, com.droiddeck.launcher.session.NoSteamLaunch.EPIC,
-            com.droiddeck.launcher.session.NoSteamLaunch.BATTLENET,
+            com.droiddeck.launcher.session.NoSteamLaunch.BATTLENET, com.droiddeck.launcher.session.NoSteamLaunch.FD_LAUNCH,
         )
     private val drawerGameInventory = GameProfileInventoryCache<Library.SteamGame>()
     private var drawerGameInventoryRevision = 0L
@@ -694,6 +694,17 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         desktopKeyboardButton = com.droiddeck.launcher.input.DesktopKeyboardButton(this) { keyboard?.show() }
             .also { root.addView(it) }
         touchpad = TouchpadGestures(PointerGestures.slop(this), pointerListener)
+        // Fallout Droid, как в Winlator: кроме положения курсора отдаём и относительный сдвиг.
+        // Fallout 3 / New Vegas читают мышь через DirectInput — только сдвиги «сырой» мыши; без них
+        // курсор в меню стоит на месте, а камера упирается в край экрана.
+        touchpad.onDelta = { dx, dy ->
+            if (!pointerLocked && com.wastelanddroid.engine.FalloutInput.relativeMouse(this)) {
+                drawnRect()?.let { rect ->
+                    val scale = sceneScale(rect)
+                    WaylandCompositor.sendPointerDelta(dx * scale, dy * scale)
+                }
+            }
+        }
         directTouchHold = DirectTouchHold(PointerGestures.slop(this), pointerListener, directTouchSink)
         threeFingerTap = com.droiddeck.launcher.input.ThreeFingerTap(PointerGestures.slop(this) * 2)
         twoFingerGestures = com.droiddeck.launcher.input.TwoFingerGestures(PointerGestures.slop(this) * 2,
@@ -754,7 +765,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 (repair || !com.droiddeck.launcher.runtime.DesktopCatalog.desktopInstalled(this))
             val program = intent.getStringExtra(SessionService.EXTRA_PROGRAM)
             val protonUser = (intent.getStringExtra(SessionService.EXTRA_MODE) ?: SessionService.MODE_STEAM) == SessionService.MODE_STEAM ||
-                program == com.droiddeck.launcher.runtime.BattleNet.PROGRAM || program == com.droiddeck.launcher.session.NoSteamLaunch.PROTON_RUN
+                program == com.droiddeck.launcher.runtime.BattleNet.PROGRAM || program == com.droiddeck.launcher.session.NoSteamLaunch.PROTON_RUN ||
+                program == com.droiddeck.launcher.session.NoSteamLaunch.FD_LAUNCH
             val needProton = protonUser && com.droiddeck.launcher.runtime.DesktopCatalog.protonSeedNeeded(this)
             if (needRuntime || needResume || needDesktop || needProton) installThenStart(needRuntime, needDesktop, needProton, needResume)
         }
@@ -2870,7 +2882,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private val pointerListener = object : PointerGestures.Listener {
         override fun onMove(x: Float, y: Float) {
-            if (pointerLocked) moveLockedPointer(x, y) else movePointer(x, y)
+            if (pointerLocked) { moveLockedPointer(x, y); return }
+            movePointer(x, y)
         }
         override fun onButton(button: Int, pressed: Boolean, x: Float, y: Float) {
             if (!pointerLocked) movePointer(x, y)

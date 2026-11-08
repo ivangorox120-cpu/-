@@ -3,62 +3,83 @@
 #
 #   fd-launch SCOPE GAME_DIR GAME_EXE MY_GAMES_FOLDER REGISTRY_FOLDER
 #
-# On a fresh prefix the game finds no Fallout.ini in "My Games" and no installer keys in the
-# registry, so it opens Bethesda's launcher instead of itself. Before the game starts this script
+# Without Fallout.ini in "My Games" (and without the installer keys) the game opens Bethesda's
+# launcher instead of itself. Before the game starts this script
 #   1. creates the Proton prefix by running Wine's reg.exe, which also writes the installer keys
-#      (both registry views), so nothing has to edit system.reg by hand;
-#   2. copies the ini files the app prepared into "My Games" of every Wine user;
+#      in both registry views (no hand edits of system.reg);
+#   2. puts the ini files the app prepared into every "Documents\My Games" Wine may use;
 #   3. starts the game.
 scope=$1 dir=$2 exe=$3 folder=$4 regfolder=$5
 log() { echo "fd-launch: $*" >&2; }
 run() { /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" -- "$@"; }
 
-root=${HOME:-/root}/.local/share/Steam
+home=${HOME:-/root}
+root=$home/.local/share/Steam
 pfx=$root/steamapps/compatdata/$scope/pfx
-stage=${HOME:-/root}/.local/share/fallout-droid/ini/$folder
+stage=$home/.local/share/fallout-droid/ini/$folder
 marker=$pfx/.fallout-droid-registry-$regfolder
+tooldirs=("$root/compatibilitytools.d" /usr/share/steam/compatibilitytools.d /usr/local/share/steam/compatibilitytools.d)
 
-if [ ! -f "$marker" ]; then
-  regexe=
-  for base in "$root/compatibilitytools.d" /usr/share/steam/compatibilitytools.d /usr/local/share/steam/compatibilitytools.d; do
-    for arch in aarch64-windows x86_64-windows i386-windows; do
-      for f in "$base"/*/files/lib/wine/$arch/reg.exe "$base"/*/files/lib64/wine/$arch/reg.exe; do
-        [ -f "$f" ] && { regexe=$f; break 3; }
-      done
-    done
+find_wine_tool() {
+  local name=$1 base found
+  for base in "${tooldirs[@]}"; do
+    [ -d "$base" ] || continue
+    found=$(find -L "$base" -maxdepth 8 -type f -iname "$name" -path '*windows*' 2>/dev/null \
+      | awk '/aarch64-windows/{print 0" "$0; next} /x86_64-windows/{print 1" "$0; next} {print 2" "$0}' | sort | head -1 | cut -d' ' -f2-)
+    [ -n "$found" ] && { echo "$found"; return 0; }
   done
-  if [ -z "$regexe" ]; then
-    for base in "$root/compatibilitytools.d" /usr/share/steam/compatibilitytools.d /usr/local/share/steam/compatibilitytools.d; do
-      [ -d "$base" ] || continue
-      regexe=$(find -L "$base" -maxdepth 7 -type f -iname reg.exe -path '*windows*' 2>/dev/null | sort | head -1)
-      [ -n "$regexe" ] && break
-    done
-  fi
+  return 1
+}
+
+log "prefix $pfx ($( [ -f "$pfx/system.reg" ] && echo exists || echo new ))"
+if [ ! -f "$marker" ]; then
   win="Z:${dir//\//\\}\\"
+  regexe=$(find_wine_tool reg.exe)
   if [ -n "$regexe" ]; then
-    log "preparing the prefix and the installer keys with $regexe"
+    log "writing the installer keys with $regexe"
     key="HKLM\\Software\\Bethesda Softworks\\$regfolder"
     ok=1
     for view in /reg:32 /reg:64; do
       run "$regexe" add "$key" /v "Installed Path" /t REG_SZ /d "$win" /f $view || ok=0
       run "$regexe" add "$key" /v "Installed" /t REG_DWORD /d 1 /f $view || true
     done
-    [ "$ok" = 1 ] && touch "$marker"
+    [ "$ok" = 1 ] && [ -f "$pfx/system.reg" ] && touch "$marker"
   else
-    log "no reg.exe found in the Proton folders; the app writes the keys on the next start"
+    wineboot=$(find_wine_tool wineboot.exe)
+    if [ -n "$wineboot" ] && [ ! -f "$pfx/system.reg" ]; then
+      log "no reg.exe; creating the prefix with $wineboot"
+      run "$wineboot" -u || true
+    else
+      log "no reg.exe found in: ${tooldirs[*]}"
+    fi
   fi
 fi
 
+place_ini() {
+  local docs=$1 games
+  games="$docs/My Games/$folder"
+  mkdir -p "$games" 2>/dev/null || return
+  for ini in Fallout.ini FalloutPrefs.ini; do
+    [ -f "$stage/$ini" ] || continue
+    if [ ! -s "$games/$ini" ]; then
+      cp "$stage/$ini" "$games/$ini" && log "placed $ini in $games"
+    fi
+  done
+}
 if [ -d "$stage" ]; then
   for user in "$pfx"/drive_c/users/*/; do
     [ -d "$user" ] || continue
     case $(basename "$user") in Public|public) continue ;; esac
-    games="$user/Documents/My Games/$folder"
-    mkdir -p "$games"
-    for ini in Fallout.ini FalloutPrefs.ini; do
-      [ -f "$stage/$ini" ] && [ ! -f "$games/$ini" ] && cp "$stage/$ini" "$games/$ini" && log "placed $ini for $(basename "$user")"
+    for docs in "$user/Documents" "$user/My Documents"; do
+      [ -e "$docs" ] && place_ini "$docs"
     done
+    [ -e "$user/Documents" ] || [ -e "$user/My Documents" ] || place_ini "$user/Documents"
+    log "user $(basename "$user"): Documents -> $(readlink -f "$user/Documents" 2>/dev/null)"
   done
+  [ -d "$home/Documents" ] && place_ini "$home/Documents"
+else
+  log "no prepared ini in $stage"
 fi
+find "$pfx/drive_c/users" "$home/Documents" -maxdepth 6 -iname 'Fallout*.ini' 2>/dev/null | sed 's/^/fd-launch: ini /' >&2
 
 exec /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" -- "$exe"

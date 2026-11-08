@@ -21,6 +21,9 @@ class TouchpadGestures(
     /** Fallout Droid: в игре касание не должно стрелять — щелчок по тапу отключается. */
     var tapClicks = true
 
+    /** Fallout Droid: сдвиг пальца без ограничения краем экрана (для относительной мыши). */
+    var onDelta: ((Float, Float) -> Unit)? = null
+
     private val handler = Handler(Looper.getMainLooper())
     private var lastX = 0f
     private var lastY = 0f
@@ -97,6 +100,7 @@ class TouchpadGestures(
             handler.removeCallbacks(longPress)
             val speed = abs(dx) + abs(dy)
             val gain = sensitivity * (1f + minOf(speed / 40f, 1.5f))
+            onDelta?.invoke(dx * gain, dy * gain)
             place(x + dx * gain, y + dy * gain)
             listener.onMove(x, y)
         }

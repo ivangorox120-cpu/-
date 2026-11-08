@@ -8,6 +8,8 @@ import com.droiddeck.launcher.stores.epic.EpicClient
 
 object NoSteamLaunch {
     const val PROTON_RUN = "/usr/local/bin/droiddeck-proton-run"
+    /** Fallout Droid: обёртка над PROTON_RUN, готовит префикс до первого старта игры. */
+    const val FD_LAUNCH = "/usr/local/bin/fd-launch"
     const val EPIC = "/usr/local/bin/droiddeck-epic"
     const val BATTLENET = com.droiddeck.launcher.runtime.BattleNet.PROGRAM
 
@@ -59,7 +61,7 @@ object NoSteamLaunch {
         EPIC -> Library.EPIC_LAUNCHER_NAME
         BATTLENET -> args.getOrNull(args.indexOf("launch") + 1)?.takeIf { args.contains("launch") }?.let { names[it] } ?: com.droiddeck.launcher.stores.Store.BATTLENET.label
         PROTON_RUN -> args.getOrNull(args.indexOf("--app") + 1)?.takeIf { args.contains("--app") }?.let { names[it] }
-        "/usr/local/bin/fd-launch" -> args.firstOrNull()?.let { names[it] }
+        FD_LAUNCH -> args.firstOrNull()?.let { names[it] }
         else -> null
     }
 

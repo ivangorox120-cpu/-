@@ -142,6 +142,9 @@ public final class ControlsEditorActivity extends Activity {
         });
         opts2.addView(labels, Ui.weight());
         panelBody.addView(opts2);
+        LinearLayout opts3 = Ui.row(this);
+        opts3.addView(pref(ip, "Сырая мышь (курсор в меню игры)", com.wastelanddroid.engine.FalloutInput.RELATIVE_MOUSE, true), Ui.weight());
+        panelBody.addView(opts3);
         LinearLayout colors = Ui.row(this);
         colors.addView(Ui.hint(this, "Цвет кнопок:"));
         int[] palette = {Ui.ACCENT_COLORS[1], Ui.ACCENT_COLORS[0], Ui.ACCENT_COLORS[2]};
