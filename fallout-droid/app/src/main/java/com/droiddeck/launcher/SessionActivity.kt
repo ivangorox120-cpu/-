@@ -725,7 +725,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Fallout 3 / New Vegas читают мышь через DirectInput — только сдвиги «сырой» мыши; без них
         // курсор в меню стоит на месте, а камера упирается в край экрана.
         touchpad.onDelta = { dx, dy ->
-            if (!pointerLocked) {
+            if (!pointerLocked || com.wastelanddroid.engine.XMouse.ready(this)) {
                 drawnRect()?.let { rect ->
                     val scale = sceneScale(rect)
                     sendSceneDelta(dx * scale, dy * scale * lookYSign())
@@ -2914,6 +2914,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             movePointer(x, y)
         }
         override fun onButton(button: Int, pressed: Boolean, x: Float, y: Float) {
+            if (pressed) tapAt(x, y)
             if (!pointerLocked) movePointer(x, y)
             sendSceneButton(button, pressed)
         }
@@ -3034,6 +3035,16 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         cursorVisible = false
     }
 
+    /** Курсор прыгает в точку касания перед нажатием — так в меню выбирается пункт под пальцем. */
+    private fun tapAt(x: Float, y: Float) {
+        if (!com.wastelanddroid.engine.XMouse.ready(this)) return
+        val rect = drawnRect() ?: return
+        val ox = ((x - rect.left) / rect.width() * 65535f).toInt().coerceIn(0, 65535)
+        val oy = ((y - rect.top) / rect.height() * 65535f).toInt().coerceIn(0, 65535)
+        com.wastelanddroid.engine.XMouse.moveTo(this, ox, oy)
+        dbgAbs++
+    }
+
     private fun movePointer(x: Float, y: Float) {
         val rect = drawnRect() ?: return
         val cx = x.coerceIn(rect.left, rect.right)
@@ -3042,12 +3053,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Абсолютная позиция здесь всё ломала: игра держит свой курсор сама и возвращала его
         // обратно, поэтому на экране он не двигался.
         if (com.wastelanddroid.engine.XMouse.ready(this)) {
-            // Ставим курсор туда, где палец (0..65535 по каждой оси, как SendInput с ABSOLUTE).
-            val ox = ((cx - rect.left) / rect.width() * 65535f).toInt().coerceIn(0, 65535)
-            val oy = ((cy - rect.top) / rect.height() * 65535f).toInt().coerceIn(0, 65535)
-            com.wastelanddroid.engine.XMouse.moveTo(this, ox, oy)
-            dbgAbs++
-            inputDebugTick()
+            // Ведение пальцем — только сдвиги (их шлёт onDelta): абсолютная позиция в этот момент
+            // спорит с ними и гасит обзор. Курсор прыгает в точку только при нажатии, как в порте.
         } else if (!relativeMouseMode()) {
             WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, surfaceView.width), InputSpace.y(cy, surfaceView.height))
             dbgAbs++

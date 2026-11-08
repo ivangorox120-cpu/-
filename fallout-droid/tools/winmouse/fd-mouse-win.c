@@ -76,7 +76,7 @@ static void handle(char *line)
         return;
     }
     seen++;
-    if (seen == 1 || seen % 500 == 0) {
+    if (seen == 1 || seen % 200 == 0) {
         POINT p = {0, 0};
         HWND fg = GetForegroundWindow();
         char title[96] = "";
