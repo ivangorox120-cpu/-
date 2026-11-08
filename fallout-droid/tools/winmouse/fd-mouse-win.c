@@ -18,8 +18,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 static unsigned long seen;
+static FILE *logfile;
+
+static void note(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fflush(stderr);
+    if (!logfile) logfile = fopen("Z:\\root\\.fd-mouse.log", "a");
+    if (logfile) {
+        va_start(ap, fmt);
+        vfprintf(logfile, fmt, ap);
+        va_end(ap);
+        fflush(logfile);
+    }
+}
 
 static void send_mouse(LONG dx, LONG dy, DWORD data, DWORD flags)
 {
@@ -64,17 +82,15 @@ static void handle(char *line)
         char title[96] = "";
         GetCursorPos(&p);
         if (fg) GetWindowTextA(fg, title, sizeof(title));
-        fprintf(stderr, "fd-mouse-win: %lu commands (last: %s); cursor %ld,%ld; foreground \"%s\"\n",
-                seen, line, p.x, p.y, title);
-        fflush(stderr);
+        note("fd-mouse-win: %lu commands (last: %s); cursor %ld,%ld; foreground \"%s\"\n",
+             seen, line, p.x, p.y, title);
     }
 }
 
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "Z:\\root\\.fd-mouse";
-    fprintf(stderr, "fd-mouse-win: reading %s\n", path);
-    fflush(stderr);
+    note("fd-mouse-win: reading %s\n", path);
     for (;;) {
         char buf[4096];
         DWORD len = 0, got;

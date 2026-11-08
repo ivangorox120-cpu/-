@@ -102,19 +102,27 @@ find "$pfx/drive_c/users" "$home/Documents" -maxdepth 6 -iname 'Fallout*.ini' 2>
 mouse=0
 if [ "${FD_XTEST:-0}" = 1 ] && [ -f /usr/local/bin/fd-mouse.exe ]; then
   rm -f "$home/.fd-mouse"
+  rm -f "$home/.fd-mouse.log"
   mkfifo -m 666 "$home/.fd-mouse" && mouse=1
 fi
 # Виртуальный рабочий стол Wine: игра перестаёт быть полноэкранной для X, и мышь в ней
 # работает обычным образом. Рекомендованное лечение для Fallout под Proton.
 desktop=()
 [ -n "${FD_DESKTOP:-}" ] && desktop=(--desktop "$FD_DESKTOP") && log "Wine desktop $FD_DESKTOP"
+# Помощник подключается к уже поднятому префиксу сбоку (--verb run не ждёт игру), игра при
+# этом остаётся главным процессом сессии — иначе сессия считает, что запускать нечего.
 if [ "$mouse" = 1 ]; then
-  /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" "${desktop[@]}" -- "$exe" &
-  game=$!
-  # помощник запускается рядом с уже идущей игрой (--verb run не ждёт её завершения)
-  ( sleep 6; log "starting the Windows mouse helper"
-    /usr/local/bin/droiddeck-proton-run --app "$scope" --verb run -- /usr/local/bin/fd-mouse.exe ) &
-  wait "$game"
-  exit $?
+  # отчёт помощника попадает в журнал сессии: у оконной программы Windows нет консоли
+  ( : > "$home/.fd-mouse.log"; tail -n +1 -f "$home/.fd-mouse.log" >&2 ) &
+  (
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+      sleep 3
+      [ -d "$pfx/drive_c" ] || continue
+      log "starting the Windows mouse helper (attempt $attempt)"
+      if /usr/local/bin/droiddeck-proton-run --app "$scope" --verb run -- /usr/local/bin/fd-mouse.exe; then
+        log "the mouse helper exited; starting it again"
+      fi
+    done
+  ) &
 fi
 exec /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" "${desktop[@]}" -- "$exe"
