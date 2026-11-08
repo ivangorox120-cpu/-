@@ -265,7 +265,7 @@ export function splitStaticModel(geo) { return splitParts([{ geo, legsOK: true }
 // прохожие из присланных SDS-моделей (A-поза, с весами скина): части тела определяются по костям, а не по высоте треугольника —
 // одежда не «рвётся» между частями. Руки опускаются вдоль тела, ноги и руки делятся на бедро/голень и плечо/предплечье,
 // чтобы в походке сгибались колени и локти. Текстура-атлас персонажа сохраняется.
-export const SDS_FEMALE = n => /^c(mesz|pros)/.test(n);
+export const SDS_FEMALE = n => /^c(mesz|pros)/.test(n); // у остальных (мужчины, милиционер) — мужской рост
 export function prepareSdsPerson(mesh, name) {
   let g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
   mesh.updateMatrixWorld(true); g.applyMatrix4(mesh.matrixWorld);
@@ -314,6 +314,8 @@ export function prepareSdsPerson(mesh, name) {
     out[side] = make(thigh, sg * legX, hipY); out[side === 'legL' ? 'shinL' : 'shinR'] = make(shin, sg * legX, kneeY); }
   for (const side of ['armL', 'armR']) { const p_ = piv[side] || [0, 0], e = elbow[side] || p_; const [fore, upper] = splitBy(vertsOf(side), tri => cy(tri) < e[1]);
     out[side] = make(upper, p_[0], p_[1]); out[side === 'armL' ? 'foreL' : 'foreR'] = make(fore, e[0], e[1]); out[side === 'armL' ? 'elbL' : 'elbR'] = [e[0] - p_[0], e[1] - p_[1]]; }
+  out.head.computeBoundingBox(); out.headTop = out.head.boundingBox.max.y; out.headZ = (out.head.boundingBox.max.z + out.head.boundingBox.min.z) / 2;
+  out.torso.computeBoundingBox(); out.chestZ = out.torso.boundingBox.max.z;
   out.kneeOff = kneeY - hipY; out.map = mesh.material && mesh.material.map; out.sds = true;
   return { name, female: SDS_FEMALE(name), parts: out };
 }

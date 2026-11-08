@@ -2322,7 +2322,7 @@ float snn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
   const loader = new GLTFLoader();
   const ASSETS = {};
   let loadedN = 0; const SDS_NPC = ["cmeszl", "cmeszl2", "cmeszz", "cmeszz2", "cmeszz3", "cpros1l", "cpros1z", "cpros2l", "cpros2z", "cirand", "cvezedv"]; // прохожие: *z — зимняя одежда, *l — летняя, без суффикса — на любой сезон
-  const toLoad = [...SDS_NPC.map(n => 'npc_' + n), 'police', 'bmw733i', 'apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
+  const toLoad = [...SDS_NPC.map(n => 'npc_' + n), 'npc_police', 'bmw733i', 'apartment', 'busstop', 'beton', 'tree', 'bush', 'radio', 'steelworker', 'notepad', 'chair', 'poster', 'nodrink', 'vodka', 'cigarette', 'stew', 'gun', 'trashcan', 'vaz2101', 'vaz2107', 'vaz2101_lod', 'vaz2107_lod'];
   const winMats = [], winU = { time: { value: 0 }, night: { value: 0 } };
   // детализация фасадов панелек: фактура бетона в мировых координатах (без растяжения по UV), потёки от швов и подоконников, сырость и грязь у цоколя
   const facadeTex = (() => { const t = TL.load('assets/tex/pbr/concrete_col.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return regTex(t); })();
@@ -2476,7 +2476,9 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       }
     }
     if (ASSETS.people && !peopleModels.length) { try { for (const o of ['winter', 'mid', 'summer']) peopleByOutfit[o] = preparePeople(ASSETS.people.scene, o); peopleModels = peopleByOutfit.winter; } catch (e) { console.warn('Модели людей', e); } }
-    if (ASSETS.police) { try { const m = meshesOf(ASSETS.police)[0]; if (m) { m.updateMatrixWorld(true); const mp = m.material.map; if (mp) mp.colorSpace = THREE.SRGBColorSpace; policeModel = preparePolice(m.geometry.clone().applyMatrix4(m.matrixWorld), mp); } } catch (e) { console.warn('Модель милиционера', e); } }
+    if (ASSETS.npc_police) { try { const m = meshesOf(ASSETS.npc_police)[0]; if (m.material.map) m.material.map.colorSpace = THREE.SRGBColorSpace; policeModel = prepareSdsPerson(m, 'police').parts; } catch (e) { console.warn('Модель милиционера', e); } }
+    if (!policeModel && ASSETS.police) { // запасной вариант (файл police.glb удалён — форма теперь на модели прохожего)
+      try { const m = meshesOf(ASSETS.police)[0]; if (m) { m.updateMatrixWorld(true); const mp = m.material.map; if (mp) mp.colorSpace = THREE.SRGBColorSpace; policeModel = preparePolice(m.geometry.clone().applyMatrix4(m.matrixWorld), mp); } } catch (e) { console.warn('Модель милиционера', e); } }
     if (ASSETS.steelworker) { const m = meshesOf(ASSETS.steelworker)[0]; if (m) staticWorker = splitStaticModel(m.geometry.clone().applyMatrix4(m.matrixWorld)); }
     fixNodes();
     // --- предметы интерьера из присланных моделей ---
@@ -2839,6 +2841,22 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
     return list[Math.min(list.length - 1, RI(0, 2))].id;
   }
   const people = []; // { h: Human, role, state, path, ... }
+  // форма поверх модели прохожего: фуражка с красным околышем и кокардой, красные погоны, ремень с кобурой
+  const polMat = { crown: std({ color: 0x1e2440, roughness: .8 }), band: std({ color: 0xa8261c, roughness: .6 }), visor: std({ color: 0x0d0d0f, roughness: .25, metalness: .3 }),
+    gold: std({ color: 0xd4af37, roughness: .3, metalness: .8 }), belt: std({ color: 0x151313, roughness: .45 }), holster: std({ color: 0x2b1d14, roughness: .55 }) };
+  function dressPolice(h, P) {
+    const R = h.R, s = h.L.height / P.cfg.height, hz = (P.headZ || 0) * s, top = (P.headTop || .26) * s;
+    const cap = new THREE.Group(); cap.position.set(0, top - .045 * s, hz); R.head.add(cap);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(.128, .1, .07, 18), polMat.crown); crown.position.y = .06; crown.scale.z = 1.08; cap.add(crown);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .035, 18), polMat.band); band.position.y = .012; band.scale.z = 1.08; cap.add(band);
+    const visor = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .006, 18, 1, false, -Math.PI * .45, Math.PI * .9), polMat.visor); visor.position.set(0, -.006, .035); visor.rotation.x = .25; visor.scale.set(1, 1, 1.15); cap.add(visor);
+    const badge = new THREE.Mesh(new THREE.CircleGeometry(.014, 10), polMat.gold); badge.position.set(0, .03, .109); cap.add(badge);
+    cap.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    for (const sg of [1, -1]) { const ep = new THREE.Mesh(new THREE.BoxGeometry(.11, .008, .05), polMat.band); ep.position.set(sg * (P.cfg.shX * s - .03), (P.cfg.shY - P.cfg.hipY) * s + .035, -.005); R.spine.add(ep); }
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(.165, .165, .045, 20, 1, true), polMat.belt); belt.position.y = .1 * s; belt.scale.z = .72; R.spine.add(belt);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(.05, .035, .01), polMat.gold); buckle.position.set(0, .1 * s, .165 * .72 + .005); R.spine.add(buckle);
+    const hol = new THREE.Mesh(new THREE.BoxGeometry(.05, .12, .1), polMat.holster); hol.position.set(-.17, .05 * s, -.02); R.spine.add(hol);
+  }
   function newPerson(kind, role, nodeId, extra) {
     const look = makeLook(kind);
     // модели «Зимние люди» для всех, кроме милиции (у неё своя форма); сталевар — среди рабочих
@@ -2855,8 +2873,10 @@ float fdn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mi
       }
     }
     if (kind === 'school') model = null; // школьники — процедурные (взрослые модели в рост ребёнка выглядели странно)
+    if (model && model.sds) look.height = (model === policeModel || !/^c(mesz|pros)/.test(extra && extra.modelName || '')) ? 1.79 : 1.71; // все одного роста, женщины чуть ниже
     if (model && kind === 'school') look.height = 1.45;
     const h = new Human(look, model);
+    if (model && model === policeModel && model.sds) dressPolice(h, model);
     const n = NODES[nodeId]; h.obj.position.set(n.x + R(-.3, .3), 0, n.z + R(-.3, .3)); scene.add(h.obj);
     const shadow = new THREE.Mesh(blobGeo, blobMat); shadow.rotation.x = -Math.PI / 2; shadow.position.y = .02; h.obj.add(shadow);
     const p = Object.assign({ h, role, state: 'idle', path: [], speed: look.walkSpeed, timer: 0, kind, fear: 0, id: Math.random() }, extra || {});
