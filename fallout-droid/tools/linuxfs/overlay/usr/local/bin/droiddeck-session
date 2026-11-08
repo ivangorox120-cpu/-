@@ -326,8 +326,9 @@ if [ -z "${BL_INSIDE:-}" ]; then
     export STEAM_MULTIPLE_XWAYLANDS=1
   fi
   [ "$mode" = steam ] && args+=(--default-touch-mode 4)
-  # Fallout Droid: в режиме одной программы касания тоже отдаём игре как мышь
-  [ "$mode" = run ] && [ "${BL_TOUCH_AS_MOUSE:-0}" = 1 ] && args+=(--default-touch-mode 4)
+  # Fallout Droid: в режиме одной программы касания превращает в мышь сам gamescope
+  # (0 — только двигать курсор, 1 — двигать и нажимать левую кнопку).
+  [ "$mode" = run ] && [ -n "${BL_TOUCH_MODE:-}" ] && args+=(--default-touch-mode "$BL_TOUCH_MODE")
   [ "${BL_HDR:-0}" = 1 ] && args+=(--hdr-enabled)
   [ -n "${BL_GAMESCOPE_ARGS:-}" ] && read -r -a _bl_extra <<<"$BL_GAMESCOPE_ARGS" && args+=("${_bl_extra[@]}")
   if [ "$mode" = steam ] && [ "${BL_MANGOAPP:-1}" = 1 ] \

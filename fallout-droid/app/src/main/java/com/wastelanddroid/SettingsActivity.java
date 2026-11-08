@@ -411,12 +411,13 @@ public final class SettingsActivity extends Activity {
         action(g, R.drawable.ic_touch, "Редактор экранных кнопок", "Размер, прозрачность, форма, расположение и действия",
                 v -> open(new Intent(this, ControlsEditorActivity.class)));
         choice(g, "Как мышь попадает в игру",
-                new String[]{"Через композитор (обычный)", "Только сдвиги мыши", "Отдельным устройством ввода", "Прямые касания"},
-                new String[]{com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR,
+                new String[]{"Касание ведёт курсор", "Касание ведёт и нажимает", "Через композитор", "Только сдвиги мыши", "Отдельным устройством"},
+                new String[]{com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH,
+                        com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH_CLICK,
+                        com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_RELATIVE,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_DEVICE,
-                        com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH},
-                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR);
+                        com.wastelanddroid.engine.FalloutInput.MOUSE_DEVICE},
+                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH);
         info(g, R.drawable.ic_info, "Если мышь в игре не слушается, попробуйте другие способы по очереди: "
                 + "включите «Отладка ввода» в разделе Логи и смотрите, меняется ли что-то в игре.", Ui.TEXT_DIM);
         info(g, R.drawable.ic_gamepad, "Геймпад по Bluetooth или USB игра видит как Xbox 360 — он работает сразу.", Ui.TEXT_DIM);

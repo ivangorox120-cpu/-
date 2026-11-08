@@ -3585,6 +3585,22 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     }
                     touchpad.onTouch(event)
                 } else {
+                    // Fallout Droid: курсор ведёт касание (gamescope, режим hover), а короткий тап
+                    // отдельно нажимает левую кнопку — иначе в меню нечем выбрать пункт.
+                    if (com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH ==
+                        com.wastelanddroid.engine.FalloutInput.mouseMode(this)) {
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> { lookDownX = event.x; lookDownY = event.y }
+                            MotionEvent.ACTION_UP ->
+                                if (event.eventTime - event.downTime < 350 &&
+                                    kotlin.math.hypot(event.x - lookDownX, event.y - lookDownY) <
+                                    PointerGestures.slop(this) * 2
+                                ) {
+                                    sendSceneButton(PointerGestures.BTN_LEFT, true)
+                                    uiHandler.postDelayed({ sendSceneButton(PointerGestures.BTN_LEFT, false) }, 50)
+                                }
+                        }
+                    }
                     dispatchDirectTouch(event)
                 }
             }

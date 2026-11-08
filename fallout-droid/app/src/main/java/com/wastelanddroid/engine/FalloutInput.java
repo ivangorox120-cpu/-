@@ -22,7 +22,10 @@ public final class FalloutInput {
     public static final String MOUSE_COMPOSITOR = "compositor";
     public static final String MOUSE_RELATIVE = "relative";
     public static final String MOUSE_DEVICE = "device";
+    /** Касания двигают курсор игры (gamescope, режим hover). */
     public static final String MOUSE_TOUCH = "touch";
+    /** Касания двигают курсор и нажимают левую кнопку (gamescope, режим left). */
+    public static final String MOUSE_TOUCH_CLICK = "touchclick";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -66,13 +69,24 @@ public final class FalloutInput {
     public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
 
     public static String mouseMode(Context c) {
-        return p(c).getString(MOUSE_MODE, MOUSE_COMPOSITOR);
+        return p(c).getString(MOUSE_MODE, MOUSE_TOUCH);
     }
 
     public static boolean mouseDevice(Context c) { return MOUSE_DEVICE.equals(mouseMode(c)); }
 
     /** Касания уходят игре как есть, а в мышь их превращает gamescope. */
-    public static boolean mouseTouch(Context c) { return MOUSE_TOUCH.equals(mouseMode(c)); }
+    public static boolean mouseTouch(Context c) {
+        String m = mouseMode(c);
+        return MOUSE_TOUCH.equals(m) || MOUSE_TOUCH_CLICK.equals(m);
+    }
+
+    /** Номер режима касаний gamescope для выбранного способа, или null. */
+    public static String gamescopeTouchMode(Context c) {
+        String m = mouseMode(c);
+        if (MOUSE_TOUCH.equals(m)) return "0";
+        if (MOUSE_TOUCH_CLICK.equals(m)) return "1";
+        return null;
+    }
 
     public static boolean mouseRelativeOnly(Context c) {
         String m = mouseMode(c);
