@@ -3042,10 +3042,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Абсолютная позиция здесь всё ломала: игра держит свой курсор сама и возвращала его
         // обратно, поэтому на экране он не двигался.
         if (com.wastelanddroid.engine.XMouse.ready(this)) {
-            // XTEST: ставим курсор туда, где палец. Тогда нажатия попадают в пункт меню под ним.
-            val out = SessionState.outputSize
-            val ox = ((cx - rect.left) / rect.width() * out.first).toInt().coerceIn(0, out.first - 1)
-            val oy = ((cy - rect.top) / rect.height() * out.second).toInt().coerceIn(0, out.second - 1)
+            // Ставим курсор туда, где палец (0..65535 по каждой оси, как SendInput с ABSOLUTE).
+            val ox = ((cx - rect.left) / rect.width() * 65535f).toInt().coerceIn(0, 65535)
+            val oy = ((cy - rect.top) / rect.height() * 65535f).toInt().coerceIn(0, 65535)
             com.wastelanddroid.engine.XMouse.moveTo(this, ox, oy)
             dbgAbs++
             inputDebugTick()

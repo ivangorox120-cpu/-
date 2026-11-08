@@ -114,6 +114,7 @@ object SessionFiles {
             "usr/local/bin/droiddeck-proton-run" to "usr/local/bin/droiddeck-proton-run",
             "usr/local/bin/fd-launch" to "usr/local/bin/fd-launch",
             "usr/local/bin/fd-mouse" to "usr/local/bin/fd-mouse",
+            "usr/local/bin/fd-mouse.exe" to "usr/local/bin/fd-mouse.exe",
             "usr/local/bin/droiddeck-innoextract" to "usr/local/bin/droiddeck-innoextract",
             "usr/local/lib/droiddeck-inno/innoextract" to "usr/local/lib/droiddeck-inno/innoextract",
             "usr/local/lib/droiddeck-inno/libboost_container.so.1.92.0" to "usr/local/lib/droiddeck-inno/libboost_container.so.1.92.0",

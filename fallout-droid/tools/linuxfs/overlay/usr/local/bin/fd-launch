@@ -97,13 +97,24 @@ else
 fi
 find "$pfx/drive_c/users" "$home/Documents" -maxdepth 6 -iname 'Fallout*.ini' 2>/dev/null | sed 's/^/fd-launch: ini /' >&2
 
-# Мышь прямо в X-сервер через XTEST: события композитора игра на DirectInput не видит.
-if [ "${FD_XTEST:-0}" = 1 ]; then
+# Мышь изнутри Wine: fd-mouse.exe читает команды приложения из канала и превращает их в
+# SendInput. Снаружи (композитор, gamescope, XTEST в Xwayland) указатель игры не двигался вовсе.
+mouse=0
+if [ "${FD_XTEST:-0}" = 1 ] && [ -f /usr/local/bin/fd-mouse.exe ]; then
   rm -f "$home/.fd-mouse"
-  /usr/local/bin/fd-mouse &
+  mkfifo -m 666 "$home/.fd-mouse" && mouse=1
 fi
 # Виртуальный рабочий стол Wine: игра перестаёт быть полноэкранной для X, и мышь в ней
 # работает обычным образом. Рекомендованное лечение для Fallout под Proton.
 desktop=()
 [ -n "${FD_DESKTOP:-}" ] && desktop=(--desktop "$FD_DESKTOP") && log "Wine desktop $FD_DESKTOP"
+if [ "$mouse" = 1 ]; then
+  /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" "${desktop[@]}" -- "$exe" &
+  game=$!
+  # помощник запускается рядом с уже идущей игрой (--verb run не ждёт её завершения)
+  ( sleep 6; log "starting the Windows mouse helper"
+    /usr/local/bin/droiddeck-proton-run --app "$scope" --verb run -- /usr/local/bin/fd-mouse.exe ) &
+  wait "$game"
+  exit $?
+fi
 exec /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" "${desktop[@]}" -- "$exe"
