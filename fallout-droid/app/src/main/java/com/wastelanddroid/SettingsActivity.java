@@ -420,6 +420,8 @@ public final class SettingsActivity extends Activity {
         toggle(g, "Пропуск вступительных роликов", null, Prefs.SKIP_INTRO, true, null);
         toggle(g, "Запуск через FOSE / NVSE", "Если загрузчик лежит в папке игры", Prefs.USE_FOSE, true, null);
         toggle(g, "Ключи реестра игры", "Без них игра считает, что не установлена", Prefs.FIX_REGISTRY, true, null);
+        toggle(g, "Режим геймпада в игре", "Включайте только с физическим геймпадом: в этом режиме "
+                + "Fallout прячет курсор и не слушает мышь", Prefs.GAMEPAD, false, null);
         LinearLayout s = group("Стабильность");
         toggle(s, "Патч памяти 4 ГБ (LAA)", "Главное средство от вылетов в долгих сессиях", Prefs.LAA, true, null);
         toggle(s, "Автосохранения", "При переходах, ожидании и отдыхе", Prefs.AUTOSAVE, true, null);

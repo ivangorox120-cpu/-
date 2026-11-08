@@ -27,7 +27,7 @@ public final class IniTweaks {
     }
 
     public static void apply(GameDef g, File gameDir, File winePrefix, DeviceProfile p, GraphicsSettings gfx,
-                             boolean skipIntro, boolean autosave)
+                             boolean skipIntro, boolean autosave, boolean gamepad)
             throws IOException {
         File dir = ProtonPrefix.myGamesDir(g, winePrefix);
         dir.mkdirs();
@@ -85,6 +85,13 @@ public final class IniTweaks {
         pr.set("Display", "iMultiSample", "0");
         IniFile iniAgain = IniFile.load(ini);
         gfx.apply(iniAgain, pr);
+        // Самое важное для мыши: пока игра считает, что подключён геймпад, она уходит в режим
+        // контроллера — курсор в меню пропадает, а мышь игнорируется. Движок всегда показывает
+        // игре виртуальный Xbox-контроллер, поэтому джойстик выключаем в обоих ini.
+        String joystick = gamepad ? "1" : "0";
+        iniAgain.set("Controls", "bUse Joystick", joystick);
+        pr.set("Controls", "bUse Joystick", joystick);
+        if (!gamepad) pr.set("Controls", "bGamePadRumble", "0");
         iniAgain.save(ini);
         pr.set("Controls", "bBackground Mouse", "0");
         pr.set("Controls", "fMouseSensitivity", "0.0025");

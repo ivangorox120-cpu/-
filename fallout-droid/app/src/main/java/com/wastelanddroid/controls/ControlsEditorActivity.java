@@ -164,10 +164,10 @@ public final class ControlsEditorActivity extends Activity {
         LinearLayout actions = Ui.row(this);
         actions.addView(Ui.ghostButton(this, R.drawable.ic_plus, "Добавить кнопку", v -> addKey()), Ui.weight());
         actions.addView(Ui.ghostButton(this, R.drawable.ic_restore, "Сбросить", v -> {
-            ControllerPrefs.INSTANCE.setScreenKeys(this, PcLayout.defaults());
+            ControllerPrefs.INSTANCE.setScreenKeys(this, PcLayout.defaults(this));
             ip.edit().putInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, 100)
                     .putInt(com.wastelanddroid.engine.FalloutInput.BTN_OPACITY, 100).apply();
-            keys.load(ControllerPrefs.INSTANCE.encodeScreenKeys(PcLayout.defaults()));
+            keys.load(ControllerPrefs.INSTANCE.encodeScreenKeys(PcLayout.defaults(this)));
             keys.startEditing();
             closeMini();
             Toast.makeText(this, "Стандартная раскладка Fallout", Toast.LENGTH_SHORT).show();

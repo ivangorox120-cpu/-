@@ -31,6 +31,8 @@ public final class Prefs {
     public static final String DIRECT_AUDIO = "direct_audio";
     /** Дописывать в реестр префикса ключ установщика игры. */
     public static final String FIX_REGISTRY = "fix_registry";
+    /** Разрешить игре видеть геймпад. Выключено: иначе Fallout прячет курсор и игнорирует мышь. */
+    public static final String GAMEPAD = "gamepad_in_game";
 
     private Prefs() {}
 

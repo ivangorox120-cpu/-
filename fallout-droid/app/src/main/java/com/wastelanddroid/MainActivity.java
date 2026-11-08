@@ -364,7 +364,8 @@ public final class MainActivity extends Activity {
             DeviceProfile profile = DeviceProfile.create(this, q, prefs.getInt(Prefs.RES_SCALE, 100));
             com.wastelanddroid.game.IniTweaks.apply(d, gameDir, pfx, profile,
                     com.wastelanddroid.game.GraphicsSettings.load(this, q),
-                    prefs.getBoolean(Prefs.SKIP_INTRO, true), prefs.getBoolean(Prefs.AUTOSAVE, true));
+                    prefs.getBoolean(Prefs.SKIP_INTRO, true), prefs.getBoolean(Prefs.AUTOSAVE, true),
+                    prefs.getBoolean(Prefs.GAMEPAD, false));
         } catch (Exception e) {
             com.wastelanddroid.util.CrashLog.write(this, "ini", e);
         }

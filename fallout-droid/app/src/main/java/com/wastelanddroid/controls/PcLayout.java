@@ -30,49 +30,64 @@ public final class PcLayout {
         return new ScreenKey(java.util.Collections.singletonList(code), x, y, size, "", text, "", 1f, shape, toggle, true);
     }
 
+    /** Размер кнопки задан долей высоты экрана, как в раскладке-образце. */
+    private static int sz(Context c, float fraction) {
+        android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
+        float heightDp = Math.min(dm.widthPixels, dm.heightPixels) / dm.density;
+        return Math.round(fraction * heightDp);
+    }
+
+    private static ScreenKey key(Context c, int code, float x, float y, float frac, String text, int shape) {
+        return key(code, x, y, sz(c, frac), text, shape, false);
+    }
+
     /**
-     * Раскладка по умолчанию: стик WASD слева, крупная «Огонь» справа (с неё же можно вести
-     * камеру), вокруг неё прицел, действие, прыжок, перезарядка и V.A.T.S.; слева присед и шаг;
-     * служебные кнопки — короткими «таблетками» сверху, разнесёнными так, чтобы не наезжали.
+     * Раскладка по умолчанию — как в мобильных портах Fallout: стик слева, крупная «Огонь»
+     * справа внизу, вокруг неё прицел, прыжок, действие, перезарядка и V.A.T.S.; присед и шаг
+     * слева, служебные кнопки строкой сверху, быстрые слоты внизу по центру.
+     * Координаты и размеры взяты из присланной раскладки, верхняя строка разнесена шире:
+     * наши «таблетки» с подписями шире квадратных кнопок оригинала.
      */
-    public static List<ScreenKey> defaults() {
+    public static List<ScreenKey> defaults(Context c) {
         int C = ScreenKeyKt.SCREEN_KEY_CIRCLE, P = ScreenKeyKt.SCREEN_KEY_PILL;
         List<ScreenKey> keys = new ArrayList<>();
-        keys.add(new ScreenKey(Arrays.asList(W, 0, D, 0, S, 0, A, 0), 0.13f, 0.70f, 116, "", "", "", 1f,
+        keys.add(new ScreenKey(Arrays.asList(W, 0, D, 0, S, 0, A, 0), 0.14f, 0.70f, sz(c, 0.34f), "", "", "", 1f,
                 ScreenKeyKt.SCREEN_KEY_STICK, false, true));
         // бой
-        keys.add(key(BTN_LEFT, 0.885f, 0.68f, 72, "Огонь", C, false));
-        keys.add(key(BTN_RIGHT, 0.745f, 0.86f, 50, "Прицел", C, false));
-        keys.add(key(E, 0.735f, 0.58f, 46, "Взять", C, false));
-        keys.add(key(SPACE, 0.905f, 0.37f, 46, "Прыжок", C, false));
-        keys.add(key(R, 0.615f, 0.88f, 40, "Перез.", C, false));
-        keys.add(key(V, 0.775f, 0.33f, 42, "VATS", C, false));
+        keys.add(key(c, BTN_LEFT, 0.90f, 0.68f, 0.21f, "ОГОНЬ", C));
+        keys.add(key(c, BTN_RIGHT, 0.92f, 0.36f, 0.14f, "ПРИЦЕЛ", C));
+        keys.add(key(c, E, 0.76f, 0.86f, 0.14f, "ВЗЯТЬ", C));
+        keys.add(key(c, SPACE, 0.775f, 0.56f, 0.13f, "ПРЫЖОК", C));
+        keys.add(key(c, R, 0.655f, 0.88f, 0.12f, "ПЕРЕЗ.", C));
+        keys.add(key(c, V, 0.66f, 0.66f, 0.12f, "V.A.T.S.", C));
         // слева
-        keys.add(key(LCTRL, 0.055f, 0.42f, 40, "Присед", C, false));
-        keys.add(key(CAPS, 0.055f, 0.24f, 34, "Шаг", C, false));
-        // сверху
-        keys.add(key(ESC, 0.07f, 0.08f, 30, "Меню", P, false));
-        keys.add(key(F5, 0.21f, 0.08f, 30, "Сохр", P, false));
-        keys.add(key(F9, 0.35f, 0.08f, 30, "Загр", P, false));
-        keys.add(key(F, 0.745f, 0.08f, 30, "Вид", P, false));
-        keys.add(key(TAB, 0.905f, 0.08f, 30, "Пип-бой", P, false));
+        keys.add(key(c, LCTRL, 0.05f, 0.40f, 0.12f, "ПРИСЕСТЬ", C));
+        keys.add(key(c, CAPS, 0.05f, 0.22f, 0.10f, "БЕГ/ШАГ", C));
+        // служебные сверху
+        keys.add(key(c, ESC, 0.06f, 0.08f, 0.075f, "МЕНЮ", P));
+        keys.add(key(c, F5, 0.18f, 0.08f, 0.075f, "СОХР", P));
+        keys.add(key(c, F9, 0.30f, 0.08f, 0.075f, "ЗАГР", P));
+        keys.add(key(c, T, 0.42f, 0.08f, 0.075f, "ЖДАТЬ", P));
+        keys.add(key(c, F, 0.78f, 0.08f, 0.075f, "ВИД", P));
+        keys.add(key(c, TAB, 0.90f, 0.08f, 0.075f, "ПИП-БОЙ", P));
         // быстрые слоты
-        for (int i = 0; i < 4; i++) {
-            keys.add(key(K1 + i, 0.40f + i * 0.06f, 0.92f, 30, String.valueOf(i + 1), C, false));
+        for (int i = 1; i <= 8; i++) {
+            keys.add(key(c, K1 + i - 1, 0.24f + i * 0.045f, 0.94f, 0.08f, String.valueOf(i), C));
         }
         return keys;
     }
 
-    private static final int LAYOUT_VERSION = 3;
+    private static final int LAYOUT_VERSION = 4;
 
     /** Ставит раскладку по умолчанию, если игрок ещё ничего не настраивал или раскладка устарела. */
     public static void installIfEmpty(Context c) {
         android.content.SharedPreferences p = c.getSharedPreferences("wasteland", Context.MODE_PRIVATE);
         boolean old = p.getInt("layout_version", 1) < LAYOUT_VERSION;
         if (!old && !ControllerPrefs.INSTANCE.screenKeys(c).isEmpty()) return;
-        ControllerPrefs.INSTANCE.setScreenKeys(c, defaults());
+        ControllerPrefs.INSTANCE.setScreenKeys(c, defaults(c));
         ControllerPrefs.INSTANCE.setTint(c, com.wastelanddroid.util.Ui.FG);
-        p.edit().putInt("layout_version", LAYOUT_VERSION).putInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, 100).apply();
+        p.edit().putInt("layout_version", LAYOUT_VERSION)
+                .putInt(com.wastelanddroid.engine.FalloutInput.BTN_SCALE, 100).apply();
     }
 
     /** Подписи и коды для мини-редактора: что обычно нужно в Fallout. */

@@ -3021,9 +3021,14 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         showCursor(cx, cy)
     }
 
-    /** Относительная мышь: только для наших запусков игры, и пока её не выключили в настройках. */
+    /**
+     * Относительная мышь: игре идут только сдвиги. Включается, когда программа спрятала
+     * системный курсор — значит, она ведёт свой собственный (так делает Fallout и в меню, и в
+     * бою). Если курсор на экране настоящий (окно Windows, диалог), работает обычная
+     * абсолютная мышь: туда, куда ведёт палец.
+     */
     private fun relativeMouseMode(): Boolean =
-        SessionState.mode == SessionService.MODE_RUN && usingTouchpad() &&
+        SessionState.mode == SessionService.MODE_RUN && usingTouchpad() && clientHidesCursor &&
             com.wastelanddroid.engine.FalloutInput.relativeMouse(this)
 
     private fun showCursor(x: Float, y: Float) {
