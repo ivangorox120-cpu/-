@@ -410,6 +410,9 @@ public final class SettingsActivity extends Activity {
                 new String[]{"auto", "on", "off"}, Prefs.OVERLAY_MODE, "auto");
         action(g, R.drawable.ic_touch, "Редактор экранных кнопок", "Размер, прозрачность, форма, расположение и действия",
                 v -> open(new Intent(this, ControlsEditorActivity.class)));
+        toggle(g, "Виртуальный рабочий стол Wine", "Игра идёт в окне Wine 1280x720 вместо полного экрана. "
+                + "Рекомендованное лечение для мыши в Fallout под Proton",
+                com.wastelanddroid.engine.FalloutInput.WINE_DESKTOP, true, null);
         toggle(g, "Удерживать мышь в игре", "gamescope всегда держит относительный режим мыши. "
                 + "Без этого игры на DirectInput, прячущие курсор, не получают движение вовсе",
                 com.wastelanddroid.engine.FalloutInput.GRAB_CURSOR, true, null);

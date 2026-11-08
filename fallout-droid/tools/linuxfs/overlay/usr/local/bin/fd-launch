@@ -43,6 +43,11 @@ if [ -n "$warp" ] && [ -n "$regexe" ] && [ ! -f "$warpmarker" ]; then
     touch "$warpmarker"
   fi
 fi
+if [ -n "$regexe" ] && [ ! -f "$pfx/.fallout-droid-grab" ]; then
+  if run "$regexe" add 'HKCU\Software\Wine\X11 Driver' /v GrabFullscreen /t REG_SZ /d Y /f; then
+    touch "$pfx/.fallout-droid-grab"
+  fi
+fi
 if [ ! -f "$marker" ]; then
   win="Z:${dir//\//\\}\\"
   if [ -n "$regexe" ]; then
@@ -92,4 +97,8 @@ else
 fi
 find "$pfx/drive_c/users" "$home/Documents" -maxdepth 6 -iname 'Fallout*.ini' 2>/dev/null | sed 's/^/fd-launch: ini /' >&2
 
-exec /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" -- "$exe"
+# Виртуальный рабочий стол Wine: игра перестаёт быть полноэкранной для X, и мышь в ней
+# работает обычным образом. Рекомендованное лечение для Fallout под Proton.
+desktop=()
+[ -n "${FD_DESKTOP:-}" ] && desktop=(--desktop "$FD_DESKTOP") && log "Wine desktop $FD_DESKTOP"
+exec /usr/local/bin/droiddeck-proton-run --app "$scope" --dir "$dir" "${desktop[@]}" -- "$exe"

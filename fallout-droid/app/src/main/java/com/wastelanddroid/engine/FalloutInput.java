@@ -30,6 +30,8 @@ public final class FalloutInput {
     public static final String GRAB_CURSOR = "grab_cursor";
     /** Поведение мыши в DirectInput: "" | enable | force | disable. */
     public static final String MOUSE_WARP = "mouse_warp";
+    /** Виртуальный рабочий стол Wine: игра не полноэкранная для X, мышь работает как обычно. */
+    public static final String WINE_DESKTOP = "wine_desktop";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -100,4 +102,6 @@ public final class FalloutInput {
     public static boolean grabCursor(Context c) { return p(c).getBoolean(GRAB_CURSOR, true); }
 
     public static String mouseWarp(Context c) { return p(c).getString(MOUSE_WARP, ""); }
+
+    public static boolean wineDesktop(Context c) { return p(c).getBoolean(WINE_DESKTOP, true); }
 }
