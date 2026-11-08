@@ -23,8 +23,17 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
       - name: Build APK (prebuilt engine)
-        run: ./gradlew assembleRelease --no-daemon --stacktrace -PskipRust=true
+        # services.gradle.org иногда отваливается по таймауту: повторяем запуск.
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew assembleRelease --no-daemon --stacktrace -PskipRust=true && exit 0
+            echo "attempt $attempt failed, retrying in 20 s"
+            sleep 20
+          done
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: fallout-droid-apk
