@@ -21,6 +21,11 @@ public final class IniTweaks {
         return new File(docs, "My Games/" + g.folder);
     }
 
+    /** Видеорежим игры: 1280x720 (поддерживается всеми сборками Wine/Proton и самой игрой). */
+    static int[] gameMode(DeviceProfile p) {
+        return new int[]{1280, 720};
+    }
+
     public static void apply(GameDef g, File gameDir, File winePrefix, DeviceProfile p, GraphicsSettings gfx,
                              boolean skipIntro, boolean autosave)
             throws IOException {
@@ -69,8 +74,12 @@ public final class IniTweaks {
         f.set("General", "uExterior Cell Buffer", "36");
 
         IniFile pr = IniFile.load(prefs);
-        pr.set("Display", "iSize W", String.valueOf(p.renderWidth));
-        pr.set("Display", "iSize H", String.valueOf(p.renderHeight));
+        // Разрешение игры — стандартное 16:9, которое есть в списке видеорежимов Wine.
+        // Разрешение экрана телефона (например 2400x1080) игра отвергает: «Failed to initialize
+        // renderer». Экран сессии всё равно 720p по высоте, на весь экран картинку растягивает gamescope.
+        int[] mode = gameMode(p);
+        pr.set("Display", "iSize W", String.valueOf(mode[0]));
+        pr.set("Display", "iSize H", String.valueOf(mode[1]));
         pr.set("Display", "bFull Screen", "1");
         pr.set("Display", "iPresentInterval", "1");
         pr.set("Display", "iMultiSample", "0");
