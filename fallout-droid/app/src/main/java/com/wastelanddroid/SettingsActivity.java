@@ -410,6 +410,12 @@ public final class SettingsActivity extends Activity {
                 new String[]{"auto", "on", "off"}, Prefs.OVERLAY_MODE, "auto");
         action(g, R.drawable.ic_touch, "Редактор экранных кнопок", "Размер, прозрачность, форма, расположение и действия",
                 v -> open(new Intent(this, ControlsEditorActivity.class)));
+        toggle(g, "Удерживать мышь в игре", "gamescope всегда держит относительный режим мыши. "
+                + "Без этого игры на DirectInput, прячущие курсор, не получают движение вовсе",
+                com.wastelanddroid.engine.FalloutInput.GRAB_CURSOR, true, null);
+        choice(g, "Мышь в DirectInput", new String[]{"Как в Wine по умолчанию", "enable", "force", "disable"},
+                new String[]{"", "enable", "force", "disable"},
+                com.wastelanddroid.engine.FalloutInput.MOUSE_WARP, "");
         choice(g, "Как мышь попадает в игру",
                 new String[]{"Касание ведёт курсор", "Касание ведёт и нажимает", "Через композитор", "Только сдвиги мыши", "Отдельным устройством"},
                 new String[]{com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH,
@@ -417,7 +423,7 @@ public final class SettingsActivity extends Activity {
                         com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_RELATIVE,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_DEVICE},
-                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH);
+                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR);
         info(g, R.drawable.ic_info, "Если мышь в игре не слушается, попробуйте другие способы по очереди: "
                 + "включите «Отладка ввода» в разделе Логи и смотрите, меняется ли что-то в игре.", Ui.TEXT_DIM);
         info(g, R.drawable.ic_gamepad, "Геймпад по Bluetooth или USB игра видит как Xbox 360 — он работает сразу.", Ui.TEXT_DIM);

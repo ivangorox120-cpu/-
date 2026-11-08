@@ -806,6 +806,9 @@ class SessionService : Service() {
         FexCatalog.cached(this)?.let { guest.addAll(FexCatalog.environment(it)) }
         if (SessionState.mode == MODE_RUN) {
             com.wastelanddroid.engine.FalloutInput.gamescopeTouchMode(this)?.let { guest.add("BL_TOUCH_MODE=$it") }
+            if (com.wastelanddroid.engine.FalloutInput.grabCursor(this)) guest.add("BL_GRAB_CURSOR=1")
+            com.wastelanddroid.engine.FalloutInput.mouseWarp(this).takeIf { it.isNotEmpty() }
+                ?.let { guest.add("FD_MOUSE_WARP=$it") }
         }
         if (SessionState.mode == MODE_RUN &&
             getSharedPreferences("wasteland", MODE_PRIVATE).getBoolean("stretch_screen", true)) {

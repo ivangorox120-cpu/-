@@ -32,9 +32,19 @@ find_wine_tool() {
 }
 
 log "prefix $pfx ($( [ -f "$pfx/system.reg" ] && echo exists || echo new ))"
+regexe=$(find_wine_tool reg.exe)
+# Поведение мыши в DirectInput: force/enable/disable. Пусто — как у Wine по умолчанию.
+warp=${FD_MOUSE_WARP:-}
+warpmarker=$pfx/.fallout-droid-warp-$warp
+if [ -n "$warp" ] && [ -n "$regexe" ] && [ ! -f "$warpmarker" ]; then
+  log "DirectInput MouseWarpOverride=$warp"
+  if run "$regexe" add 'HKCU\Software\Wine\DirectInput' /v MouseWarpOverride /t REG_SZ /d "$warp" /f; then
+    rm -f "$pfx"/.fallout-droid-warp-* 2>/dev/null
+    touch "$warpmarker"
+  fi
+fi
 if [ ! -f "$marker" ]; then
   win="Z:${dir//\//\\}\\"
-  regexe=$(find_wine_tool reg.exe)
   if [ -n "$regexe" ]; then
     log "writing the installer keys with $regexe"
     key="HKLM\\Software\\Bethesda Softworks\\$regfolder"

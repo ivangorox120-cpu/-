@@ -329,6 +329,17 @@ if [ -z "${BL_INSIDE:-}" ]; then
   # Fallout Droid: в режиме одной программы касания превращает в мышь сам gamescope
   # (0 — только двигать курсор, 1 — двигать и нажимать левую кнопку).
   [ "$mode" = run ] && [ -n "${BL_TOUCH_MODE:-}" ] && args+=(--default-touch-mode "$BL_TOUCH_MODE")
+  # Fallout Droid: постоянный относительный режим мыши. Без него gamescope переключается
+  # между абсолютным и относительным по видимости курсора, а игры на DirectInput
+  # (Fallout 3 / New Vegas) прячут курсор и перестают получать движение мыши вовсе.
+  if [ "$mode" = run ] && [ "${BL_GRAB_CURSOR:-0}" = 1 ]; then
+    if gamescope --help 2>&1 | grep -q -- '--force-grab-cursor'; then
+      args+=(--force-grab-cursor)
+      echo "== gamescope: mouse stays in relative mode (--force-grab-cursor)"
+    else
+      echo "== gamescope: this build has no --force-grab-cursor"
+    fi
+  fi
   [ "${BL_HDR:-0}" = 1 ] && args+=(--hdr-enabled)
   [ -n "${BL_GAMESCOPE_ARGS:-}" ] && read -r -a _bl_extra <<<"$BL_GAMESCOPE_ARGS" && args+=("${_bl_extra[@]}")
   if [ "$mode" = steam ] && [ "${BL_MANGOAPP:-1}" = 1 ] \

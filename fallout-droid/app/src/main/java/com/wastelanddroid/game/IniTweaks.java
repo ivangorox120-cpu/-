@@ -92,8 +92,11 @@ public final class IniTweaks {
         iniAgain.set("Controls", "bUse Joystick", joystick);
         pr.set("Controls", "bUse Joystick", joystick);
         if (!gamepad) pr.set("Controls", "bGamePadRumble", "0");
+        // Фон-мышь: игра читает мышь, даже когда окно не в фокусе. Под Wine это, по отчётам
+        // игроков, как раз и чинит «мышь не работает» (gamescope держит захват курсора сам).
+        pr.set("Controls", "bBackground Mouse", "1");
+        iniAgain.set("Controls", "bBackground Mouse", "1");
         iniAgain.save(ini);
-        pr.set("Controls", "bBackground Mouse", "0");
         pr.set("Controls", "fMouseSensitivity", "0.0025");
         if (autosave) {
             // Автосохранения — страховка от вылетов, которых полностью не избежать даже на ПК.

@@ -26,6 +26,10 @@ public final class FalloutInput {
     public static final String MOUSE_TOUCH = "touch";
     /** Касания двигают курсор и нажимают левую кнопку (gamescope, режим left). */
     public static final String MOUSE_TOUCH_CLICK = "touchclick";
+    /** Постоянный относительный режим мыши в gamescope (--force-grab-cursor). */
+    public static final String GRAB_CURSOR = "grab_cursor";
+    /** Поведение мыши в DirectInput: "" | enable | force | disable. */
+    public static final String MOUSE_WARP = "mouse_warp";
     public static final String HAPTICS = "key_haptics";
     public static final String BTN_SCALE = "btn_scale";
     public static final String BTN_OPACITY = "btn_opacity";
@@ -69,7 +73,7 @@ public final class FalloutInput {
     public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
 
     public static String mouseMode(Context c) {
-        return p(c).getString(MOUSE_MODE, MOUSE_TOUCH);
+        return p(c).getString(MOUSE_MODE, MOUSE_COMPOSITOR);
     }
 
     public static boolean mouseDevice(Context c) { return MOUSE_DEVICE.equals(mouseMode(c)); }
@@ -92,4 +96,8 @@ public final class FalloutInput {
         String m = mouseMode(c);
         return MOUSE_RELATIVE.equals(m) || MOUSE_DEVICE.equals(m);
     }
+
+    public static boolean grabCursor(Context c) { return p(c).getBoolean(GRAB_CURSOR, true); }
+
+    public static String mouseWarp(Context c) { return p(c).getString(MOUSE_WARP, ""); }
 }
