@@ -23,6 +23,8 @@ public final class FalloutInput {
     public static final String MOUSE_RELATIVE = "relative";
     public static final String MOUSE_DEVICE = "device";
     /** Касания двигают курсор игры (gamescope, режим hover). */
+    /** Мышь прямо в X-сервер через XTEST — для игры это настоящая мышь. */
+    public static final String MOUSE_XTEST = "xtest";
     public static final String MOUSE_TOUCH = "touch";
     /** Касания двигают курсор и нажимают левую кнопку (gamescope, режим left). */
     public static final String MOUSE_TOUCH_CLICK = "touchclick";
@@ -75,8 +77,10 @@ public final class FalloutInput {
     public static boolean debug(Context c) { return p(c).getBoolean(DEBUG, false); }
 
     public static String mouseMode(Context c) {
-        return p(c).getString(MOUSE_MODE, MOUSE_COMPOSITOR);
+        return p(c).getString(MOUSE_MODE, MOUSE_XTEST);
     }
+
+    public static boolean mouseXtest(Context c) { return MOUSE_XTEST.equals(mouseMode(c)); }
 
     public static boolean mouseDevice(Context c) { return MOUSE_DEVICE.equals(mouseMode(c)); }
 
@@ -96,7 +100,7 @@ public final class FalloutInput {
 
     public static boolean mouseRelativeOnly(Context c) {
         String m = mouseMode(c);
-        return MOUSE_RELATIVE.equals(m) || MOUSE_DEVICE.equals(m);
+        return MOUSE_RELATIVE.equals(m) || MOUSE_DEVICE.equals(m) || MOUSE_XTEST.equals(m);
     }
 
     public static boolean grabCursor(Context c) { return p(c).getBoolean(GRAB_CURSOR, true); }

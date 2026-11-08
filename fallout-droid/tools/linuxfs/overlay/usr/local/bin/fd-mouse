@@ -1,0 +1,141 @@
+#!/usr/bin/python3
+"""Fallout Droid: mouse injected straight into the X server with the XTEST extension.
+
+Pointer events sent through the compositor reach gamescope but never the game: Fallout takes
+the mouse with DirectInput, and in that path nothing arrives. XTEST events enter the X server
+itself, exactly where a real mouse would, so Wine reads them as hardware input.
+
+Commands arrive as lines on a fifo (default /tmp/fd-mouse):
+
+    m <dx> <dy>        relative motion
+    a <x> <y>          absolute motion, in screen pixels
+    b <button> <0|1>   button release / press (1 left, 2 middle, 3 right)
+    w <steps>          wheel, positive is up
+"""
+import os
+import socket
+import struct
+import sys
+
+FIFO = os.environ.get("FD_MOUSE_FIFO", "/tmp/fd-mouse")
+MOTION, PRESS, RELEASE = 6, 4, 5
+
+
+def say(message):
+    print("fd-mouse: %s" % message, file=sys.stderr, flush=True)
+
+
+def cookie():
+    """The MIT-MAGIC-COOKIE-1 of the X server, or empty when the server needs no authority."""
+    path = os.environ.get("XAUTHORITY") or os.path.expanduser("~/.Xauthority")
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return b"", b""
+    at = 0
+
+    def field():
+        nonlocal at
+        (length,) = struct.unpack_from(">H", data, at)
+        at += 2
+        value = data[at:at + length]
+        at += length
+        return value
+
+    while at + 2 <= len(data):
+        at += 2  # family
+        field()  # address
+        field()  # display number
+        name = field()
+        value = field()
+        if name == b"MIT-MAGIC-COOKIE-1":
+            return name, value
+    return b"", b""
+
+
+def recvall(sock, count):
+    out = b""
+    while len(out) < count:
+        part = sock.recv(count - len(out))
+        if not part:
+            raise IOError("the X server closed the connection")
+        out += part
+    return out
+
+
+def pad(length):
+    return b"\0" * ((4 - length % 4) % 4)
+
+
+def connect():
+    display = os.environ.get("DISPLAY", ":0")
+    number = display.split(":")[1].split(".")[0]
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect("/tmp/.X11-unix/X%s" % number)
+    name, value = cookie()
+    sock.sendall(struct.pack("<BxHHHHxx", 0x6C, 11, 0, len(name), len(value))
+                 + name + pad(len(name)) + value + pad(len(value)))
+    head = recvall(sock, 8)
+    status, _, _, _, extra = struct.unpack("<BBHHH", head)
+    body = recvall(sock, extra * 4)
+    if status != 1:
+        raise IOError("the X server refused the connection: %r" % body[:80])
+    say("connected to %s" % display)
+    return sock
+
+
+def query_xtest(sock):
+    name = b"XTEST"
+    sock.sendall(struct.pack("<BxHHxx", 98, 2 + (len(name) + len(pad(len(name)))) // 4, len(name))
+                 + name + pad(len(name)))
+    reply = recvall(sock, 32)
+    if reply[0] != 1 or reply[8] == 0:
+        raise IOError("this X server has no XTEST extension")
+    return reply[9]
+
+
+def fake(sock, opcode, kind, detail, x=0, y=0):
+    sock.sendall(struct.pack("<BBHBBHIIIIhhIHH", opcode, 2, 9, kind, detail, 0, 0, 0, 0, 0,
+                             x, y, 0, 0, 0))
+
+
+def main():
+    try:
+        sock = connect()
+        opcode = query_xtest(sock)
+    except (IOError, OSError, struct.error) as e:
+        say("not started: %s" % e)
+        return 1
+    if not os.path.exists(FIFO):
+        os.mkfifo(FIFO, 0o666)
+    os.chmod(FIFO, 0o666)
+    say("ready on %s" % FIFO)
+    while True:
+        with open(FIFO, "r") as pipe:
+            for line in pipe:
+                parts = line.split()
+                if not parts:
+                    continue
+                try:
+                    if parts[0] == "m":
+                        fake(sock, opcode, MOTION, 1, int(parts[1]), int(parts[2]))
+                    elif parts[0] == "a":
+                        fake(sock, opcode, MOTION, 0, int(parts[1]), int(parts[2]))
+                    elif parts[0] == "b":
+                        fake(sock, opcode, PRESS if parts[2] == "1" else RELEASE, int(parts[1]))
+                    elif parts[0] == "w":
+                        steps = int(parts[1])
+                        button = 4 if steps > 0 else 5
+                        for _ in range(abs(steps)):
+                            fake(sock, opcode, PRESS, button)
+                            fake(sock, opcode, RELEASE, button)
+                except (IndexError, ValueError):
+                    continue
+                except (IOError, OSError):
+                    say("the X server went away")
+                    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

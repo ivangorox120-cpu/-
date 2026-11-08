@@ -254,6 +254,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var clientHidesCursor = false
     private var pointerLocked = false
     private var lookDownX = 0f
+    private var xRestX = 0f
+    private var xRestY = 0f
     private var dbgAbs = 0
     private var dbgRel = 0
     private var dbgBtn = 0
@@ -271,7 +273,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (now - dbgAt < 250) return
         dbgAt = now
         inputDebug = "touch $dbgTouch · route $touchRoute · lock $pointerLocked · hide $clientHidesCursor\n" +
-            "abs $dbgAbs · rel $dbgRel · btn $dbgBtn · raw $evdevMouseActive"
+            "abs $dbgAbs · rel $dbgRel · btn $dbgBtn · raw $evdevMouseActive · " +
+            "xtest ${com.wastelanddroid.engine.XMouse.ready(this)}"
     }
     private var lookDownY = 0f
     private val pointerLockListener = WaylandCompositor.PointerLockListener { locked, _, _ ->
@@ -3445,6 +3448,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun sendSceneDelta(dx: Float, dy: Float) {
         dbgRel++
         inputDebugTick()
+        if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) {
+            xRestX += dx; xRestY += dy
+            val ix = xRestX.toInt(); val iy = xRestY.toInt()
+            xRestX -= ix; xRestY -= iy
+            com.wastelanddroid.engine.XMouse.move(this, ix, iy)
+            return
+        }
         val writer = if (evdevMouseActive) mouseWriter else null
         if (writer != null) writer.writeMouseDelta(dx, dy)
         else WaylandCompositor.sendPointerDelta(dx, dy)
@@ -3453,12 +3463,20 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun sendSceneButton(code: Int, down: Boolean) {
         if (down) dbgBtn++
         inputDebugTick()
+        if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) {
+            com.wastelanddroid.engine.XMouse.button(this, com.wastelanddroid.engine.XMouse.x11Button(code), down)
+            return
+        }
         val writer = if (evdevMouseActive) mouseWriter else null
         if (writer != null) writer.writeMouseButton(code.toShort(), down)
         else WaylandCompositor.nativeSendSceneInput(3, code, if (down) 1 else 0)
     }
 
     private fun sendSceneWheel(steps: Int) {
+        if (com.wastelanddroid.engine.FalloutInput.mouseXtest(this)) {
+            com.wastelanddroid.engine.XMouse.wheel(this, steps)
+            return
+        }
         val writer = if (evdevMouseActive) mouseWriter else null
         if (writer != null) writer.writeMouseWheel(-steps, 0, 120)
         else WaylandCompositor.nativeSendSceneInput(4, steps, 0)

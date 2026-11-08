@@ -420,13 +420,15 @@ public final class SettingsActivity extends Activity {
                 new String[]{"", "enable", "force", "disable"},
                 com.wastelanddroid.engine.FalloutInput.MOUSE_WARP, "");
         choice(g, "Как мышь попадает в игру",
-                new String[]{"Касание ведёт курсор", "Касание ведёт и нажимает", "Через композитор", "Только сдвиги мыши", "Отдельным устройством"},
-                new String[]{com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH,
+                new String[]{"Прямо в X-сервер (XTEST)", "Касание ведёт курсор", "Касание ведёт и нажимает",
+                        "Через композитор", "Только сдвиги мыши", "Отдельным устройством"},
+                new String[]{com.wastelanddroid.engine.FalloutInput.MOUSE_XTEST,
+                        com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_TOUCH_CLICK,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_RELATIVE,
                         com.wastelanddroid.engine.FalloutInput.MOUSE_DEVICE},
-                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_COMPOSITOR);
+                com.wastelanddroid.engine.FalloutInput.MOUSE_MODE, com.wastelanddroid.engine.FalloutInput.MOUSE_XTEST);
         info(g, R.drawable.ic_info, "Если мышь в игре не слушается, попробуйте другие способы по очереди: "
                 + "включите «Отладка ввода» в разделе Логи и смотрите, меняется ли что-то в игре.", Ui.TEXT_DIM);
         info(g, R.drawable.ic_gamepad, "Геймпад по Bluetooth или USB игра видит как Xbox 360 — он работает сразу.", Ui.TEXT_DIM);

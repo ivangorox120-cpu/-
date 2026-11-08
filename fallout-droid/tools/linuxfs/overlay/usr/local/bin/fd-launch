@@ -97,6 +97,11 @@ else
 fi
 find "$pfx/drive_c/users" "$home/Documents" -maxdepth 6 -iname 'Fallout*.ini' 2>/dev/null | sed 's/^/fd-launch: ini /' >&2
 
+# Мышь прямо в X-сервер через XTEST: события композитора игра на DirectInput не видит.
+if [ "${FD_XTEST:-0}" = 1 ]; then
+  rm -f /tmp/fd-mouse
+  /usr/local/bin/fd-mouse &
+fi
 # Виртуальный рабочий стол Wine: игра перестаёт быть полноэкранной для X, и мышь в ней
 # работает обычным образом. Рекомендованное лечение для Fallout под Proton.
 desktop=()
